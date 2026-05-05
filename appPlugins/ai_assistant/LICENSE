@@ -1,0 +1,41 @@
+FlatCAM Plus AI Assistant Module Non-Commercial License
+
+Copyright (c) 2026 Sadri ERCAN.
+All rights reserved.
+
+This license applies only to the FlatCAM Plus AI Assistant module, including:
+
+- appPlugins/ToolAIAssistant.py
+- appPlugins/ai_assistant/
+
+The AI Assistant module is licensed separately from the MIT-licensed FlatCAM
+base. The root LICENSE file continues to apply to the original FlatCAM code and
+other parts of this repository unless a file or directory states otherwise.
+
+Permission is granted, free of charge, to use, study, copy, modify, and create
+derivative works of this AI Assistant module for personal, educational,
+research, evaluation, and other non-commercial purposes, subject to the terms
+below.
+
+You may share modified versions for non-commercial purposes if this license
+notice and the copyright notice are preserved in all copies or substantial
+portions of the AI Assistant module.
+
+Commercial use is not permitted without prior written permission from Sadri
+ERCAN. Commercial use includes, but is not limited to:
+
+- selling, renting, leasing, sublicensing, or monetizing this AI Assistant module;
+- selling or distributing a product, installer, package, service, or hosted
+  offering that includes this AI Assistant module;
+- using this AI Assistant module as part of paid support, paid CAM analysis,
+  paid manufacturing assistance, or other revenue-generating activity;
+- removing or obscuring this license notice or copyright notice.
+
+A separate written commercial license from Sadri ERCAN is required for any
+commercial use, redistribution in a commercial product, or sublicensing.
+
+This AI Assistant module is provided "as is", without warranty of any kind,
+express or implied, including but not limited to warranties of merchantability,
+fitness for a particular purpose, and noninfringement. In no event shall the
+copyright holder be liable for any claim, damages, or other liability arising
+from the use of this module.
