@@ -44,4 +44,8 @@ class CNCJobPreferencesUI(QtWidgets.QWidget):
         self.layout.addLayout(vlay)
         self.layout.addWidget(self.cncjob_editor_group)
 
+        self.cncjob_adv_opt_group.hide()
+        self.cncjob_pp_group.hide()
+        self.cncjob_editor_group.hide()
+
         self.layout.addStretch()

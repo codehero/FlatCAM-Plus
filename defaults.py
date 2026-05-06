@@ -2,6 +2,28 @@ import os
 import stat
 import sys
 from copy import deepcopy
+
+
+FIXED_LIGHT_UI_DEFAULTS = {
+    "global_appearance": 'light',
+    "global_dark_canvas": False,
+    "global_theme": 'light',
+    "global_gui_layout": 0,
+    "global_layout": "standard",
+    "global_sel_fill": '#a5a5ffbf',
+    "global_sel_line": '#0000ffbf',
+    "global_alt_sel_fill": '#BBF268BF',
+    "global_alt_sel_line": '#006E20BF',
+    "global_draw_color": '#00000080',
+    "global_sel_draw_color": '#0000FF80',
+    "global_proj_item_color_light": '#000000FF',
+    "global_proj_item_dis_color_light": '#b7b7cbFF',
+    "global_proj_item_color_dark": '#AAAAAAFF',
+    "global_proj_item_dis_color_dark": '#4a4a4aFF',
+    "global_axis_color": '#B34D4D',
+    "global_cursor_color_enabled": True,
+    "global_cursor_color": '#FF0000',
+}
 from appCommon.Common import LoudDict
 from camlib import to_dict, Geometry
 import simplejson
@@ -41,7 +63,7 @@ class AppDefaults:
 
         "global_move_ref": 'abs',
 
-        "global_gui_layout": 0,  # can be 0:"normal" or 1:"columnar"
+        "global_gui_layout": 0,  # fixed to 0: "normal"
 
         "global_background_timeout": 300000,  # Default value is 5 minutes
         "global_verbose_error_level": 0,  # Shell verbosity 0 = default
@@ -105,11 +127,11 @@ class AppDefaults:
         "global_tpdf_rmargin": 20.0,
 
         # General GUI Preferences
-        "global_appearance": 'default',
+        "global_appearance": 'light',
         "global_dark_canvas": False,
-        "global_theme": 'default',
+        "global_theme": 'light',
 
-        "global_layout": "compact",
+        "global_layout": "standard",
         "global_hover_shape": False,
         "global_selection_shape": True,
         "global_selection_shape_as_line": False,

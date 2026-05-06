@@ -248,14 +248,16 @@ class CNCPreview3DUI:
                 border: 0;
             }}
             QComboBox {{
-                min-height: 26px;
-                padding: 2px 24px 2px 7px;
+                min-height: 30px;
+                padding: 4px 30px 4px 8px;
                 border: 1px solid {mid};
-                border-radius: 4px;
+                border-radius: 5px;
                 background: {base};
             }}
             QComboBox::drop-down {{
-                width: 22px;
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 28px;
                 border: 0;
             }}
             QComboBox::down-arrow {{
@@ -274,7 +276,10 @@ class CNCPreview3DUI:
 
     def build_controls(self):
         self.job_combo = FCComboBox()
+        self.job_combo.setMinimumHeight(32)
+        self.job_combo.setMinimumWidth(176)
         self.refresh_btn = FluidStyleButton(_("Refresh"), "#337ab7", "#286090")
+        self.refresh_btn.setMinimumHeight(32)
         self.top_btn = FluidStyleButton(_("Top"), "#5bc0de", "#31b0d5")
         self.orbit_btn = OrbitGizmoButton(_("Orbit view"))
         self.fit_btn = FluidStyleButton(_("Fit"), "#5cb85c", "#449d44")

@@ -48,4 +48,7 @@ class ExcellonPreferencesUI(QtWidgets.QWidget):
         self.layout.addLayout(self.vlay)
         self.layout.addWidget(self.excellon_editor_group)
 
+        self.excellon_adv_opt_group.hide()
+        self.excellon_editor_group.hide()
+
         self.layout.addStretch()

@@ -2,6 +2,7 @@
 from PyQt6 import QtGui, QtCore, QtWidgets
 from appGUI.GUIElements import FCEntry, FCButton, FCDoubleSpinner, FCComboBox, FCCheckBox, FCSpinner, \
     FCTree, RadioSet, FCFileSaveDialog, FCLabel, FCComboBox2, GLay
+from appGUI.PanelStyles import apply_modern_panel_style
 from camlib import to_dict
 
 import sys
@@ -31,8 +32,13 @@ class ToolsDB2UI:
         self.tool_job_options = ["C1", "C2", "C3", "C4", "B", "V", "L"]
 
         self.g_lay = grid_layout
+        self.g_lay.setContentsMargins(8, 8, 8, 8)
+        self.g_lay.setHorizontalSpacing(8)
+        self.g_lay.setVerticalSpacing(8)
 
         tree_layout = QtWidgets.QVBoxLayout()
+        tree_layout.setContentsMargins(0, 0, 0, 0)
+        tree_layout.setSpacing(8)
         self.g_lay.addLayout(tree_layout, 0, 0)
 
         self.tree_widget = FCTree(columns=3, header_hidden=False, protected_column=[0, 2, 3])
@@ -53,6 +59,7 @@ class ToolsDB2UI:
 
         param_hlay = QtWidgets.QHBoxLayout()
         param_area = QtWidgets.QScrollArea()
+        param_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         param_widget = QtWidgets.QWidget()
         param_widget.setLayout(param_hlay)
 
@@ -67,13 +74,6 @@ class ToolsDB2UI:
 
         # Tool description box
         self.tool_description_box = QtWidgets.QGroupBox()
-        self.tool_description_box.setStyleSheet("""
-        QGroupBox
-        {
-            font-size: 16px;
-            font-weight: bold;
-        }
-        """)
         self.description_vlay = QtWidgets.QVBoxLayout()
         self.tool_description_box.setTitle(_("Tool Preset"))
         self.tool_description_box.setMinimumWidth(250)
@@ -82,78 +82,36 @@ class ToolsDB2UI:
 
         # Milling box
         self.milling_box = QtWidgets.QGroupBox()
-        self.milling_box.setStyleSheet("""
-        QGroupBox
-        {
-            font-size: 16px;
-            font-weight: bold;
-        }
-        """)
         self.milling_vlay = QtWidgets.QVBoxLayout()
         self.milling_box.setTitle(_("Milling Preset Parameters"))
         self.milling_box.setMinimumWidth(250)
 
         # NCC TOOL BOX
         self.ncc_box = QtWidgets.QGroupBox()
-        self.ncc_box.setStyleSheet("""
-                        QGroupBox
-                        {
-                            font-size: 16px;
-                            font-weight: bold;
-                        }
-                        """)
         self.ncc_vlay = QtWidgets.QVBoxLayout()
         self.ncc_box.setTitle(_("NCC Preset Parameters"))
         self.ncc_box.setMinimumWidth(250)
 
         # PAINT TOOL BOX
         self.paint_box = QtWidgets.QGroupBox()
-        self.paint_box.setStyleSheet("""
-                        QGroupBox
-                        {
-                            font-size: 16px;
-                            font-weight: bold;
-                        }
-                        """)
         self.paint_vlay = QtWidgets.QVBoxLayout()
         self.paint_box.setTitle(_("Paint Preset Parameters"))
         self.paint_box.setMinimumWidth(250)
 
         # ISOLATION TOOL BOX
         self.iso_box = QtWidgets.QGroupBox()
-        self.iso_box.setStyleSheet("""
-                     QGroupBox
-                     {
-                         font-size: 16px;
-                         font-weight: bold;
-                     }
-                     """)
         self.iso_vlay = QtWidgets.QVBoxLayout()
         self.iso_box.setTitle(_("Isolation Preset Parameters"))
         self.iso_box.setMinimumWidth(250)
 
         # DRILLING TOOL BOX
         self.drill_box = QtWidgets.QGroupBox()
-        self.drill_box.setStyleSheet("""
-                     QGroupBox
-                     {
-                         font-size: 16px;
-                         font-weight: bold;
-                     }
-                     """)
         self.drill_vlay = QtWidgets.QVBoxLayout()
         self.drill_box.setTitle(_("Drilling Preset Parameters"))
         self.drill_box.setMinimumWidth(250)
 
         # CUTOUT TOOL BOX
         self.cutout_box = QtWidgets.QGroupBox()
-        self.cutout_box.setStyleSheet("""
-                     QGroupBox
-                     {
-                         font-size: 16px;
-                         font-weight: bold;
-                     }
-                     """)
         self.cutout_vlay = QtWidgets.QVBoxLayout()
         self.cutout_box.setTitle(_("Cutout Preset Parameters"))
         self.cutout_box.setMinimumWidth(250)
@@ -201,7 +159,7 @@ class ToolsDB2UI:
         self.description_vlay.addStretch()
 
         # Tool Name
-        self.name_label = FCLabel(_("Name"), color='red', bold=True)
+        self.name_label = FCLabel(_("Name"), bold=True)
         self.name_label.setToolTip(
             _("Tool name.\n"
               "This is not used in the app, it's function\n"
@@ -1308,7 +1266,7 @@ class ToolsDB2UI:
         )
         self.buttons_box.addWidget(self.save_db_btn)
 
-        self.add_tool_from_db = FCButton(_("Transfer the Tool"), bold=True, color='green')
+        self.add_tool_from_db = FCButton(_("Transfer the Tool"), bold=True)
         self.add_tool_from_db.setToolTip(
             _("Insert a new tool in the Tools Table of the\n"
               "object/application tool after selecting a tool\n"
@@ -1591,6 +1549,8 @@ class ToolsDB2(QtWidgets.QWidget):
 
         self.ui.add_tool_from_db.clicked.connect(self.on_tool_requested_from_app)
         self.ui.cancel_tool_from_db.clicked.connect(self.on_cancel_tool)
+        self.ui.remove_entry_btn.setProperty("prefAlert", True)
+        self.ui.cancel_tool_from_db.setProperty("prefAlert", True)
 
         # self.ui.tree_widget.selectionModel().selectionChanged.connect(self.on_list_selection_change)
         self.ui.tree_widget.currentItemChanged.connect(self.on_list_selection_change)
@@ -1604,6 +1564,7 @@ class ToolsDB2(QtWidgets.QWidget):
         self.ui.tool_op_combo.currentIndexChanged.connect(self.on_tool_target_changed)
 
         self.setup_db_ui()
+        apply_modern_panel_style(self, self.app)
 
     def tool_target_id(self, target):
         if isinstance(target, int):

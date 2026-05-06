@@ -4,7 +4,7 @@ from PyQt6.QtCore import QSettings
 
 import os
 
-from defaults import AppDefaults
+from defaults import AppDefaults, FIXED_LIGHT_UI_DEFAULTS
 from appGUI.PanelStyles import apply_modern_preferences_style
 from appGUI.GUIElements import FCMessageBox
 
@@ -87,13 +87,10 @@ class PreferencesUIManager(QtCore.QObject):
 
             # General GUI Preferences
             "global_appearance": self.ui.general_pref_form.general_gui_group.appearance_radio,
-            "global_dark_canvas": self.ui.general_pref_form.general_gui_group.dark_canvas_cb,
             "global_layout": self.ui.general_pref_form.general_gui_group.layout_combo,
             "global_hover_shape": self.ui.general_pref_form.general_gui_group.hover_cb,
             "global_selection_shape": self.ui.general_pref_form.general_gui_group.selection_cb,
             "global_selection_shape_as_line": self.ui.general_pref_form.general_gui_group.selection_outline_cb,
-
-            "global_gui_layout": self.ui.general_pref_form.general_gui_group.gui_lay_combo,
 
             "global_sel_fill": self.ui.general_pref_form.general_gui_group.sf_color_entry,
             "global_sel_line": self.ui.general_pref_form.general_gui_group.sl_color_entry,
@@ -723,6 +720,20 @@ class PreferencesUIManager(QtCore.QObject):
             except Exception as e:
                 self.ui.app.log.error("App.defaults_read_form() --> %s" % str(e))
 
+    def apply_fixed_light_ui_defaults(self):
+        for option, value in FIXED_LIGHT_UI_DEFAULTS.items():
+            self.defaults[option] = value
+            self.ui.app.options[option] = value
+
+            form_field = self.defaults_form_fields.get(option)
+            if form_field is None:
+                continue
+
+            try:
+                form_field.set_value(value)
+            except Exception:
+                pass
+
     def defaults_write_form(self, factor=None, fl_units=None, source_dict=None):
         """
         Will set the values for all the GUI elements in Preferences GUI based on the values found in the
@@ -782,7 +793,9 @@ class PreferencesUIManager(QtCore.QObject):
 
         self.pref_connect()
 
-        # Initialize the color box's color in Preferences -> Global -> Colors
+        self.apply_fixed_light_ui_defaults()
+
+        # Initialize hidden color boxes used by the defaults compatibility layer.
         self.__init_color_pickers()
 
         # log.debug("Finished Preferences GUI form initialization.")
@@ -1094,26 +1107,18 @@ class PreferencesUIManager(QtCore.QObject):
         # make sure we update the self.current_defaults dict used to undo changes to self.defaults
         self.defaults.current_defaults.update(self.defaults)
 
-        # deal with appearance change
+        # Theme/canvas are fixed to Light. Keep QSettings normalized without exposing a preference.
         appearance_settings = QtCore.QSettings("Open Source", "FlatCAM_Plus")
-        if appearance_settings.contains("appearance"):
-            appearance = appearance_settings.value('appearance', type=str)
-        else:
-            appearance = None
-
-        if appearance_settings.contains("dark_canvas"):
-            dark_canvas = appearance_settings.value('dark_canvas', type=bool)
-        else:
-            dark_canvas = None
-
+        appearance_settings.setValue('appearance', 'light')
+        appearance_settings.setValue('theme', 'light')
+        appearance_settings.setValue('dark_canvas', False)
         should_restart = False
-        appearance_new_val = self.ui.general_pref_form.general_gui_group.appearance_radio.get_value()
-        dark_canvas_new_val = self.ui.general_pref_form.general_gui_group.dark_canvas_cb.get_value()
+        self.ui.general_pref_form.general_gui_group.appearance_radio.set_value('light')
 
         ge = self.defaults["global_graphic_engine"]
         ge_val = self.ui.general_pref_form.general_app_group.ge_radio.get_value()
 
-        if appearance_new_val != appearance or ge != ge_val or dark_canvas_new_val != dark_canvas:
+        if ge != ge_val:
             msgbox = FCMessageBox(parent=self.ui)
             title = _("Application will restart")
             txt = _("Are you sure you want to continue?")
@@ -1130,35 +1135,23 @@ class PreferencesUIManager(QtCore.QObject):
             msgbox.exec()
             response = msgbox.clickedButton()
 
-            if appearance_new_val != appearance:
-                if response == bt_yes:
-                    appearance_settings.setValue('appearance', appearance_new_val)
-                    should_restart = True
-                else:
-                    self.ui.general_pref_form.general_gui_group.appearance_radio.set_value(appearance)
-
-            if dark_canvas_new_val != dark_canvas:
-                if response == bt_yes:
-                    appearance_settings.setValue('dark_canvas', dark_canvas_new_val)
-                    should_restart = True
-                else:
-                    self.ui.general_pref_form.general_gui_group.dark_canvas_cb.set_value(dark_canvas)
-
             # This will write the setting to the platform specific storage.
             del appearance_settings
 
-            if ge != ge_val:
-                if response == bt_yes:
-                    self.defaults["global_graphic_engine"] = ge_val
-                    should_restart = True
-                else:
-                    self.ui.general_pref_form.general_app_group.ge_radio.set_value(ge)
+            if response == bt_yes:
+                self.defaults["global_graphic_engine"] = ge_val
+                should_restart = True
+            else:
+                self.ui.general_pref_form.general_app_group.ge_radio.set_value(ge)
+        else:
+            del appearance_settings
 
         # #############################################################################################################
         # ############################  Here is done the actual preferences updates  ##################################
         # #############################################################################################################
         # update the `defaults` dict from the Preferences UI form
         self.defaults_read_form()
+        self.apply_fixed_light_ui_defaults()
         # Apply the `defaults` dict to project options
         self.ui.app.options.update(self.defaults)
         # #############################################################################################################
@@ -1187,6 +1180,9 @@ class PreferencesUIManager(QtCore.QObject):
         hud_fsize = self.ui.general_pref_form.general_app_set_group.hud_font_size_spinner.get_value()
         settgs.setValue('hud_font_size', hud_fsize)
 
+        if settgs.contains('style'):
+            settgs.remove('style')
+
         # This will write the setting to the platform specific storage.
         del settgs
 
@@ -1209,6 +1205,7 @@ class PreferencesUIManager(QtCore.QObject):
         """
         self.ui.app.log.debug("on_restore_defaults_preferences()")
         self.defaults.reset_to_factory_defaults()
+        self.apply_fixed_light_ui_defaults()
         self.defaults_write_form()
         self.on_preferences_edited()
         self.ui.units_label.setText("[mm]")
@@ -1232,6 +1229,7 @@ class PreferencesUIManager(QtCore.QObject):
         if data_path is None:
             data_path = self.data_path
 
+        self.apply_fixed_light_ui_defaults()
         self.defaults.propagate_defaults()
 
         # Save the options to disk
@@ -1361,6 +1359,7 @@ class PreferencesUIManager(QtCore.QObject):
         self.defaults_write_form(source_dict=self.defaults.current_defaults)
 
         self.defaults.update(self.defaults.current_defaults)
+        self.apply_fixed_light_ui_defaults()
 
         # Preferences save, update the color of the Preferences Tab text
         for idx in range(self.ui.plot_tab_area.count()):

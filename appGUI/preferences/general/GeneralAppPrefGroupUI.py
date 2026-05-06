@@ -412,6 +412,22 @@ class GeneralAppPrefGroupUI(OptionsGroupUI):
 
         GLay.set_common_column_size([grid0, grid1, grid6, grid7], 0)
 
+        # Keep advanced/debug compatibility fields alive for defaults, but out of the everyday Preferences UI.
+        self.par_label.hide()
+        grid1_frame.hide()
+        self.app_level_label.hide()
+        grid2_frame.hide()
+        self.splash_cb.hide()
+        self.systray_cb.hide()
+        self.shell_startup_cb.hide()
+        self.version_check_cb.hide()
+        self.send_stats_cb.hide()
+        self.save_type_cb.hide()
+        self.compress_label.hide()
+        self.compress_spinner.hide()
+        self.pdf_param_label.hide()
+        grid7_frame.hide()
+
         if sys.platform != 'win32':
             self.portability_cb.hide()
 

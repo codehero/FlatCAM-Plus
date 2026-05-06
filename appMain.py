@@ -81,7 +81,7 @@ from appHandlers.appEdit import appEditor
 from appDatabase import ToolsDB2
 
 # App defaults (preferences)
-from defaults import AppDefaults
+from defaults import AppDefaults, FIXED_LIGHT_UI_DEFAULTS
 from defaults import AppOptions
 
 # App Objects
@@ -124,7 +124,6 @@ import gettext
 import appTranslation as fcTranslate
 import builtins
 
-import darkdetect
 
 fcTranslate.apply_language('strings')
 if '_' not in builtins.__dict__:
@@ -611,21 +610,20 @@ class App(QtCore.QObject):
 
         # self.preferencesUiManager.show_preferences_gui()
 
-        # Set global_theme based on appearance
-        if self.options["global_appearance"] == 'auto':
-            if darkdetect.isDark():
-                theme = 'dark'
-            else:
-                theme = 'light'
-        else:
-            if self.options["global_appearance"] == 'default':
-                theme = 'default'
-            elif self.options["global_appearance"] == 'dark':
-                theme = 'dark'
-            else:
-                theme = 'light'
+        # GUI theme/layout policy: Light theme, light canvas and standard layout only.
+        theme = 'light'
+        for opt_key, opt_val in FIXED_LIGHT_UI_DEFAULTS.items():
+            self.options[opt_key] = deepcopy(opt_val)
+            self.defaults[opt_key] = deepcopy(opt_val)
 
-        self.options["global_theme"] = theme
+        gui_settings = QSettings("Open Source", "FlatCAM_Plus")
+        gui_settings.setValue('layout', self.options["global_layout"])
+        gui_settings.setValue('dark_canvas', self.options["global_dark_canvas"])
+        gui_settings.setValue('appearance', self.options["global_appearance"])
+        gui_settings.setValue('theme', self.options["global_theme"])
+        if gui_settings.contains('style'):
+            gui_settings.remove('style')
+        del gui_settings
 
         self.app_units = self.options["units"]
         self.default_units = self.defaults["units"]
@@ -1117,20 +1115,13 @@ class App(QtCore.QObject):
         # this is calculated in the class above (somehow?)
         self.options["root_folder_path"] = self.app_home
 
+        self.on_layout(lay=self.options["global_layout"], connect_signals=False)
+
         # ###########################################################################################################
         # ##################################### FIRST RUN SECTION ###################################################
         # ################################ It's done only once after install   #####################################
         # ###########################################################################################################
         if self.options["first_run"] is True:
-            # ONLY AT FIRST STARTUP INIT THE GUI LAYOUT TO 'minimal'
-            self.log.debug("-> First Run: Setting up the first Layout")
-            initial_lay = 'minimal'
-            self.on_layout(lay=initial_lay, connect_signals=False)
-
-            # Set the combobox in Preferences to the current layout
-            idx = self.ui.general_pref_form.general_gui_group.layout_combo.findText(initial_lay)
-            self.ui.general_pref_form.general_gui_group.layout_combo.setCurrentIndex(idx)
-
             # after the first run, this object should be False
             self.options["first_run"] = False
             self.log.debug("-> First Run: Updating the Defaults file with Factory Defaults")
@@ -2103,7 +2094,13 @@ class App(QtCore.QObject):
         if lay:
             current_layout = lay
         else:
-            current_layout = self.ui.general_pref_form.general_gui_group.layout_combo.get_value()
+            try:
+                current_layout = self.ui.general_pref_form.general_gui_group.layout_combo.get_value()
+            except AttributeError:
+                current_layout = "standard"
+
+        if current_layout not in ["standard"]:
+            current_layout = "standard"
 
         lay_settings = QSettings("Open Source", "FlatCAM_Plus")
         lay_settings.setValue('layout', current_layout)
@@ -2230,6 +2227,11 @@ class App(QtCore.QObject):
         self.ui.add_cnc_toolbar_controls()
         self.ui.add_ai_toolbar_controls()
         self.ui.add_options_toolbar_controls()
+        self.ui.apply_all_toolbar_icon_theme()
+
+        for editor_toolbar in [self.ui.exc_edit_toolbar, self.ui.geo_edit_toolbar, self.ui.grb_edit_toolbar]:
+            editor_toolbar.setDisabled(True)
+            editor_toolbar.setVisible(False)
 
         try:
             # reconnect all the signals to the toolbar actions
@@ -2945,6 +2947,7 @@ class App(QtCore.QObject):
                 closebtn = FCButton(_("Close"))
 
                 tab_widget = QtWidgets.QTabWidget()
+                tab_widget.setObjectName("about_tab_area")
                 description_label = FCLabel(
                     "FlatCAM Plus {version} {beta} ({date}) - {arch}<br>"
                     "<a href = \"http://flatcam.org/\">http://flatcam.org</a><br>".format(
@@ -3418,6 +3421,7 @@ class App(QtCore.QObject):
                 layout3.addWidget(closebtn)
 
                 closebtn.clicked.connect(self.accept)
+                apply_modern_panel_style(self, self.app)
 
         AboutDialog(app=self, parent=self.ui).exec()
 

@@ -1,5 +1,5 @@
 
-from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtCore import QSettings
 
 from appGUI.GUIElements import RadioSet, FCCheckBox, FCComboBox, FCSliderWithSpinner, FCColorEntry, FCLabel, \
@@ -24,7 +24,7 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         self.decimals = app.decimals
         self.options = app.options
 
-        self.param_lbl = FCLabel('%s' % _("Parameters"), color='blue', bold=True)
+        self.param_lbl = FCLabel('%s' % _("Parameters"), bold=True)
         self.layout.addWidget(self.param_lbl)
 
         # #############################################################################################################
@@ -36,37 +36,19 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         grid0 = GLay(v_spacing=5, h_spacing=3)
         par_frame.setLayout(grid0)
 
-        # Theme selection
+        # Kept as non-visible compatibility fields. The application theme is fixed to Light.
         self.appearance_label = FCLabel('%s' % _("Theme"), bold=True)
-        self.appearance_label.setToolTip(
-            _("Select a theme for the application.\n"
-              "It will theme the plot area.")
-        )
-
         self.appearance_radio = RadioSet([
-            {"label": _("Default"), "value": "default"},
-            {"label": _("Auto"), "value": "auto"},
-            {"label": _("Light"), "value": "light"},
-            {"label": _("Dark"), "value": "dark"}
+            {"label": _("Light"), "value": "light"}
         ], compact=True)
-        self.appearance_radio.setToolTip(
-            _("The theme can be:\n"
-              "Default: Default theme\n"
-              "Auto: Matches mode from OS\n"
-              "Light: Light mode\n"
-              "Dark: Dark mode")
-        )
+        self.appearance_radio.set_value("light")
+        self.appearance_label.hide()
+        self.appearance_radio.hide()
 
-        # Dark Canvas
+        # Kept as a non-visible compatibility field for older preferences code.
+        # Canvas darkness is fixed to the Light theme policy.
         self.dark_canvas_cb = FCCheckBox('%s' % _('Dark Canvas'))
-        self.dark_canvas_cb.setToolTip(
-            _("Check this box to force the use of dark canvas\n"
-              "even if a dark theme is not selected.")
-        )
-
-        grid0.addWidget(self.appearance_label, 0, 0, 1, 2)
-        grid0.addWidget(self.appearance_radio, 1, 0, 1, 3)
-        grid0.addWidget(self.dark_canvas_cb, 2, 0, 1, 3)
+        self.dark_canvas_cb.hide()
 
         # self.theme_button = FCButton(_("Apply Theme"))
         # self.theme_button.setToolTip(
@@ -76,49 +58,10 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         # )
         # grid0.addWidget(self.theme_button, 2, 0, 1, 3)
 
-        separator_line = QtWidgets.QFrame()
-        separator_line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        separator_line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        grid0.addWidget(separator_line, 4, 0, 1, 2)
-
-        # Layout selection
-        self.layout_label = FCLabel('%s:' % _('Layout'))
-        self.layout_label.setToolTip(
-            _("Select a layout for the application.\n"
-              "It is applied immediately.")
-        )
+        # Kept as a non-visible compatibility field. The application layout is fixed to standard.
         self.layout_combo = FCComboBox()
-        # don't translate the QCombo items as they are used in QSettings and identified by name
         self.layout_combo.addItem("standard")
-        self.layout_combo.addItem("compact")
-        self.layout_combo.addItem("minimal")
-
-        grid0.addWidget(self.layout_label, 6, 0)
-        grid0.addWidget(self.layout_combo, 6, 1)
-
-        # Set the current index for layout_combo
-        q_settings = QSettings("Open Source", "FlatCAM_Plus")
-        if q_settings.contains("layout"):
-            layout = q_settings.value('layout', type=str)
-            idx = self.layout_combo.findText(layout.capitalize())
-            self.layout_combo.setCurrentIndex(idx)
-
-        # Style selection
-        self.style_label = FCLabel('%s:' % _('Style'))
-        self.style_label.setToolTip(
-            _("Select a style for the application.\n"
-              "It will be applied at the next app start.")
-        )
-        self.style_combo = FCComboBox()
-        self.style_combo.addItems(QtWidgets.QStyleFactory.keys())
-        # find current style
-        current_style = QtWidgets.QApplication.style().objectName()
-        index = self.style_combo.findText(current_style, QtCore.Qt.MatchFlag.MatchFixedString)
-        self.style_combo.setCurrentIndex(index)
-        self.style_combo.activated.connect(self.handle_style)
-
-        grid0.addWidget(self.style_label, 8, 0)
-        grid0.addWidget(self.style_combo, 8, 1)
+        self.layout_combo.setCurrentIndex(0)
 
         # Enable Hover box
         self.hover_cb = FCCheckBox('%s' % _('Hover Shape'))
@@ -127,7 +70,7 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
               "It is displayed whenever the mouse cursor is hovering\n"
               "over any kind of not-selected object.")
         )
-        grid0.addWidget(self.hover_cb, 10, 0, 1, 3)
+        grid0.addWidget(self.hover_cb, 4, 0, 1, 3)
 
         # Enable Selection box
         self.selection_cb = FCCheckBox('%s' % _('Selection Shape'))
@@ -137,28 +80,19 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
               "either by clicking or dragging mouse from left to right or\n"
               "right to left.")
         )
-        grid0.addWidget(self.selection_cb, 12, 0, 1, 3)
+        grid0.addWidget(self.selection_cb, 6, 0, 1, 3)
 
         # Enable Selection box
         self.selection_outline_cb = FCCheckBox('%s' % _('Selection Outline'))
         self.selection_outline_cb.setToolTip(
             _("If checked, the selection shape is an outline.")
         )
-        grid0.addWidget(self.selection_outline_cb, 13, 0, 1, 3)
+        grid0.addWidget(self.selection_outline_cb, 7, 0, 1, 3)
 
-        # Select the GUI layout
-        self.ui_lay_lbl = FCLabel('%s:' % _('GUI Layout'))
-        self.ui_lay_lbl.setToolTip(
-            _("Select a GUI layout for the Preferences.\n"
-              "Can be:\n"
-              "'Normal' -> a normal and compact layout.\n"
-              "'Columnar' -> a layout the auto-adjust such\n"
-              "that columns are preferentially showed in columns")
-        )
+        # Kept as a non-visible compatibility field. Preferences always use the normal layout.
         self.gui_lay_combo = FCComboBox2()
         self.gui_lay_combo.addItems([_("Normal"), _("Columnar")])
-        grid0.addWidget(self.ui_lay_lbl, 14, 0)
-        grid0.addWidget(self.gui_lay_combo, 14, 1, 1, 2)
+        self.gui_lay_combo.setCurrentIndex(0)
 
         # Font Size
         self.font_size_lbl = FCLabel('%s:' % _("Font Size"))
@@ -168,24 +102,26 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         self.app_font_size_entry = FCSpinner()
         self.app_font_size_entry.set_range(9, 18)
 
-        grid0.addWidget(self.font_size_lbl, 16, 0)
-        grid0.addWidget(self.app_font_size_entry, 16, 1)
+        grid0.addWidget(self.font_size_lbl, 9, 0)
+        grid0.addWidget(self.app_font_size_entry, 9, 1)
 
         # Apply UI parameters
         self.apply_app_font_size_btn = FCButton(_("Apply and Restart"), bold=True)
         self.apply_app_font_size_btn.setToolTip(
             _("Setting the Font Size for the entire application.")
         )
-        grid0.addWidget(self.apply_app_font_size_btn, 18, 0, 1, 2)
+        grid0.addWidget(self.apply_app_font_size_btn, 11, 0, 1, 2)
 
         # #############################################################################################################
         # Grid1 Frame
         # #############################################################################################################
-        self.color_lbl = FCLabel('%s' % _("Colors"), color='teal', bold=True)
+        self.color_lbl = FCLabel('%s' % _("Colors"), bold=True)
         self.layout.addWidget(self.color_lbl)
 
         color_frame = FCFrame()
         self.layout.addWidget(color_frame)
+        self.color_lbl.hide()
+        color_frame.hide()
 
         grid1 = GLay(v_spacing=5, h_spacing=3)
         color_frame.setLayout(grid1)
@@ -304,7 +240,7 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         separator_line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         grid1.addWidget(separator_line, 26, 0, 1, 2)
 
-        proj_item_lbl = FCLabel('%s' % _("Project Items Color"), bold=True, color='green')
+        proj_item_lbl = FCLabel('%s' % _("Project Items Color"), bold=True)
         grid1.addWidget(proj_item_lbl, 27, 0, 1, 2)
         # ------------------------------------------------------------------
         # ----------------------- Project Settings -----------------------------
@@ -380,6 +316,9 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
 
         self.layout.addWidget(self.project_autohide_cb)
 
+        self.hover_cb.hide()
+        self.selection_outline_cb.hide()
+
         self.layout.addStretch()
 
         # #############################################################################
@@ -408,8 +347,6 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         self.proj_color_dark_entry.editingFinished.connect(self.on_proj_color_dark_entry)
         self.proj_color_dis_dark_entry.editingFinished.connect(self.on_proj_color_dis_dark_entry)
 
-        self.layout_combo.activated.connect(self.app.on_layout)
-
         self.apply_app_font_size_btn.clicked.connect(
             lambda: self.handle_font_size(self.app, self.app_font_size_entry.get_value()))
 
@@ -427,18 +364,6 @@ class GeneralGUIPrefGroupUI(OptionsGroupUI):
         del settings
 
         restart_program(app=app)
-
-    @staticmethod
-    def handle_style(style):
-        # set current style
-        q_settings = QSettings("Open Source", "FlatCAM_Plus")
-        q_settings.setValue('style', str(style))
-
-        new_style = QtWidgets.QStyleFactory.keys()[int(style)]
-        QtWidgets.QApplication.setStyle(new_style)
-
-        # This will write the setting to the platform specific storage.
-        del q_settings
 
     # Setting selection colors (left - right) handlers
     def on_sf_color_entry(self):

@@ -275,6 +275,11 @@ class GerberGenPrefGroupUI(OptionsGroupUI):
 
         GLay.set_common_column_size([plot_grid, param_grid, def_grid, obj_grid], 0)
 
+        self.layers_label.hide()
+        layers_frame.hide()
+        self.gerber_color_label.hide()
+        obj_frame.hide()
+
         self.layout.addStretch()
 
         # Setting plot colors signals

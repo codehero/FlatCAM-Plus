@@ -57,8 +57,10 @@ QMainWindow::separator:pressed {
 }
 QToolTip {
     background: #ffffff;
-    color: #4d5157;
-    border: 1px solid #dadce0;
+    color: #263244;
+    border: 1px solid #cfd7e6;
+    border-radius: 5px;
+    padding: 5px 7px;
 }
 QSizeGrip {
     width: 0;
@@ -102,7 +104,7 @@ QRadioButton:!window {
 }
 QCheckBox:hover,
 QRadioButton:hover {
-    border-bottom: 2px solid #0081db;
+    border-bottom: 2px solid transparent;
 }
 QGroupBox {
     font-weight: bold;
@@ -406,10 +408,11 @@ QToolButton::checked:disabled {
     background: #dadce0;
 }
 QToolButton::menu-indicator {
-    height: 18px;
-    width: 18px;
-    top: 6px;
-    left: 3px;
+    height: 20px;
+    width: 20px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    right: 4px;
     image: url(${path}/light/svg/expand_less__icon-foreground__rotate-180.svg);
 }
 QToolButton::menu-indicator:disabled {
@@ -527,11 +530,18 @@ QTabWidget::pane {
 QTabBar {
     qproperty-drawBase: 0;
 }
+QTabBar::close-button {
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    margin-right: 5px;
+    border-radius: $radius{4px};
+}
 QTabBar::close-button:selected {
     image: url(${path}/light/svg/close__icon-foreground.svg);
 }
 QTabBar::close-button:!selected {
-    image: url(${path}/light/svg/close__tabbar-button-inselected.svg)
+    image: url(${path}/light/svg/close__tabbar-button-unselected.svg)
 }
 QTabBar::close-button:disabled {
     image: url(${path}/light/svg/close__icon-foreground-disabled.svg);

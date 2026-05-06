@@ -28,7 +28,7 @@ if '_' not in builtins.__dict__:
 
 
 class CNCControlUI:
-    pluginName = _("CNC Settings")
+    pluginName = _("CNC Control")
 
     def __init__(self, layout, app):
         self.app = app
@@ -90,20 +90,20 @@ class CNCControlUI:
             console_bg = "#1e1e1e"
             console_text = "#d4d4d4"
         else:
-            surface = "#111a2c"
-            subtle = "#0f1726"
-            text = "#c8d3e3"
+            surface = "#262626"
+            subtle = "#171717"
+            text = "#f0f0f0"
             selected_text = "#ffffff"
-            border = "#23304a"
-            separator = "#26344f"
-            hover = "#1b2942"
-            hover_border = "#2f4266"
-            active = "#22395f"
-            active_border = "#4773c3"
-            disabled = "#6f7b8e"
-            hint = "#8b98ad"
-            console_bg = "#0d1320"
-            console_text = "#d4d4d4"
+            border = "#444444"
+            separator = "#323232"
+            hover = "#323232"
+            hover_border = "#444444"
+            active = "#2b2b2b"
+            active_border = "#ff6900"
+            disabled = "#777777"
+            hint = "#999999"
+            console_bg = "#171717"
+            console_text = "#f0f0f0"
 
         arrow_icon = os.path.join(self.app.resource_location, "down-arrow32.png").replace("\\", "/")
 
@@ -627,7 +627,7 @@ class CNCControlUI:
 
     def build_connection_dialog(self):
         self.connection_dialog = QtWidgets.QDialog(self.app.ui)
-        self.connection_dialog.setWindowTitle(_("Connection"))
+        self.connection_dialog.setWindowTitle(_("Connection Settings"))
         self.connection_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.connection_dialog.setMinimumWidth(620)
         self.connection_dialog.setStyleSheet(self.stylesheet())

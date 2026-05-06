@@ -45,7 +45,6 @@ import appTranslation as fcTranslate
 import builtins
 import traceback
 
-import darkdetect
 
 fcTranslate.apply_language('strings')
 if '_' not in builtins.__dict__:
@@ -92,6 +91,7 @@ class MainGUI(QtWidgets.QMainWindow):
             return color
 
     def toolbar_style_sheet(self):
+        arrow_icon = (self.app.resource_location + "/down-arrow32.png").replace("\\", "/")
         if self.app.options['global_theme'] in ['default', 'light']:
             return """
                 QToolBar {
@@ -145,19 +145,27 @@ class MainGUI(QtWidgets.QMainWindow):
                     color: #a8b2c1;
                 }
                 QToolBar QToolButton[popupButton="true"] {
-                    padding: 5px 14px 5px 7px;
-                    min-width: 34px;
+                    padding: 5px 18px 5px 7px;
+                    min-width: 38px;
                 }
+                QToolBar QToolButton::menu-indicator,
                 QToolBar QToolButton[popupButton="true"]::menu-indicator {
+                    image: url(__ARROW_ICON__);
                     subcontrol-origin: padding;
                     subcontrol-position: center right;
-                    right: 4px;
-                    width: 8px;
-                    height: 8px;
+                    right: 5px;
+                    top: 0px;
+                    left: 0px;
+                    width: 10px;
+                    height: 10px;
                 }
+                QToolBar QToolButton::menu-arrow {
+                    image: none;
+                }
+                QToolBar QToolButton::menu-button,
                 QToolBar QToolButton[popupButton="true"]::menu-button {
                     border: 0px;
-                    width: 14px;
+                    width: 16px;
                 }
                 QToolBar QToolButton#qt_toolbar_ext_button {
                     padding: 5px 6px;
@@ -165,12 +173,12 @@ class MainGUI(QtWidgets.QMainWindow):
                 QToolBar > QWidget {
                     background: transparent;
                 }
-            """
+            """.replace("__ARROW_ICON__", arrow_icon)
 
         return """
             QToolBar {
-                background: #111a2c;
-                color: #c8d3e3;
+                background: #262626;
+                color: #ffffff;
                 border: 0px;
                 border-radius: 0px;
                 padding: 4px 2px;
@@ -199,39 +207,47 @@ class MainGUI(QtWidgets.QMainWindow):
             }
             QToolBar QToolButton {
                 background: transparent;
-                color: #c8d3e3;
+                color: #ffffff;
                 border: 1px solid transparent;
                 border-radius: 5px;
                 padding: 5px 7px;
             }
             QToolBar QToolButton:hover,
             QToolBar QToolButton::menu-button:hover {
-                background: #1b2942;
-                border-color: #2f4266;
+                background: #323232;
+                border-color: #444444;
             }
             QToolBar QToolButton:pressed,
             QToolBar QToolButton:checked,
             QToolBar QToolButton::menu-button:pressed {
-                background: #22395f;
-                border-color: #4773c3;
+                background: #2b2b2b;
+                border-color: #ff6900;
             }
             QToolBar QToolButton:disabled {
-                color: #6f7b8e;
+                color: #777777;
             }
             QToolBar QToolButton[popupButton="true"] {
-                padding: 5px 14px 5px 7px;
-                min-width: 34px;
+                padding: 5px 18px 5px 7px;
+                min-width: 38px;
             }
+            QToolBar QToolButton::menu-indicator,
             QToolBar QToolButton[popupButton="true"]::menu-indicator {
+                image: url(__ARROW_ICON__);
                 subcontrol-origin: padding;
                 subcontrol-position: center right;
-                right: 4px;
-                width: 8px;
-                height: 8px;
+                right: 5px;
+                top: 0px;
+                left: 0px;
+                width: 10px;
+                height: 10px;
             }
+            QToolBar QToolButton::menu-arrow {
+                image: none;
+            }
+            QToolBar QToolButton::menu-button,
             QToolBar QToolButton[popupButton="true"]::menu-button {
                 border: 0px;
-                width: 14px;
+                width: 16px;
             }
             QToolBar QToolButton#qt_toolbar_ext_button {
                 padding: 5px 6px;
@@ -239,7 +255,7 @@ class MainGUI(QtWidgets.QMainWindow):
             QToolBar > QWidget {
                 background: transparent;
             }
-        """
+        """.replace("__ARROW_ICON__", arrow_icon)
 
     def toolbar_menu_style_sheet(self):
         if self.app.options['global_theme'] in ['default', 'light']:
@@ -276,28 +292,28 @@ class MainGUI(QtWidgets.QMainWindow):
 
         return """
             QMenu {
-                background: #111a2c;
-                color: #c8d3e3;
-                border: 1px solid #23304a;
+                background: #262626;
+                color: #f0f0f0;
+                border: 1px solid #444444;
                 border-radius: 8px;
                 padding: 6px;
             }
             QMenu::item {
                 background: transparent;
-                color: #c8d3e3;
+                color: #f0f0f0;
                 padding: 6px 22px 6px 28px;
                 border-radius: 5px;
             }
             QMenu::item:selected {
-                background: #1b2942;
+                background: #323232;
                 color: #ffffff;
             }
             QMenu::item:disabled {
-                color: #6f7b8e;
+                color: #777777;
             }
             QMenu::separator {
                 height: 1px;
-                background: #26344f;
+                background: #323232;
                 margin: 5px 8px;
             }
             QMenu::icon {
@@ -331,6 +347,59 @@ class MainGUI(QtWidgets.QMainWindow):
         toolbar.setStyleSheet(self.toolbar_style_sheet())
         toolbar.setIconSize(QtCore.QSize(22, 22))
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+
+    def _uses_dark_toolbar_icons(self):
+        try:
+            return self.app.options['global_theme'] not in ['default', 'light']
+        except Exception:
+            return False
+
+    @staticmethod
+    def _white_toolbar_icon(icon, size):
+        if icon is None or icon.isNull():
+            return icon
+
+        if not size or size.isEmpty():
+            size = QtCore.QSize(22, 22)
+
+        pixmap = icon.pixmap(size)
+        if pixmap.isNull():
+            return icon
+
+        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format.Format_ARGB32)
+        for y in range(image.height()):
+            for x in range(image.width()):
+                color = image.pixelColor(x, y)
+                alpha = color.alpha()
+                if alpha:
+                    color.setRgb(255, 255, 255, alpha)
+                    image.setPixelColor(x, y, color)
+
+        themed_icon = QtGui.QIcon()
+        themed_icon.addPixmap(QtGui.QPixmap.fromImage(image))
+        return themed_icon
+
+    def apply_toolbar_icon_theme(self, toolbar):
+        if not self._uses_dark_toolbar_icons() or toolbar is None:
+            return
+
+        icon_size = toolbar.iconSize()
+        for action in toolbar.actions():
+            icon = action.icon()
+            if icon is not None and not icon.isNull():
+                action.setIcon(self._white_toolbar_icon(icon, icon_size))
+
+        for button in toolbar.findChildren(QtWidgets.QToolButton):
+            icon = button.icon()
+            if icon is not None and not icon.isNull():
+                button.setIcon(self._white_toolbar_icon(icon, button.iconSize()))
+
+    def apply_all_toolbar_icon_theme(self):
+        if not self._uses_dark_toolbar_icons():
+            return
+
+        for toolbar in self.findChildren(QtWidgets.QToolBar):
+            self.apply_toolbar_icon_theme(toolbar)
 
     def toolbar_action(self, icon_name, text, tooltip=None):
         action = QtGui.QAction(QtGui.QIcon(self.app.resource_location + icon_name), text, self)
@@ -426,12 +495,12 @@ class MainGUI(QtWidgets.QMainWindow):
         self.cnc_toolbar_btn.setToolTip(_("Open CNC Controller."))
 
         self.cnc_toolbar_settings_btn = self.toolbar_action(
-            '/settings18.png', _("CNC Settings"), _("Open CNC machine profile settings."))
+            '/settings18.png', _("Machine Settings"), _("Open CNC machine profile settings."))
         self.cnc_toolbar_settings_btn.setToolTip(_("Open CNC machine profile settings."))
 
         self.cnc_toolbar_status_action = self.toolbar_action(
-            '/link32.png', _("Connect"), _("Open CNC connection."))
-        self.cnc_toolbar_status_action.setToolTip(_("Open CNC connection."))
+            '/link32.png', _("Connection Settings"), _("Open CNC connection settings."))
+        self.cnc_toolbar_status_action.setToolTip(_("Open CNC connection settings."))
 
         self.cnc_toolbar_dropdown, self.cnc_toolbar_dropdown_action, self.cnc_toolbar_menu = \
             self.add_toolbar_dropdown(
@@ -466,12 +535,12 @@ class MainGUI(QtWidgets.QMainWindow):
 
         if connected:
             icon = QtGui.QIcon(self.app.resource_location + '/link32.png')
-            text = _("Connected")
+            text = _("Connection Settings")
             tooltip = _("CNC Connected: ") + description
         else:
             icon = QtGui.QIcon(self.app.resource_location + '/link32.png')
-            text = _("Disconnected")
-            tooltip = _("CNC Disconnected")
+            text = _("Connection Settings")
+            tooltip = _("Open CNC connection settings.")
 
         self.cnc_toolbar_status_action.setIcon(icon)
         self.cnc_toolbar_status_action.setText(text)
@@ -1056,7 +1125,7 @@ class MainGUI(QtWidgets.QMainWindow):
         self.menucnc_control.triggered.connect(lambda: self.app.cnc_control_tool.run())
 
         self.menucnc_connect = self.menucnc.addAction(
-            QtGui.QIcon(self.app.resource_location + '/link32.png'), _('Connect'))
+            QtGui.QIcon(self.app.resource_location + '/link32.png'), _('Connection Settings'))
         # This will be connected via set_cnc_toolbar_connection_handler
         self.cnc_toolbar_status_action_menu = self.menucnc_connect
 
@@ -2075,6 +2144,8 @@ class MainGUI(QtWidgets.QMainWindow):
         self.fa_scroll_area.setWidgetResizable(True)
         self.fa_tab_lay.addWidget(self.fa_scroll_area)
 
+        self._hide_advanced_preference_tabs()
+
         self.pref_tab_bottom_layout = QtWidgets.QHBoxLayout()
         self.pref_tab_bottom_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.pref_tab_layout.addLayout(self.pref_tab_bottom_layout)
@@ -2553,6 +2624,17 @@ class MainGUI(QtWidgets.QMainWindow):
         self.add_options_toolbar_controls()
 
         # self.screenChanged.connect(self.on_screen_change)
+
+    def _hide_advanced_preference_tabs(self):
+        for tab in [self.plugins_eng_tab, self.tools_tab, self.tools2_tab, self.fa_tab]:
+            tab_index = self.pref_tab_area.indexOf(tab)
+            if tab_index < 0:
+                continue
+
+            try:
+                self.pref_tab_area.setTabVisible(tab_index, False)
+            except AttributeError:
+                self.pref_tab_area.tabBar().setTabVisible(tab_index, False)
 
     # def on_screen_change(self, old_screen, new_screen):
     #     """
@@ -3087,11 +3169,11 @@ class MainGUI(QtWidgets.QMainWindow):
 
             # on 'minimal' layout only some toolbars are active
             if layout != 'minimal':
-                self.exc_edit_toolbar.setVisible(True)
+                self.exc_edit_toolbar.setVisible(False)
                 self.exc_edit_toolbar.setDisabled(True)
-                self.geo_edit_toolbar.setVisible(True)
+                self.geo_edit_toolbar.setVisible(False)
                 self.geo_edit_toolbar.setDisabled(True)
-                self.grb_edit_toolbar.setVisible(True)
+                self.grb_edit_toolbar.setVisible(False)
                 self.grb_edit_toolbar.setDisabled(True)
 
     def on_shortcut_list(self):

@@ -50,4 +50,7 @@ class GeometryPreferencesUI(QtWidgets.QWidget):
 
         self.layout.addWidget(self.geometry_editor_group)
 
+        self.geometry_adv_opt_group.hide()
+        self.geometry_editor_group.hide()
+
         self.layout.addStretch()

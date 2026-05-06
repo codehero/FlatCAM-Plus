@@ -18,6 +18,7 @@ from appGUI.GUIElements import FCCheckBox
 from appGUI.ObjectUI import ExcellonObjectUI
 
 import itertools
+import json
 import numpy as np
 from copy import deepcopy
 
@@ -162,6 +163,7 @@ class ExcellonObject(FlatCAMObj, Excellon):
         self.ui.multicolored_cb.stateChanged.connect(self.on_multicolored_cb_click)
         self.multicolored_build_sig.connect(self.on_multicolored_build)
 
+        self.ui.load_tools_db_btn.clicked.connect(self.on_load_tools_from_db_click)
         self.ui.autoload_db_cb.stateChanged.connect(self.on_autoload_db_toggled)
 
         # Editor
@@ -306,8 +308,11 @@ class ExcellonObject(FlatCAMObj, Excellon):
                 # for old projects to be opened
                 dia_val = self.tools[tool_no]['C']
 
-            # add the data dictionary for each tool with the default values
-            self.tools[tool_no]['data'] = deepcopy(new_options)
+            # add the data dictionary for each tool with defaults while preserving Tools DB preset data
+            existing_tool_data = self.tools[tool_no].get('data', {})
+            tool_data = deepcopy(new_options)
+            tool_data.update(deepcopy(existing_tool_data))
+            self.tools[tool_no]['data'] = tool_data
 
             # drill_cnt = 0  # variable to store the nr of drills per tool
             # slot_cnt = 0  # variable to store the nr of slots per tool
@@ -1230,6 +1235,150 @@ class ExcellonObject(FlatCAMObj, Excellon):
 
     def on_autoload_db_toggled(self, state):
         self.app.options["excellon_autoload_db"] = True if state else False
+
+    @staticmethod
+    def _tools_db_target_id(target):
+        if isinstance(target, int):
+            return target
+
+        if isinstance(target, str):
+            target = target.strip()
+            if target.isdigit():
+                return int(target)
+
+            target_names = {
+                0: "General",
+                1: "Milling",
+                2: "Drilling",
+                3: "Isolation",
+                4: "Paint",
+                5: "NCC",
+                6: "Cutout"
+            }
+            target_lower = target.lower()
+            for target_id, target_name in target_names.items():
+                if target_lower in [target_name.lower(), _(target_name).lower()]:
+                    return target_id
+
+        return 0
+
+    @staticmethod
+    def _tools_db_has_drill_data(db_data):
+        if not isinstance(db_data, dict):
+            return False
+
+        return any(str(key).startswith('tools_drill_') for key in db_data)
+
+    def on_load_tools_from_db_click(self, *args):
+        filename = self.app.tools_database_path()
+
+        try:
+            with open(filename) as f:
+                tools = f.read()
+        except IOError:
+            self.app.log.error("Could not load tools DB file.")
+            self.app.inform.emit('[ERROR] %s' % _("Could not load Tools DB file."))
+            return
+
+        try:
+            tools_db_dict = json.loads(tools)
+        except Exception as err:
+            self.app.log.error("Failed to parse Tools DB file. %s" % str(err))
+            self.app.inform.emit('[ERROR] %s' % _("Failed to parse Tools DB file."))
+            return
+
+        if not tools_db_dict:
+            self.app.inform.emit('[ERROR_NOTCL] %s' % _("Tools DB empty."))
+            return
+
+        if not self.tools:
+            self.app.inform.emit('[WARNING_NOTCL] %s' % _("No Excellon tools to update."))
+            return
+
+        new_tools_dict = deepcopy(self.tools)
+        matched_tools = 0
+
+        for orig_tool, orig_tool_val in self.tools.items():
+            try:
+                orig_tooldia = float(orig_tool_val['tooldia'])
+            except KeyError:
+                orig_tooldia = float(orig_tool_val['C'])
+            except (TypeError, ValueError):
+                continue
+
+            tool_found = []
+
+            for db_tool_val in tools_db_dict.values():
+                if not isinstance(db_tool_val, dict):
+                    continue
+
+                db_data = db_tool_val.get('data', {})
+                if not isinstance(db_data, dict):
+                    continue
+
+                targeted_tool = db_data.get('tool_target')
+                target_id = self._tools_db_target_id(targeted_tool)
+                is_legacy_drill_tool = targeted_tool is None and self._tools_db_has_drill_data(db_data)
+                if target_id != 2 and not is_legacy_drill_tool:
+                    continue
+
+                try:
+                    db_tooldia = float(db_tool_val['tooldia'])
+                    low_limit = float(db_data['tol_min'])
+                    high_limit = float(db_data['tol_max'])
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+                if orig_tooldia == db_tooldia or high_limit >= orig_tooldia >= low_limit:
+                    tool_found.append(db_tool_val)
+
+            if len(tool_found) > 1:
+                self.app.inform.emit(
+                    '[WARNING_NOTCL] %s' % _("Cancelled.\n"
+                                             "Multiple tools for one tool diameter found in Tools Database."))
+                return
+
+            if len(tool_found) == 1:
+                db_tool_val = tool_found[0]
+                db_data = db_tool_val.get('data', {})
+
+                matched_tools += 1
+                new_tools_dict[orig_tool]['tooldia'] = float(db_tool_val['tooldia'])
+
+                tool_data = new_tools_dict[orig_tool].setdefault('data', deepcopy(self.obj_options))
+                for option_name, option_value in db_data.items():
+                    if option_name.find('tools_drill_') == 0:
+                        tool_data[option_name] = deepcopy(option_value)
+                    elif option_name.find('tools_') == 0:
+                        continue
+                    else:
+                        tool_data[option_name] = deepcopy(option_value)
+
+        if matched_tools == 0:
+            self.app.inform.emit('[WARNING_NOTCL] %s' % _("No matching tools found in Tools Database."))
+            return
+
+        self.tools = new_tools_dict
+        self.build_ui()
+        self._sync_drilling_tool_with_properties()
+        try:
+            self.app.app_obj.object_changed.emit(self)
+        except AttributeError:
+            self.app.should_we_save = True
+        self.app.inform.emit(
+            '[success] %s %d' % (_("Excellon tools loaded from Tools Database."), matched_tools)
+        )
+
+    def _sync_drilling_tool_with_properties(self):
+        drilling_tool = getattr(self.app, "drilling_tool", None)
+        if drilling_tool is None or getattr(drilling_tool, "excellon_obj", None) is not self:
+            return
+
+        try:
+            drilling_tool.excellon_tools = self.tools
+            drilling_tool.build_tool_ui()
+        except Exception as err:
+            self.app.log.error("ExcellonObject._sync_drilling_tool_with_properties() --> %s" % str(err))
 
     def on_plot_cb_click(self):
         if self.muted_ui:

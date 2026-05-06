@@ -336,6 +336,13 @@ class ExcellonGenPrefGroupUI(OptionsGroupUI):
 
         GLay.set_common_column_size([plot_grid, format_grid, opt_grid, obj_grid, fuse_grid], 0)
 
+        self.excellon_general_label.hide()
+        opt_frame.hide()
+        self.join_geo_label.hide()
+        fuse_frame.hide()
+        self.gerber_color_label.hide()
+        obj_frame.hide()
+
         self.layout.addStretch()
 
         current_platform = platform.architecture()[0]

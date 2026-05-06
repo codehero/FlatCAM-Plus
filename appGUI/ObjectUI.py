@@ -181,6 +181,11 @@ class GerberObjectUI(ObjectUI):
         self.app = app
 
         ObjectUI.__init__(self, title=_('Gerber Object'), parent=parent, app=self.app)
+        self.transform_label.setText(_("Quick Transform"))
+        self.transform_label.setToolTip(_("Scale or move this Gerber object."))
+        self.scale_button.setText(_("Apply Scale"))
+        self.offset_button.setText(_("Move"))
+        self.transformations_button.setText(_("More Transform Tools"))
 
         self.general_label = FCLabel(_("General Information"), color='darkorange', bold=True)
         self.general_label.setToolTip(_("General data about the object."))
@@ -240,19 +245,32 @@ class GerberObjectUI(ObjectUI):
                                     "the middle of the trace."))
         plot_grid.addWidget(self.follow_cb, 2, 2)
 
+        # #############################################################################################################
+        # Object Actions Frame
+        # #############################################################################################################
+        self.object_actions_label = FCLabel(_("Object Actions"), color='indigo', bold=True)
+        self.object_actions_label.setToolTip(_("Direct actions for the selected Gerber object."))
+        self.custom_box.addWidget(self.object_actions_label)
+
+        object_actions_frame = FCFrame()
+        self.custom_box.addWidget(object_actions_frame)
+
+        object_actions_grid = GLay(v_spacing=5, h_spacing=3)
+        object_actions_frame.setLayout(object_actions_grid)
+
         # Editor
         self.editor_button = FCButton(_('Gerber Editor'), bold=True)
         self.editor_button.setIcon(QtGui.QIcon(self.app.resource_location + '/edit_file32.png'))
         self.editor_button.setToolTip(
             _("Start the Object Editor")
         )
-        self.custom_box.addWidget(self.editor_button)
+        object_actions_grid.addWidget(self.editor_button, 0, 0)
 
         # INFO CB
-        self.info_button = FCButton('%s' % _("INFO"), checkable=True, bold=True)
+        self.info_button = FCButton('%s' % _("Object Info"), checkable=True, bold=True)
         self.info_button.setIcon(QtGui.QIcon(self.app.resource_location + '/properties32.png'))
         self.info_button.setToolTip(_("Show the Object Attributes."))
-        self.custom_box.addWidget(self.info_button)
+        object_actions_grid.addWidget(self.info_button, 2, 0)
 
         # INFO Frame
         self.info_frame = QtWidgets.QFrame()
@@ -357,9 +375,10 @@ class GerberObjectUI(ObjectUI):
         # plot_grid.addWidget(separator_line1, 13, 0, 1, 3)
 
         # #############################################################################################################
-        # PLUGINS Frame
+        # CAM Operations Frame
         # #############################################################################################################
-        self.tool_lbl = FCLabel(_("Plugins"), color='indigo', bold=True)
+        self.tool_lbl = FCLabel(_("Main CAM Operations"), color='indigo', bold=True)
+        self.tool_lbl.setToolTip(_("Common manufacturing operations for this Gerber object."))
         self.custom_box.addWidget(self.tool_lbl)
 
         plugins_frame = FCFrame()
@@ -379,7 +398,7 @@ class GerberObjectUI(ObjectUI):
         plugins_grid.addWidget(self.iso_button, 0, 0)
 
         # ## Board cutout
-        self.generate_cutout_button = FCButton(_('Cutout'))
+        self.generate_cutout_button = FCButton(_('Board Cutout'))
         self.generate_cutout_button.setIcon(QtGui.QIcon(self.app.resource_location + '/cut32.png'))
         self.generate_cutout_button.setToolTip(
             _("Generate the geometry for\n"
@@ -394,7 +413,7 @@ class GerberObjectUI(ObjectUI):
         plugins_grid.addWidget(self.generate_cutout_button, 2, 0)
 
         # ## Film Plugin
-        self.generate_film_button = FCButton(_("Film"))
+        self.generate_film_button = FCButton(_("Film Export"))
         self.generate_film_button.setIcon(QtGui.QIcon(self.app.resource_location + '/film32.png'))
         self.generate_film_button.setToolTip(
             _("Create a positive/negative film for UV exposure.")
@@ -408,7 +427,7 @@ class GerberObjectUI(ObjectUI):
         plugins_grid.addWidget(self.generate_film_button, 4, 0)
 
         # ## Clear non-copper regions
-        self.generate_ncc_button = FCButton(_('NCC'))
+        self.generate_ncc_button = FCButton(_('Copper Clearing (NCC)'))
         self.generate_ncc_button.setIcon(QtGui.QIcon(self.app.resource_location + '/eraser26.png'))
         self.generate_ncc_button.setToolTip(
             _("Create the Geometry Object\n"
@@ -423,7 +442,7 @@ class GerberObjectUI(ObjectUI):
         plugins_grid.addWidget(self.generate_ncc_button, 6, 0)
 
         # Follow Plugin
-        self.generate_follow_button = FCButton(_('Follow'))
+        self.generate_follow_button = FCButton(_('Follow Trace'))
         self.generate_follow_button.setIcon(QtGui.QIcon(self.app.resource_location + '/follow32.png'))
         self.generate_follow_button.setToolTip(
             _("Generate a 'Follow' geometry.\n"
@@ -439,9 +458,9 @@ class GerberObjectUI(ObjectUI):
         # self.custom_box.addWidget(separator_line)
 
         # UTILITIES BUTTON
-        self.util_button = FCButton('%s' % _("Utilities").upper(), checkable=True, bold=True)
+        self.util_button = FCButton('%s' % _("Show Geometry Utilities"), checkable=True, bold=True)
         self.util_button.setIcon(QtGui.QIcon(self.app.resource_location + '/settings18.png'))
-        self.util_button.setToolTip(_("Show the Utilities."))
+        self.util_button.setToolTip(_("Show helper geometry tools."))
         self.custom_box.addWidget(self.util_button)
 
         # UTILITIES Frame
@@ -458,7 +477,7 @@ class GerberObjectUI(ObjectUI):
         # Non-Copper Regions Frame
         # #############################################################################################################
         # ## Non-copper regions
-        self.non_copper_label = FCLabel('%s' % _("Non-copper regions"), bold=True)
+        self.non_copper_label = FCLabel('%s' % _("Non-Copper Area"), bold=True)
         self.non_copper_label.setToolTip(
             _("Create polygons covering the\n"
               "areas without copper on the PCB.\n"
@@ -497,7 +516,7 @@ class GerberObjectUI(ObjectUI):
             _("Resulting geometry will have rounded corners.")
         )
 
-        self.generate_noncopper_button = FCButton(_('Generate Geometry'))
+        self.generate_noncopper_button = FCButton(_('Create Area Geometry'))
         self.generate_noncopper_button.setIcon(QtGui.QIcon(self.app.resource_location + '/geometry32.png'))
         grid_ncc.addWidget(self.noncopper_rounded_cb, 4, 0)
         grid_ncc.addWidget(self.generate_noncopper_button, 4, 1, 1, 2)
@@ -506,7 +525,7 @@ class GerberObjectUI(ObjectUI):
         # Bounding Box Frame
         # #############################################################################################################
         # ## Bounding box
-        self.boundingbox_label = FCLabel('%s' % _('Bounding Box'), bold=True)
+        self.boundingbox_label = FCLabel('%s' % _('Board Boundary Box'), bold=True)
         self.boundingbox_label.setToolTip(
             _("Create a geometry surrounding the Gerber object.\n"
               "Square shape.")
@@ -542,7 +561,7 @@ class GerberObjectUI(ObjectUI):
               "the margin.")
         )
 
-        self.generate_bb_button = FCButton(_('Generate Geometry'))
+        self.generate_bb_button = FCButton(_('Create Box Geometry'))
         self.generate_bb_button.setIcon(QtGui.QIcon(self.app.resource_location + '/geometry32.png'))
         self.generate_bb_button.setToolTip(
             _("Generate the Geometry object.")
@@ -729,6 +748,18 @@ class ExcellonObjectUI(ObjectUI):
         # self.tools_table.setColumnHidden(4, True)
 
         # Excellon Tools autoload from DB
+        self.db_tools_row = QtWidgets.QHBoxLayout()
+        self.db_tools_row.setContentsMargins(0, 0, 0, 0)
+        self.db_tools_row.setSpacing(6)
+        self.tools_box.addLayout(self.db_tools_row)
+
+        self.load_tools_db_btn = FCButton(_('Load Tools from DB'), bold=True)
+        self.load_tools_db_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/search_db32.png'))
+        self.load_tools_db_btn.setToolTip(
+            _("Search Tools Database and replace matching Excellon tools\n"
+              "with DB presets that have the same diameter or tolerance range.")
+        )
+        self.db_tools_row.addWidget(self.load_tools_db_btn, 1)
 
         # Auto Load Tools from DB
         self.autoload_db_cb = FCCheckBox('%s' % _("Auto load from DB"))
@@ -1387,6 +1418,7 @@ class CNCObjectUI(ObjectUI):
         self.cnc_tools_table.setColumnWidth(0, 20)
         self.cnc_tools_table.setHorizontalHeaderLabels(['#', _('Dia'), _('Offset'), _('Job'), _('Shape'), '', _('P')])
         self.cnc_tools_table.setColumnHidden(5, True)
+        self.cnc_tools_table.setColumnWidth(6, 28)
         # stylesheet = "::section{Background-color:rgb(239,239,245)}"
         # self.cnc_tools_table.horizontalHeader().setStyleSheet(stylesheet)
 
@@ -1398,6 +1430,7 @@ class CNCObjectUI(ObjectUI):
         self.exc_cnc_tools_table.setHorizontalHeaderLabels(['#', _('Dia'), _('Drills'), _('Slots'), '', _("Cut Z"),
                                                             _('P')])
         self.exc_cnc_tools_table.setColumnHidden(4, True)
+        self.exc_cnc_tools_table.setColumnWidth(6, 28)
 
         self.tooldia_entry = FCDoubleSpinner(callback=self.confirmation_message)
         self.tooldia_entry.set_range(0, 10000.0000)

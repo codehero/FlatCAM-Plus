@@ -8,6 +8,7 @@ import html
 
 from PyQt6 import QtGui, QtWidgets
 
+from appGUI.PanelStyles import apply_modern_panel_style
 from appPlugins.cnc_control.widgets import FluidStyleButton
 
 import appTranslation as fcTranslate
@@ -86,6 +87,7 @@ class AIAssistantUI:
         btn_lay.addStretch()
         self.chat_lay.addLayout(btn_lay)
         self.chat_lay.addWidget(self.chat_status_label)
+        apply_modern_panel_style(self.container, self.app)
 
     def set_busy(self, busy, message=""):
         self.prompt_entry.setEnabled(not busy)

@@ -49,4 +49,7 @@ class GerberPreferencesUI(QtWidgets.QWidget):
         self.layout.addLayout(self.vlay)
         self.layout.addWidget(self.gerber_editor_group)
 
+        self.gerber_adv_opt_group.hide()
+        self.gerber_editor_group.hide()
+
         self.layout.addStretch()

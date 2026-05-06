@@ -300,7 +300,10 @@ class CNCJobObject(FlatCAMObj, CNCjob):
                 # qhboxlayout.setAlignment(QtCore.Qt.AlignCenter)
                 # qhboxlayout.setContentsMargins(0, 0, 0, 0)
                 plot_item = FCCheckBox()
-                plot_item.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+                plot_item.setText("")
+                plot_item.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+                plot_item.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
+                plot_item.setMinimumWidth(24)
                 tool_uid_item = QtWidgets.QTableWidgetItem(str(dia_key))
                 if self.ui.plot_cb.isChecked():
                     plot_item.setChecked(True)
@@ -342,13 +345,13 @@ class CNCJobObject(FlatCAMObj, CNCjob):
         horizontal_header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Fixed)
         horizontal_header.resizeSection(4, 40)
         horizontal_header.setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.Fixed)
-        horizontal_header.resizeSection(4, 17)
+        horizontal_header.resizeSection(6, 28)
         # horizontal_header.setStretchLastSection(True)
         self.ui.cnc_tools_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.ui.cnc_tools_table.setColumnWidth(0, 20)
         self.ui.cnc_tools_table.setColumnWidth(4, 40)
-        self.ui.cnc_tools_table.setColumnWidth(6, 17)
+        self.ui.cnc_tools_table.setColumnWidth(6, 28)
 
         # self.ui.geo_tools_table.setSortingEnabled(True)
 
@@ -408,7 +411,10 @@ class CNCJobObject(FlatCAMObj, CNCjob):
                 cutz_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
 
                 plot_cnc_exc_item = FCCheckBox()
-                plot_cnc_exc_item.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+                plot_cnc_exc_item.setText("")
+                plot_cnc_exc_item.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+                plot_cnc_exc_item.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
+                plot_cnc_exc_item.setMinimumWidth(24)
 
                 if self.ui.plot_cb.isChecked():
                     plot_cnc_exc_item.setChecked(True)
@@ -454,7 +460,7 @@ class CNCJobObject(FlatCAMObj, CNCjob):
         self.ui.exc_cnc_tools_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.ui.exc_cnc_tools_table.setColumnWidth(0, 20)
-        self.ui.exc_cnc_tools_table.setColumnWidth(6, 17)
+        self.ui.exc_cnc_tools_table.setColumnWidth(6, 28)
 
         self.ui.exc_cnc_tools_table.setMinimumHeight(self.ui.exc_cnc_tools_table.getHeight())
         self.ui.exc_cnc_tools_table.setMaximumHeight(self.ui.exc_cnc_tools_table.getHeight())

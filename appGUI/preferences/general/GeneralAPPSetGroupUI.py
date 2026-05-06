@@ -289,6 +289,8 @@ class GeneralAPPSetGroupUI(OptionsGroupUI):
 
         ax_frame = FCFrame()
         self.layout.addWidget(ax_frame)
+        self.axis_label.hide()
+        ax_frame.hide()
 
         ax_grid = GLay(v_spacing=5, h_spacing=3)
         ax_frame.setLayout(ax_grid)
@@ -363,6 +365,7 @@ class GeneralAPPSetGroupUI(OptionsGroupUI):
             _("Check this box to color mouse cursor.")
         )
         m_grid.addWidget(self.mouse_cursor_color_cb, 6, 0, 1, 2)
+        self.mouse_cursor_color_cb.hide()
 
         # Cursor Color
         self.mouse_color_label = FCLabel('%s:' % _('Cursor Color'))
@@ -373,6 +376,8 @@ class GeneralAPPSetGroupUI(OptionsGroupUI):
 
         m_grid.addWidget(self.mouse_color_label, 8, 0)
         m_grid.addWidget(self.mouse_cursor_entry, 8, 1)
+        self.mouse_color_label.hide()
+        self.mouse_cursor_entry.hide()
 
         self.mois = OptionalInputSection(
             self.mouse_cursor_color_cb,
@@ -481,6 +486,18 @@ class GeneralAPPSetGroupUI(OptionsGroupUI):
         GLay.set_common_column_size(
             [grids_grid, m_grid, par_grid, wk_grid, fnt_grid, ax_grid], 0
         )
+
+        # These are retained for legacy defaults but hidden from the simplified Preferences UI.
+        self.font_size_label.hide()
+        fnt_frame.hide()
+        self.mouse_lbl.hide()
+        m_frame.hide()
+        self.allow_edit_cb.hide()
+        self.open_style_cb.hide()
+        self.bm_limit_label.hide()
+        self.bm_limit_spinner.hide()
+        self.activity_label.hide()
+        self.activity_combo.hide()
 
         self.layout.addStretch()
 

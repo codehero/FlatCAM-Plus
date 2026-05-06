@@ -224,6 +224,12 @@ class CNCJobGenPrefGroupUI(OptionsGroupUI):
 
         GLay.set_common_column_size([plot_grid, dec_grid, travel_grid, obj_grid], 0)
 
+        self.line_ending_cb.hide()
+        self.travel_color_label.hide()
+        travel_frame.hide()
+        self.cnc_color_label.hide()
+        obj_frame.hide()
+
         self.layout.addStretch()
 
         # Setting plot colors signals

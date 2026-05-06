@@ -36,21 +36,40 @@ def modern_panel_colors(app=None):
         }
 
     return {
-        "surface": "#111a2c",
-        "subtle": "#0f1726",
-        "text": "#c8d3e3",
+        "surface": "#262626",
+        "subtle": "#171717",
+        "text": "#f0f0f0",
         "selected_text": "#ffffff",
-        "border": "#23304a",
-        "separator": "#26344f",
-        "hover": "#1b2942",
-        "hover_border": "#2f4266",
-        "active": "#22395f",
-        "active_border": "#4773c3",
-        "disabled": "#6f7b8e",
-        "hint": "#8b98ad",
-        "console_bg": "#0d1320",
-        "console_text": "#d4d4d4",
+        "border": "#444444",
+        "separator": "#323232",
+        "hover": "#323232",
+        "hover_border": "#444444",
+        "active": "#2b2b2b",
+        "active_border": "#ff6900",
+        "disabled": "#777777",
+        "hint": "#999999",
+        "console_bg": "#171717",
+        "console_text": "#f0f0f0",
     }
+
+
+def _normalize_preference_label_colors(widget):
+    if widget is None:
+        return
+
+    try:
+        from appGUI.GUIElements import FCLabel
+    except ImportError:
+        return
+
+    for label in widget.findChildren(FCLabel):
+        if getattr(label, "_color", None) is None:
+            continue
+
+        label._color = None
+        title = getattr(label, "_title", None)
+        if title is not None:
+            label.setText(str(title))
 
 
 def modern_panel_frame_stylesheet(app=None):
@@ -60,6 +79,37 @@ def modern_panel_frame_stylesheet(app=None):
             background: {c["surface"]};
             border: 1px solid {c["border"]};
             border-radius: 8px;
+        }}
+    """
+
+
+def _resource_icon_url(app=None, filename=""):
+    resource_location = getattr(app, "resource_location", "")
+    if not resource_location or not filename:
+        return ""
+    return (resource_location + "/" + filename).replace("\\", "/")
+
+
+def _modern_tab_close_button_stylesheet(app=None):
+    c = modern_panel_colors(app)
+    close_icon = _resource_icon_url(app, "close_edit_file32.png")
+    icon_rule = f"image: url({close_icon});" if close_icon else ""
+    return f"""
+        QTabBar::close-button {{
+            {icon_rule}
+            width: 18px;
+            height: 18px;
+            margin-left: 4px;
+            margin-right: 5px;
+            border-radius: 4px;
+        }}
+        QTabBar::close-button:hover {{
+            background: {c["hover"]};
+            border: 1px solid {c["hover_border"]};
+        }}
+        QTabBar::close-button:pressed {{
+            background: {c["active"]};
+            border: 1px solid {c["active_border"]};
         }}
     """
 
@@ -100,6 +150,13 @@ def modern_panel_stylesheet(app=None):
             border: 0px;
             border-radius: 8px;
         }}
+        QToolTip {{
+            background: {c["surface"]};
+            color: {c["text"]};
+            border: 1px solid {c["border"]};
+            border-radius: 5px;
+            padding: 5px 7px;
+        }}
         QScrollArea {{
             background: transparent;
             border: 0px;
@@ -107,6 +164,42 @@ def modern_panel_stylesheet(app=None):
         QLabel {{
             color: {c["text"]};
         }}
+        QTabWidget::pane {{
+            background: {c["surface"]};
+            border: 1px solid {c["border"]};
+            border-radius: 8px;
+            top: -1px;
+        }}
+        QTabBar {{
+            qproperty-drawBase: 0;
+        }}
+        QTabBar::tab {{
+            background: {c["subtle"]};
+            color: {c["hint"]};
+            border: 1px solid {c["border"]};
+            border-bottom: 0px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            padding: 7px 20px 7px 12px;
+            margin-right: 4px;
+            min-width: 82px;
+            font-weight: 600;
+        }}
+        QTabBar::tab:hover {{
+            background: {c["hover"]};
+            color: {c["selected_text"]};
+            border-color: {c["hover_border"]};
+        }}
+        QTabBar::tab:selected {{
+            background: {c["surface"]};
+            color: {c["text"]};
+            border-color: {c["border"]};
+            border-bottom: 1px solid {c["surface"]};
+        }}
+        QTabBar::tab:disabled {{
+            color: {c["disabled"]};
+        }}
+        {_modern_tab_close_button_stylesheet(app)}
         FCFrame,
         QGroupBox {{
             background: {c["surface"]};
@@ -179,7 +272,7 @@ def modern_panel_stylesheet(app=None):
             color: {c["text"]};
             border: 1px solid {c["border"]};
             border-radius: 5px;
-            padding: 5px 7px;
+            padding: 4px 7px;
             min-height: 28px;
             selection-background-color: {c["active"]};
             selection-color: {c["selected_text"]};
@@ -233,6 +326,14 @@ def modern_panel_stylesheet(app=None):
         QRadioButton {{
             color: {c["text"]};
             spacing: 6px;
+            border-top: 2px solid transparent;
+            border-bottom: 2px solid transparent;
+            text-decoration: none;
+        }}
+        QCheckBox:hover,
+        QRadioButton:hover {{
+            border-bottom: 2px solid transparent;
+            text-decoration: none;
         }}
         QCheckBox::indicator,
         QRadioButton::indicator {{
@@ -274,7 +375,12 @@ def modern_panel_stylesheet(app=None):
         QTableWidget::item,
         QTreeWidget::item {{
             border: 0px;
-            padding: 5px;
+            padding: 4px 5px;
+        }}
+        QTableWidget QCheckBox {{
+            background: transparent;
+            margin: 0px;
+            padding: 0px;
         }}
         QListWidget::item:selected,
         QTableWidget::item:selected,
@@ -367,7 +473,7 @@ def modern_preferences_tabbar_stylesheet(app=None):
             border-bottom: 0px;
             border-top-left-radius: 6px;
             border-top-right-radius: 6px;
-            padding: 7px 12px;
+            padding: 7px 20px 7px 12px;
             margin-right: 4px;
             min-width: 90px;
             font-weight: 600;
@@ -388,6 +494,7 @@ def modern_preferences_tabbar_stylesheet(app=None):
             color: {c["disabled"]};
             border-color: {c["separator"]};
         }}
+        {_modern_tab_close_button_stylesheet(app)}
     """
 
 
@@ -420,7 +527,7 @@ def modern_workspace_tabbar_stylesheet(app=None, min_width=90):
             border-bottom: 0px;
             border-top-left-radius: 6px;
             border-top-right-radius: 6px;
-            padding: 7px 12px;
+            padding: 7px 20px 7px 12px;
             margin-right: 4px;
             min-width: {min_width}px;
             font-weight: 600;
@@ -439,6 +546,7 @@ def modern_workspace_tabbar_stylesheet(app=None, min_width=90):
         QTabBar::tab:disabled {{
             color: {c["disabled"]};
         }}
+        {_modern_tab_close_button_stylesheet(app)}
     """
 
 
@@ -626,6 +734,7 @@ def apply_modern_preferences_style(ui, app=None):
     if root is not None:
         apply_modern_panel_style(root, app)
         root.setStyleSheet(modern_panel_stylesheet(app))
+        _normalize_preference_label_colors(root)
 
     tab_area = getattr(ui, "pref_tab_area", None)
     if tab_area is not None:
@@ -676,7 +785,9 @@ def apply_modern_preferences_style(ui, app=None):
         "plugin_pref_form", "plugin2_pref_form", "util_pref_form",
     ]
     for name in form_names:
-        apply_modern_panel_style(getattr(ui, name, None), app)
+        form = getattr(ui, name, None)
+        apply_modern_panel_style(form, app)
+        _normalize_preference_label_colors(form)
 
     for name in [
         "pref_defaults_button", "pref_open_button", "clear_btn",

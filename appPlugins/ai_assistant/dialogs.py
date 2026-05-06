@@ -7,6 +7,7 @@ import gettext
 
 from PyQt6 import QtWidgets
 
+from appGUI.PanelStyles import apply_modern_panel_style
 from appPlugins.ai_assistant.providers import provider_ids, provider_spec
 from appPlugins.cnc_control.widgets import FluidStyleButton
 
@@ -51,6 +52,7 @@ class AIAssistantSettingsDialog(QtWidgets.QDialog):
         self.main_lay.addLayout(footer_lay)
 
         self.close_btn.clicked.connect(self.accept)
+        apply_modern_panel_style(self, self.app)
 
     def create_panel(self, title):
         panel = QtWidgets.QGroupBox(title)

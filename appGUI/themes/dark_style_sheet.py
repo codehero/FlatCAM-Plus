@@ -442,11 +442,18 @@ QTabWidget::pane {
 QTabBar {
     qproperty-drawBase: 0;
 }
+QTabBar::close-button {
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    margin-right: 5px;
+    border-radius: 4px;
+}
 QTabBar::close-button:selected {
     image: url(${path}/dark/svg/close__icon-foreground.svg);
 }
 QTabBar::close-button:!selected {
-    image: url(${path}/dark/svg/close__tabbar-button-inselected.svg)
+    image: url(${path}/dark/svg/close__tabbar-button-unselected.svg)
 }
 QTabBar::close-button:disabled {
     image: url(${path}/dark/svg/close__icon-foreground-disabled.svg);

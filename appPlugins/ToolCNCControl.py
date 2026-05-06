@@ -92,7 +92,7 @@ class ToolCNCControl(AppTool):
     def run(self, toggle=True):
         tab_exists = False
         for i in range(self.app.ui.plot_tab_area.count()):
-            if self.app.ui.plot_tab_area.tabText(i) == _("CNC Settings"):
+            if self.app.ui.plot_tab_area.tabText(i) in [_("CNC Control"), _("CNC Settings")]:
                 self.app.ui.plot_tab_area.setCurrentIndex(i)
                 tab_exists = True
                 break
@@ -101,7 +101,7 @@ class ToolCNCControl(AppTool):
             self.scroll_area = VerticalScrollArea()
             self.scroll_area.setWidget(self)
             self.scroll_area.setWidgetResizable(True)
-            self.app.ui.plot_tab_area.addTab(self.scroll_area, _("CNC Settings"))
+            self.app.ui.plot_tab_area.addTab(self.scroll_area, _("CNC Control"))
             self.app.ui.plot_tab_area.setCurrentIndex(self.app.ui.plot_tab_area.count() - 1)
 
         self.on_refresh_ports()

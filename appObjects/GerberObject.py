@@ -175,7 +175,7 @@ class GerberObject(FlatCAMObj, Gerber):
         # Utilities
         self.ui.generate_bb_button.clicked.connect(self.on_generatebb_button_click)
         self.ui.generate_noncopper_button.clicked.connect(self.on_generate_non_copper_button_click)
-        self.ui.util_button.clicked.connect(lambda st: self.ui.util_frame.show() if st else self.ui.util_frame.hide())
+        self.ui.util_button.clicked.connect(self.on_geometry_utilities_toggle)
 
         self.ui.aperture_table_visibility_cb.stateChanged.connect(self.on_aperture_table_visibility_change)
         self.ui.follow_cb.stateChanged.connect(self.on_follow_cb_click)
@@ -203,6 +203,10 @@ class GerberObject(FlatCAMObj, Gerber):
         self.units_found = self.app.app_units
 
         self.set_offset_values()
+
+    def on_geometry_utilities_toggle(self, state):
+        self.ui.util_frame.setVisible(state)
+        self.ui.util_button.setText(_("Hide Geometry Utilities") if state else _("Show Geometry Utilities"))
 
     def set_offset_values(self):
         xmin, ymin, xmax, ymax = self.bounds()
