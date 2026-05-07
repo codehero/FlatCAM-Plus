@@ -7,7 +7,7 @@ import gettext
 
 from PyQt6 import QtWidgets
 
-from appGUI.GUIElements import FCComboBox, FCDoubleSpinner, FCLabel, FCSpinner
+from appGUI.GUIElements import FCComboBox, FCDoubleSpinner, FCLabel
 
 from .widgets import DashboardGauge, FluidStyleButton
 
@@ -92,14 +92,12 @@ class MachineProfileSection(CNCSectionPlugin):
 
         ui.machine_safe_z_value = FCLabel("-")
         ui.machine_jog_feed_value = FCLabel("-")
-        ui.machine_probe_feed_value = FCLabel("-")
         ui.machine_spindle_max_value = FCLabel("-")
         ui.machine_travel_value = FCLabel("-")
 
         rows = [
             (_("Safe Z"), ui.machine_safe_z_value),
             (_("Jog Feed"), ui.machine_jog_feed_value),
-            (_("Probe Feed"), ui.machine_probe_feed_value),
             (_("Max Spindle"), ui.machine_spindle_max_value),
             (_("Travel"), ui.machine_travel_value),
         ]
@@ -127,93 +125,111 @@ class JogSection(CNCSectionPlugin):
 
 class ProbingWorkOffsetSection(CNCSectionPlugin):
     section_id = "probing_work_offset"
-    title = _("Probing / Work Offset")
+    title = _("Job Setup / Zero")
 
     def build(self, ui, body):
-        settings_grid = QtWidgets.QGridLayout()
-        settings_grid.setHorizontalSpacing(8)
-        settings_grid.setVerticalSpacing(6)
-        body.addLayout(settings_grid)
+        def setup_job_input(widget):
+            ui.setup_input(widget)
+            widget.setFixedHeight(34)
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            return widget
 
-        ui.work_offset_combo = FCComboBox()
-        ui.setup_input(ui.work_offset_combo)
-        for label, p_num in [
-            ("G54", 1), ("G55", 2), ("G56", 3), ("G57", 4), ("G58", 5), ("G59", 6)
-        ]:
-            ui.work_offset_combo.addItem(label, p_num)
-        ui.work_offset_combo.setToolTip(_("Work coordinate system used for zeroing commands."))
+        job_grid = QtWidgets.QGridLayout()
+        job_grid.setHorizontalSpacing(8)
+        job_grid.setVerticalSpacing(6)
+        body.addLayout(job_grid)
 
-        ui.probe_distance = FCDoubleSpinner()
-        ui.setup_input(ui.probe_distance)
-        ui.probe_distance.set_precision(3)
-        ui.probe_distance.set_range(0.1, 1000.0)
-        ui.probe_distance.setSingleStep(1.0)
-        ui.probe_distance.setValue(50.0)
-        ui.probe_distance.setSuffix(" mm")
-        ui.probe_distance.setToolTip(_("Maximum downward probe travel."))
+        ui.job_size_x = FCDoubleSpinner()
+        setup_job_input(ui.job_size_x)
+        ui.job_size_x.set_precision(3)
+        ui.job_size_x.set_range(0.0, 100000.0)
+        ui.job_size_x.setSingleStep(1.0)
+        ui.job_size_x.setSuffix(" mm")
+        ui.job_size_x.setToolTip(_("Job/material width used for origin mapping. Zero means fit the selected CNCJob."))
 
-        ui.probe_feed = FCSpinner()
-        ui.setup_input(ui.probe_feed)
-        ui.probe_feed.set_range(1, 60000)
-        ui.probe_feed.setValue(100)
-        ui.probe_feed.setSuffix(" mm/min")
-        ui.probe_feed.setToolTip(_("Probe feed rate. Defaults from the active machine profile."))
+        ui.job_size_y = FCDoubleSpinner()
+        setup_job_input(ui.job_size_y)
+        ui.job_size_y.set_precision(3)
+        ui.job_size_y.set_range(0.0, 100000.0)
+        ui.job_size_y.setSingleStep(1.0)
+        ui.job_size_y.setSuffix(" mm")
+        ui.job_size_y.setToolTip(_("Job/material height used for origin mapping. Zero means fit the selected CNCJob."))
 
-        ui.touch_plate_thickness = FCDoubleSpinner()
-        ui.setup_input(ui.touch_plate_thickness)
-        ui.touch_plate_thickness.set_precision(3)
-        ui.touch_plate_thickness.set_range(-1000.0, 1000.0)
-        ui.touch_plate_thickness.setSingleStep(0.1)
-        ui.touch_plate_thickness.setValue(0.0)
-        ui.touch_plate_thickness.setSuffix(" mm")
-        ui.touch_plate_thickness.setToolTip(_("Touch plate thickness used when setting Z after probing."))
+        ui.fit_job_size_btn = FluidStyleButton(_("Fit Size"), "#337ab7", "#286090")
+        ui.setup_button(ui.fit_job_size_btn, "replot16.png", _("Set job size from the selected CNCJob bounds."))
 
-        ui.probe_retract = FCDoubleSpinner()
-        ui.setup_input(ui.probe_retract)
-        ui.probe_retract.set_precision(3)
-        ui.probe_retract.set_range(0.0, 1000.0)
-        ui.probe_retract.setSingleStep(0.5)
-        ui.probe_retract.setValue(5.0)
-        ui.probe_retract.setSuffix(" mm")
-        ui.probe_retract.setToolTip(_("Retract distance after probe and set."))
+        ui.job_margin_x = FCDoubleSpinner()
+        setup_job_input(ui.job_margin_x)
+        ui.job_margin_x.set_precision(3)
+        ui.job_margin_x.set_range(0.0, 100000.0)
+        ui.job_margin_x.setSingleStep(0.1)
+        ui.job_margin_x.setSuffix(" mm")
+        ui.job_margin_x.setToolTip(_("X clearance inside the selected job size."))
 
-        settings = [
-            (_("WCS"), ui.work_offset_combo),
-            (_("Probe Travel"), ui.probe_distance),
-            (_("Probe Feed"), ui.probe_feed),
-            (_("Plate"), ui.touch_plate_thickness),
-            (_("Retract"), ui.probe_retract),
-        ]
-        for idx, (label, widget) in enumerate(settings):
-            settings_grid.addWidget(FCLabel(label, bold=True), idx // 2, (idx % 2) * 2)
-            settings_grid.addWidget(widget, idx // 2, (idx % 2) * 2 + 1)
+        ui.job_margin_y = FCDoubleSpinner()
+        setup_job_input(ui.job_margin_y)
+        ui.job_margin_y.set_precision(3)
+        ui.job_margin_y.set_range(0.0, 100000.0)
+        ui.job_margin_y.setSingleStep(0.1)
+        ui.job_margin_y.setSuffix(" mm")
+        ui.job_margin_y.setToolTip(_("Y clearance inside the selected job size."))
+
+        ui.job_origin_combo = FCComboBox()
+        setup_job_input(ui.job_origin_combo)
+        ui.job_origin_combo.addItem(_("Origin: Back-Left"), "top_left")
+        ui.job_origin_combo.addItem(_("Origin: Bottom-Left"), "bottom_left")
+        ui.job_origin_combo.addItem(_("Origin: Center"), "center")
+        ui.job_origin_combo.addItem(_("Use G-code Absolute XY"), "absolute")
+        ui.job_origin_combo.setToolTip(_("Which point of the selected job size is mapped to the zeroed work point."))
+
+        ui.job_placement_combo = FCComboBox()
+        setup_job_input(ui.job_placement_combo)
+        ui.job_placement_combo.addItem(_("Place: Same as Origin"), "origin")
+        ui.job_placement_combo.addItem(_("Place: Center"), "center")
+        ui.job_placement_combo.addItem(_("Place: Bottom-Left"), "bottom_left")
+        ui.job_placement_combo.addItem(_("Place: Bottom-Center"), "bottom_center")
+        ui.job_placement_combo.addItem(_("Place: Bottom-Right"), "bottom_right")
+        ui.job_placement_combo.addItem(_("Place: Center-Left"), "center_left")
+        ui.job_placement_combo.addItem(_("Place: Center-Right"), "center_right")
+        ui.job_placement_combo.addItem(_("Place: Back-Left"), "top_left")
+        ui.job_placement_combo.addItem(_("Place: Back-Center"), "top_center")
+        ui.job_placement_combo.addItem(_("Place: Back-Right"), "top_right")
+        ui.job_placement_combo.setToolTip(_("Where the selected CNCJob is placed inside the job/material size."))
+
+        job_grid.addWidget(FCLabel(_("Job W"), bold=True), 0, 0)
+        job_grid.addWidget(ui.job_size_x, 0, 1)
+        job_grid.addWidget(FCLabel(_("Job H"), bold=True), 0, 2)
+        job_grid.addWidget(ui.job_size_y, 0, 3)
+        job_grid.addWidget(ui.fit_job_size_btn, 0, 4)
+        job_grid.addWidget(FCLabel(_("Origin"), bold=True), 1, 0)
+        job_grid.addWidget(ui.job_origin_combo, 1, 1, 1, 4)
+        job_grid.addWidget(FCLabel(_("Placement"), bold=True), 2, 0)
+        job_grid.addWidget(ui.job_placement_combo, 2, 1, 1, 4)
+        job_grid.addWidget(FCLabel(_("Margin X"), bold=True), 3, 0)
+        job_grid.addWidget(ui.job_margin_x, 3, 1)
+        job_grid.addWidget(FCLabel(_("Margin Y"), bold=True), 3, 2)
+        job_grid.addWidget(ui.job_margin_y, 3, 3, 1, 2)
+        job_grid.setColumnStretch(1, 1)
+        job_grid.setColumnStretch(3, 1)
 
         button_grid = QtWidgets.QGridLayout()
         button_grid.setSpacing(6)
         body.addLayout(button_grid)
 
-        ui.probe_z_btn = FluidStyleButton(_("Probe Z"), "#337ab7", "#286090")
-        ui.probe_set_z_btn = FluidStyleButton(_("Probe + Set Z"), "#5cb85c", "#449d44")
         ui.set_xy_zero_btn = FluidStyleButton(_("Set XY Zero"), "#444444", "#222222")
         ui.set_z_zero_btn = FluidStyleButton(_("Set Z Zero"), "#444444", "#222222")
         ui.set_xyz_zero_btn = FluidStyleButton(_("Set XYZ Zero"), "#444444", "#222222")
-        ui.apply_wcs_btn = FluidStyleButton(_("Use WCS"), "#5bc0de", "#31b0d5")
 
-        ui.setup_button(ui.probe_z_btn, "machine16.png", _("Run a Z probe move."))
-        ui.setup_button(ui.probe_set_z_btn, "apply32.png", _("Probe Z, set work Z to plate thickness, then retract."))
         ui.setup_button(ui.set_xy_zero_btn, "origin16.png", _("Set current X/Y position as work zero."))
         ui.setup_button(ui.set_z_zero_btn, "origin16.png", _("Set current Z position as work zero."))
         ui.setup_button(ui.set_xyz_zero_btn, "origin16.png", _("Set current X/Y/Z position as work zero."))
-        ui.setup_button(ui.apply_wcs_btn, "apply32.png", _("Activate the selected work coordinate system."))
 
-        button_grid.addWidget(ui.probe_z_btn, 0, 0)
-        button_grid.addWidget(ui.probe_set_z_btn, 0, 1)
-        button_grid.addWidget(ui.apply_wcs_btn, 0, 2)
-        button_grid.addWidget(ui.set_xy_zero_btn, 1, 0)
-        button_grid.addWidget(ui.set_z_zero_btn, 1, 1)
-        button_grid.addWidget(ui.set_xyz_zero_btn, 1, 2)
+        button_grid.addWidget(ui.set_xy_zero_btn, 0, 0)
+        button_grid.addWidget(ui.set_z_zero_btn, 0, 1)
+        button_grid.addWidget(ui.set_xyz_zero_btn, 0, 2)
         for column in range(3):
             button_grid.setColumnStretch(column, 1)
+        body.addStretch(1)
 
 
 class OverridesSystemSection(CNCSectionPlugin):

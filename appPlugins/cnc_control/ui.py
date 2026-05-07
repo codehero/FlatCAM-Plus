@@ -18,7 +18,7 @@ from appGUI.GUIElements import (
 from .dialogs import FileSystemDialog
 from .profiles import CNC_PROFILES
 from .sections import DEFAULT_CNC_SECTIONS
-from .widgets import FluidStyleButton
+from .widgets import FluidStyleButton, GCodeJobCanvas
 
 import appTranslation as fcTranslate
 
@@ -551,11 +551,17 @@ class CNCControlUI:
         machine_grid.addWidget(self.section_plugins["jog"].build_panel(self), 0, 1)
         machine_grid.addWidget(self.section_plugins["overrides_system"].build_panel(self), 0, 2)
         machine_grid.addWidget(self.section_plugins["macros"].build_panel(self), 0, 3)
-        machine_grid.addWidget(self.section_plugins["probing_work_offset"].build_panel(self), 1, 0, 1, 4)
         for column in range(4):
             machine_grid.setColumnStretch(column, 1)
 
-        self.content_lay.addWidget(self.section_plugins["gcode_preview_verification"].build_panel(self))
+        probing_preview_row = QtWidgets.QHBoxLayout()
+        probing_preview_row.setContentsMargins(0, 0, 0, 0)
+        probing_preview_row.setSpacing(8)
+        self.content_lay.addLayout(probing_preview_row)
+
+        probing_preview_row.addWidget(self.section_plugins["probing_work_offset"].build_panel(self), 1)
+        probing_preview_row.addWidget(self.section_plugins["gcode_preview_verification"].build_panel(self), 2)
+
         self.content_lay.addWidget(self.section_plugins["terminal"].build_panel(self), 1)
         self.content_lay.addWidget(self.section_plugins["modal_actions"].build_widget(self))
 
@@ -598,15 +604,14 @@ class CNCControlUI:
 
         if not profile:
             for label in [
-                self.machine_safe_z_value, self.machine_jog_feed_value, self.machine_probe_feed_value,
-                self.machine_spindle_max_value, self.machine_travel_value
+                self.machine_safe_z_value, self.machine_jog_feed_value, self.machine_spindle_max_value,
+                self.machine_travel_value
             ]:
                 label.setText("-")
             return
 
         self.machine_safe_z_value.setText(f"{profile.get('safe_z', 0):.3f} mm")
         self.machine_jog_feed_value.setText(f"{profile.get('jog_feed', 0)} mm/min")
-        self.machine_probe_feed_value.setText(f"{profile.get('probe_feed', 0)} mm/min")
         self.machine_spindle_max_value.setText(f"{profile.get('spindle_max', 0)} RPM")
         if hasattr(self, "probe_feed"):
             self.probe_feed.setValue(int(profile.get("probe_feed", 100)))
@@ -820,11 +825,12 @@ class CNCControlUI:
         self.dro_grid.addWidget(FCLabel(_("Work"), bold=True, size=11), 0, 1, Qt.AlignmentFlag.AlignCenter)
         self.dro_grid.addWidget(FCLabel(_("Machine"), bold=True, size=11), 0, 2, Qt.AlignmentFlag.AlignCenter)
         self.dro_grid.addWidget(FCLabel(_("Zero"), bold=True, size=11), 0, 3, Qt.AlignmentFlag.AlignCenter)
+        self.dro_grid.addWidget(FCLabel(_("Limit"), bold=True, size=11), 0, 4, Qt.AlignmentFlag.AlignCenter)
 
         # Rows
-        self.zero_x, self.x_val, self.mx_val = self.add_dro_row(1, "X", "#d9534f")
-        self.zero_y, self.y_val, self.my_val = self.add_dro_row(2, "Y", "#5cb85c")
-        self.zero_z, self.z_val, self.mz_val = self.add_dro_row(3, "Z", "#337ab7")
+        self.zero_x, self.x_val, self.mx_val, self.limit_x = self.add_dro_row(1, "X", "#d9534f")
+        self.zero_y, self.y_val, self.my_val, self.limit_y = self.add_dro_row(2, "Y", "#5cb85c")
+        self.zero_z, self.z_val, self.mz_val, self.limit_z = self.add_dro_row(3, "Z", "#337ab7")
 
         # Bottom Buttons
         buttons = QtWidgets.QHBoxLayout()
@@ -844,20 +850,24 @@ class CNCControlUI:
         work = FCLabel("0.000", bold=True, size=22)
         machine = FCLabel("0.000", color="#666666", size=14)
         zero = FluidStyleButton(f"{axis}0", "#444444", "#222222")
+        limit = FCLabel("-")
         self.setup_button(zero, "origin16.png", _("Zero this axis."))
         zero.setFixedWidth(60)
 
         work.setAlignment(Qt.AlignmentFlag.AlignCenter)
         machine.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         work.setStyleSheet("font-family: 'Consolas', 'Monospace'; font-weight: bold;")
         machine.setStyleSheet("font-family: 'Consolas', 'Monospace';")
+        limit.setStyleSheet("color: #777777; font-weight: 700;")
 
         self.dro_grid.addWidget(axis_label, row, 0, Qt.AlignmentFlag.AlignCenter)
         self.dro_grid.addWidget(work, row, 1, Qt.AlignmentFlag.AlignCenter)
         self.dro_grid.addWidget(machine, row, 2, Qt.AlignmentFlag.AlignCenter)
         self.dro_grid.addWidget(zero, row, 3, Qt.AlignmentFlag.AlignCenter)
+        self.dro_grid.addWidget(limit, row, 4, Qt.AlignmentFlag.AlignCenter)
 
-        return zero, work, machine
+        return zero, work, machine, limit
 
     def build_jog(self, body):
         settings_lay = QtWidgets.QHBoxLayout()
@@ -1056,14 +1066,12 @@ class CNCControlUI:
         self.reset_btn = FluidStyleButton("RESET", "#5cb85c", "#449d44")
         self.estop_btn = FluidStyleButton("HOLD", "#d9534f", "#c9302c")
         self.resume_btn = FluidStyleButton("RESUME", "#5bc0de", "#31b0d5")
-        self.macro_probe = FluidStyleButton("PROBE Z", "#337ab7", "#286090")
         self.macro_laser = FluidStyleButton("LASER ON", "#d9534f", "#c9302c")
         self.setup_button(self.info_btn, "info16.png", _("Request controller info."))
         self.setup_button(self.cfg_dump, "settings18.png", _("Request controller settings."))
         self.setup_button(self.reset_btn, "reset32.png", _("Reset controller."))
         self.setup_button(self.estop_btn, "warning.png", _("Feed hold."))
         self.setup_button(self.resume_btn, "apply32.png", _("Resume motion."))
-        self.setup_button(self.macro_probe, "machine16.png", _("Run probe macro."))
         self.setup_button(self.macro_laser, "warning.png", _("Toggle laser output."))
         self.macro_laser.setCheckable(True)
 
@@ -1083,11 +1091,8 @@ class CNCControlUI:
             self.resume_btn, _("Resume motion after hold.")
         ), 1, 1)
         sys_lay.addWidget(self.action_with_help(
-            self.macro_probe, _("Run the configured Z probe macro.")
-        ), 1, 2)
-        sys_lay.addWidget(self.action_with_help(
             self.macro_laser, _("Toggle laser output on or off.")
-        ), 2, 0, 1, 3)
+        ), 1, 2)
 
         for col in range(3):
             sys_lay.setColumnStretch(col, 1)
@@ -1215,6 +1220,9 @@ class CNCControlUI:
         stats_grid.setColumnStretch(3, 1)
         stats_grid.setColumnStretch(5, 1)
 
+        self.gcode_job_canvas = GCodeJobCanvas()
+        body.addWidget(self.gcode_job_canvas, 2)
+
         split_lay = QtWidgets.QHBoxLayout()
         split_lay.setContentsMargins(0, 0, 0, 0)
         split_lay.setSpacing(8)
@@ -1257,8 +1265,16 @@ class CNCControlUI:
         self.console = QtWidgets.QTextEdit()
         self.console.setObjectName("cnc_console")
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(360)
+        self.console.setMinimumHeight(520)
+        self.console.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
         body.addWidget(self.console, 1)
+
+        terminal_panel = body.parentWidget()
+        if terminal_panel is not None:
+            terminal_panel.setMinimumHeight(610)
 
         command_lay = QtWidgets.QHBoxLayout()
         self.command_entry = FCEntry()
@@ -1307,6 +1323,10 @@ class CNCControlUI:
             fluid_idx = self.profile_combo.findData("fluidnc")
             if fluid_idx >= 0:
                 self.profile_combo.setCurrentIndex(fluid_idx)
+        elif mode == "tcp":
+            grbl_idx = self.profile_combo.findData("grbl")
+            if grbl_idx >= 0:
+                self.profile_combo.setCurrentIndex(grbl_idx)
         self.sync_connection_dialog(False)
         self.connection_dialog.adjustSize()
         self.set_file_tools_enabled(self.disconnect_btn.isVisible())
@@ -1317,6 +1337,8 @@ class CNCControlUI:
             self.state_indicator.setStyleSheet("background-color: #999999; border-radius: 6px;")
             if hasattr(self, 'feed_gauge'):
                 self.update_dashboard_gauges(0, 0)
+            if hasattr(self, "set_limit_pins"):
+                self.set_limit_pins("")
         self.sync_connection_dialog(connected)
 
         controls = [
@@ -1327,9 +1349,8 @@ class CNCControlUI:
             self.sd_list_btn, self.run_sd_btn, self.feed_override_entry, self.feed_set_btn,
             self.feed_plus, self.feed_minus, self.feed_reset, self.spindle_override_entry,
             self.spindle_override_set_btn, self.spindle_plus, self.spindle_minus, self.spindle_reset,
-            self.spindle_rpm, self.spindle_set_btn, self.spindle_stop_btn, self.macro_probe, self.macro_laser,
-            self.probe_z_btn, self.probe_set_z_btn, self.set_xy_zero_btn, self.set_z_zero_btn,
-            self.set_xyz_zero_btn, self.apply_wcs_btn,
+            self.spindle_rpm, self.spindle_set_btn, self.spindle_stop_btn, self.macro_laser,
+            self.set_xy_zero_btn, self.set_z_zero_btn, self.set_xyz_zero_btn,
             self.command_entry,
             self.files_refresh_btn, self.files_upload_btn, self.files_mkdir_btn,
             self.files_delete_btn, self.files_up_btn, self.files_root_btn
@@ -1341,7 +1362,7 @@ class CNCControlUI:
         offline_controls = [
             self.object_combo, self.refresh_jobs_btn, self.queue_add_btn, self.queue_remove_btn,
             self.queue_up_btn, self.queue_down_btn, self.preview_refresh_btn, self.preview_verify_btn,
-            self.queue_table, self.gcode_preview_text, self.gcode_warning_table
+            self.queue_table, self.gcode_job_canvas, self.gcode_preview_text, self.gcode_warning_table
         ]
         for control in offline_controls:
             if control is not None and hasattr(control, 'setEnabled'):
@@ -1429,6 +1450,24 @@ class CNCControlUI:
             self.feed_gauge.set_value(feed)
         if hasattr(self, 'spindle_gauge'):
             self.spindle_gauge.set_value(spindle)
+
+    def set_limit_pins(self, pins):
+        pins = set(str(pins or "").upper())
+        for axis, label in [
+            ("X", getattr(self, "limit_x", None)),
+            ("Y", getattr(self, "limit_y", None)),
+            ("Z", getattr(self, "limit_z", None)),
+        ]:
+            if label is None:
+                continue
+            if axis in pins:
+                label.setText(_("TRIG"))
+                label.setToolTip(_("%s limit input is active.") % axis)
+                label.setStyleSheet("color: #d9534f; font-weight: 800;")
+            else:
+                label.setText("-")
+                label.setToolTip("")
+                label.setStyleSheet("color: #777777; font-weight: 700;")
 
     def set_busy(self, busy, message):
         self.busy_label.setText(message if busy else "")

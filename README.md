@@ -37,11 +37,14 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 
 ### CNC Workflow
 
-- **Integrated CNC controller:** Connection management, live status, jogging, machine profiles, probing, job streaming, macros, terminal commands, SD jobs, and FluidNC file operations are available inside the CNC workspace.
-- **Operational dashboard layout:** Feed/spindle status, G-code sender, position, jog, overrides, probing, macros, preview, and terminal sections are arranged for direct machine operation.
+- **Integrated CNC controller:** Connection management, live status, jogging, machine profiles, work zeroing, job streaming, macros, terminal commands, SD jobs, and FluidNC file operations are available inside the CNC workspace.
+- **Operational dashboard layout:** Feed/spindle status, G-code sender, position, jog, overrides, macros, job setup, preview, and terminal sections are arranged for direct machine operation.
 - **Unified CNC-style workspace UI:** Preferences, the canvas tab area, the left sidebar, project trees, and selected Gerber/Excellon/CNCJob property panels now share the CNC Control visual language with clearer buttons and bordered panels.
-- **CNC toolbar dropdown:** The toolbar CNC control now opens a dropdown with CNC Control, CNC Settings machine-profile access, and machine status actions.
+- **CNC toolbar connection access:** The toolbar CNC connection/settings action opens the CNC connection modal directly, with serial, WiFi/TCP GRBL, and FluidNC Web/HTTP modes.
 - **Offline G-code validation:** The CNC dashboard Preview and Verify actions work without an active controller connection and report clear status, warnings, and empty-job feedback.
+- **Aspire-style job placement:** CNCJob coordinates can be remapped to a selected job size, origin, placement, and X/Y margin before preview or streaming, so material zeroing and design placement are handled inside the CNC Control workflow.
+- **Job-size preview canvas:** The G-code preview panel includes a 2D material canvas that draws the selected job inside the configured PCB/work area, including origin, grid, margin guides, rapid moves, cutting moves, and outside-job warnings.
+- **GRBL status visibility:** Homing state and active X/Y/Z limit inputs are normalized and shown in the CNC dashboard for clearer WiFi/TCP GRBL operation.
 - **Machine-aware G-code metadata:** Exported G-code now records the active machine profile, travel limits, safe Z, and max spindle RPM as header comments, while Verify checks X/Y/Z motion bounds against the active profile.
 - **Modular CNC architecture:** CNC controller features are split into focused modules under `appPlugins/cnc_control/` for easier maintenance and future plugin-style extensions.
 - **Centralized manufacturing preferences:** Core machine setup starts from a dedicated Manufacturing Settings group before deeper plugin-specific defaults.
@@ -55,9 +58,11 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 FlatCAM Plus includes a built-in CNC control workflow for managing machine sessions without leaving the application.
 
 - **Connection dialog:** Serial, TCP/Telnet, and FluidNC Web/HTTP settings are managed from one modal.
-- **Controller profiles:** FluidNC/GRBL, GRBL, Smoothieware, Marlin, and generic G-code profiles provide controller-specific commands.
+- **Controller profiles:** FluidNC, GRBL, Smoothieware, Marlin, and generic G-code profiles provide controller-specific commands.
+- **WiFi GRBL mode:** TCP/Telnet connections default to the GRBL profile, while Web/HTTP connections default to FluidNC.
 - **Connection testing:** Selected transports can be tested before opening an active machine session.
 - **Live machine status:** Controller reports update the toolbar, DRO, machine state, position, and controller details.
+- **Limit input indicators:** Active GRBL `Pn:` limit inputs are shown beside X/Y/Z DRO rows and logged only when they change.
 - **Safe disconnect:** Active transports, receiver threads, streaming state, and UI indicators are reset cleanly.
 
 ### CNC Dashboard
@@ -66,9 +71,9 @@ The CNC page is organized as a compact production dashboard:
 
 - **Top row:** Feed and spindle indicators sit beside Machine Profiles and G-code job streaming.
 - **Control row:** Position, Jog, Overrides & System, and Saved Macros share the same row for faster access.
-- **Probing row:** Probing and Work Offset controls handle touch plate probing and WCS zeroing.
-- **Preview row:** G-Code Preview / Verification displays selected job statistics and warnings before sending.
-- **Terminal console:** Manual commands, TX/RX messages, warnings, errors, and polling controls are grouped below the machine controls.
+- **Job setup row:** Job size, origin, placement, X/Y margins, and XY/Z/XYZ zero buttons sit next to G-Code Preview / Verification.
+- **Preview row:** G-Code Preview / Verification displays the material canvas, selected job statistics, transformed G-code, and warnings before sending.
+- **Terminal console:** Manual commands, TX/RX messages, warnings, errors, and polling controls are grouped below the machine controls with a taller console for longer GRBL sessions.
 
 ### Machine Profiles
 
@@ -87,13 +92,16 @@ The CNC page is organized as a compact production dashboard:
 - **Fallback defaults:** Preferences remain available as safe defaults for new presets, missing DB keys, older project files, and non-preset workflows.
 - **Backward compatibility:** Existing preference keys are preserved so saved defaults and project behavior continue to work.
 
-### Probing and Work Offsets
+### Job Setup, Placement, and Work Zeroing
 
-- **Dedicated probing panel:** Touch plate probing and coordinate setup live in a dedicated dashboard section.
-- **Configurable probe move:** Probe travel, feed rate, touch plate thickness, and retract distance can be edited in the CNC interface.
-- **Probe + Set Z:** The workflow probes downward, sets selected WCS Z to the touch plate thickness, and retracts safely.
-- **WCS selection:** G54 through G59 can be selected and activated.
-- **Offset zeroing:** XY, Z, or XYZ work zero can be set with `G10 L20` on supported controllers.
+- **Simplified setup panel:** The CNC dashboard uses a focused **Job Setup / Zero** panel instead of exposing probing, WCS, probe travel, plate, feed, and retract controls during normal job setup.
+- **Job size:** Enter the real PCB/material size, such as `100 x 80 mm`, or use **Fit Size** to copy the selected CNCJob bounds.
+- **Origin selection:** Choose the physical point to zero on the machine: Back-Left, Bottom-Left, Center, or raw absolute G-code XY.
+- **Placement selection:** Place the selected CNCJob inside the job size independently from the machine zero point, including Same as Origin, Center, Bottom/Back left-center-right, and center-left/right alignments.
+- **Margin control:** X/Y margins shrink the usable material area before placement, allowing repeatable edge clearance without editing the CAM source.
+- **Work zeroing:** XY, Z, or XYZ work zero can be set with `G10 L20`; supported GRBL/FluidNC workflows activate `G54` automatically before zeroing and before queue streaming.
+- **Transformed streaming:** `START QUEUE` streams the same transformed coordinates shown in preview, so the controller receives the job already mapped to the configured origin, placement, and margin.
+- **Mapped bounds logging:** Before each streamed job, the terminal reports the mapped XY bounds so the operator can confirm placement numerically.
 
 ### Jobs, Preview, Files, and Macros
 
@@ -101,6 +109,8 @@ The CNC page is organized as a compact production dashboard:
 - **Job Queue / Sender:** Multiple CNCJob objects can be queued, reordered, removed, and streamed sequentially.
 - **Queue progress:** The sender table shows queued, running, stopped, and completed jobs while the global progress bar tracks total queued lines.
 - **G-Code Preview / Verification:** Selected jobs show line counts, motion statistics, bounds, estimated runtime, and safety warnings.
+- **Material canvas preview:** The preview panel draws the selected CNCJob inside the configured job size, including grid, origin crosshair, margin guides, rapid/cut paths, path bounds, and outside-job warnings.
+- **Mapped coordinate preview:** Preview and Verify analyze the transformed G-code used for streaming, not only the original plot-area coordinates.
 - **Offline preview refresh:** Preview and Verify refresh the CNCJob list, read generated G-code from multiple CNCJob sources, and confirm successful analysis in the terminal even when no CNC is connected.
 - **Verification checks:** The verifier flags missing units or positioning mode, cutting before spindle/feed setup, rapid XY motion below Z zero, pause commands, and X/Y/Z travel limit risks from the active machine profile.
 - **Machine profile export notes:** G-code exports include the active profile name, travel limits, safe Z, and max spindle RPM as comments for traceability; controller firmware limits such as GRBL `$130/$131/$132` remain controller settings and are not overwritten by job files.
@@ -114,10 +124,10 @@ The CNC control feature is organized as a plugin-like package under `appPlugins/
 
 - `profiles.py` stores controller command profiles.
 - `transports.py` contains Serial, TCP/Telnet, and FluidNC HTTP transport implementations.
-- `widgets.py` contains reusable CNC widgets such as styled buttons and dashboard gauges.
+- `widgets.py` contains reusable CNC widgets such as styled buttons, dashboard gauges, and the job-size G-code preview canvas.
 - `machine_profiles.py` stores defaults and normalization helpers for machine profiles.
 - `dialogs.py` contains modal workflows for Flash File System, macro management, and machine profile management.
-- `sections.py` registers dashboard sections for gauges, machine profiles, job sender, G-code preview, position, jog, probing, overrides, macros, terminal, and modal actions.
+- `sections.py` registers dashboard sections for gauges, machine profiles, job sender, G-code preview, position, jog, job setup, overrides, macros, terminal, and modal actions.
 - `ui.py` assembles the CNC dashboard from registered sections.
 
 ### CNC 3D Preview Plugin Structure

@@ -2009,6 +2009,8 @@ class App(QtCore.QObject):
             self.ui.cnc_toolbar_btn.triggered.connect(lambda: self.cnc_control_tool.run(toggle=True))
         if hasattr(self.ui, "cnc_toolbar_settings_btn"):
             self.ui.cnc_toolbar_settings_btn.triggered.connect(self.cnc_control_tool.on_manage_machine_profiles)
+        if hasattr(self.cnc_control_tool, "register_toolbar_connection_handler"):
+            self.cnc_control_tool.register_toolbar_connection_handler()
         if hasattr(self.ui, "ai_chat_btn"):
             self.ui.ai_chat_btn.triggered.connect(lambda: self.ai_assistant_tool.run(toggle=True))
         if hasattr(self.ui, "ai_settings_btn"):

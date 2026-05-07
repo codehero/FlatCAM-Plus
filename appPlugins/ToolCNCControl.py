@@ -21,6 +21,7 @@ from appPlugins.cnc_control.ui import CNCControlUI
 import builtins
 import gettext
 import logging
+import math
 import re
 import threading
 import time
@@ -66,11 +67,14 @@ class ToolCNCControl(AppTool):
         self.io_lock = threading.RLock()
         self.ok_received = threading.Event()
         self.last_status_query = 0
-        self.status_interval = 0.1
+        self.status_interval = 0.25
+        self.tcp_status_interval = 0.5
+        self.http_status_interval = 1.0
         self.sd_collecting = False
         self.active_profile_key = "fluidnc"
         self.status_poll_enabled = True
         self.hide_status_reports = True
+        self.active_limit_pins = ""
 
         self.is_streaming = False
         self.streaming_paused = False
@@ -119,7 +123,7 @@ class ToolCNCControl(AppTool):
         self.ui.poll_status_cb.toggled.connect(self.on_poll_status_changed)
         self.ui.hide_status_reports_cb.toggled.connect(self.on_hide_status_reports_changed)
 
-        self.ui.home_btn.clicked.connect(lambda: self.send_profile_command("home"))
+        self.ui.home_btn.clicked.connect(self.on_home_clicked)
         self.ui.unlock_btn.clicked.connect(lambda: self.send_profile_command("unlock"))
         self.ui.reset_btn.clicked.connect(lambda: self.send_profile_command("reset"))
         self.ui.estop_btn.clicked.connect(lambda: self.send_profile_command("hold"))
@@ -130,7 +134,7 @@ class ToolCNCControl(AppTool):
         self.ui.zero_x.clicked.connect(lambda: self.send_zero("X"))
         self.ui.zero_y.clicked.connect(lambda: self.send_zero("Y"))
         self.ui.zero_z.clicked.connect(lambda: self.send_zero("Z"))
-        self.ui.zero_all.clicked.connect(lambda: self.send_profile_command("zero_all"))
+        self.ui.zero_all.clicked.connect(self.on_zero_all_clicked)
 
         self.ui.feed_plus.clicked.connect(lambda: self.send_profile_command("feed_plus"))
         self.ui.feed_minus.clicked.connect(lambda: self.send_profile_command("feed_minus"))
@@ -145,14 +149,10 @@ class ToolCNCControl(AppTool):
         self.ui.spindle_set_btn.clicked.connect(self.on_set_spindle_rpm)
         self.ui.spindle_stop_btn.clicked.connect(lambda: self.send_profile_command("spindle_stop"))
 
-        self.ui.macro_probe.clicked.connect(self.on_probe_z)
         self.ui.macro_laser.clicked.connect(self.on_toggle_laser)
-        self.ui.probe_z_btn.clicked.connect(self.on_probe_z)
-        self.ui.probe_set_z_btn.clicked.connect(self.on_probe_and_set_z)
         self.ui.set_xy_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y")))
         self.ui.set_z_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("Z",)))
         self.ui.set_xyz_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y", "Z")))
-        self.ui.apply_wcs_btn.clicked.connect(self.on_apply_work_coordinate_system)
 
         self.ui.jog_up.clicked.connect(lambda: self.send_jog("Y", 1))
         self.ui.jog_down.clicked.connect(lambda: self.send_jog("Y", -1))
@@ -173,6 +173,17 @@ class ToolCNCControl(AppTool):
         self.ui.object_combo.currentIndexChanged.connect(
             lambda *_args: self.on_preview_refresh(refresh_jobs=False)
         )
+        self.ui.job_origin_combo.currentIndexChanged.connect(
+            lambda *_args: self.on_preview_refresh(refresh_jobs=False)
+        )
+        self.ui.job_placement_combo.currentIndexChanged.connect(
+            lambda *_args: self.on_preview_refresh(refresh_jobs=False)
+        )
+        self.ui.job_size_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        self.ui.job_size_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        self.ui.job_margin_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        self.ui.job_margin_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        self.ui.fit_job_size_btn.clicked.connect(self.on_fit_job_size_clicked)
         self.ui.queue_table.itemSelectionChanged.connect(
             lambda: self.on_preview_refresh(refresh_jobs=False)
         )
@@ -396,8 +407,10 @@ class ToolCNCControl(AppTool):
             job_count = self.update_tool_list(refresh_preview=False)
 
         name, lines = self.selected_preview_job()
+        preview_lines = self.transformed_gcode_lines(lines)
+        canvas_preview = self.build_job_canvas_preview(name, lines, preview_lines)
         try:
-            result = self.analyze_gcode(name, lines)
+            result = self.analyze_gcode(name, preview_lines)
         except Exception as err:
             log.exception("G-code preview failed")
             result = {
@@ -410,6 +423,7 @@ class ToolCNCControl(AppTool):
                 "estimated_minutes": 0.0,
                 "warnings": [("ERROR", "-", "%s: %s" % (_("Preview failed"), err))],
                 "preview": "%s: %s" % (_("Preview failed"), err),
+                "canvas": canvas_preview,
                 "action": action,
                 "updated_at": time.strftime("%H:%M:%S"),
             }
@@ -420,6 +434,9 @@ class ToolCNCControl(AppTool):
 
         result["action"] = action
         result["updated_at"] = time.strftime("%H:%M:%S")
+        result["canvas"] = canvas_preview
+        if lines and preview_lines != lines:
+            result["name"] = "%s (%s)" % (result["name"], _("mapped to zeroed XY"))
         self.preview_update_sig.emit(result)
 
         if not announce:
@@ -454,7 +471,7 @@ class ToolCNCControl(AppTool):
     def gcode_words(line):
         return {
             key.upper(): float(value)
-            for key, value in re.findall(r"([A-Za-z])\s*([+-]?\d+(?:\.\d+)?)", line)
+            for key, value in re.findall(r"([A-Za-z])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", line)
         }
 
     def analyze_gcode(self, name, lines):
@@ -473,6 +490,7 @@ class ToolCNCControl(AppTool):
         cutting_count = 0
         distance = 0.0
         estimated_minutes = 0.0
+        current_motion = None
         rapid_below_surface = False
         cut_without_spindle = False
         cut_without_feed = False
@@ -487,8 +505,12 @@ class ToolCNCControl(AppTool):
             clean_lines.append((index, raw_line.rstrip()))
             upper_line = clean_line.upper()
             words = self.gcode_words(upper_line)
-            g_codes = [int(float(value)) for value in re.findall(r"\bG\s*([+-]?\d+(?:\.\d+)?)", upper_line)]
-            m_codes = [int(float(value)) for value in re.findall(r"\bM\s*([+-]?\d+(?:\.\d+)?)", upper_line)]
+            g_codes = [int(float(value)) for value in re.findall(
+                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
+            )]
+            m_codes = [int(float(value)) for value in re.findall(
+                r"\bM\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
+            )]
 
             if 20 in g_codes:
                 units = "inch"
@@ -514,6 +536,9 @@ class ToolCNCControl(AppTool):
             for g_code in g_codes:
                 if g_code in [0, 1, 2, 3]:
                     motion = g_code
+                    current_motion = g_code
+            if motion is None:
+                motion = current_motion
 
             if motion is None:
                 continue
@@ -659,6 +684,8 @@ class ToolCNCControl(AppTool):
         self.ui.preview_time_value.setText("%.1f min" % result.get("estimated_minutes", 0.0))
         self.ui.preview_warnings_value.setText(str(len(warnings)))
         self.ui.gcode_preview_text.setPlainText(result.get("preview", ""))
+        if hasattr(self.ui, "gcode_job_canvas"):
+            self.ui.gcode_job_canvas.set_preview(result.get("canvas", {}))
 
         table = self.ui.gcode_warning_table
         table.setRowCount(len(warnings))
@@ -694,7 +721,7 @@ class ToolCNCControl(AppTool):
         if callable(setter):
             setter(self.on_toolbar_connection_clicked)
 
-    def on_toolbar_connection_clicked(self):
+    def on_toolbar_connection_clicked(self, *_args):
         self.on_refresh_ports()
         self.ui.show_connection_dialog(self.is_connected)
 
@@ -770,7 +797,7 @@ class ToolCNCControl(AppTool):
         self.save_machine_profiles_to_storage()
         self.apply_machine_profile()
 
-    def on_manage_machine_profiles(self):
+    def on_manage_machine_profiles(self, *_args):
         dialog = MachineProfileDialog(self.machine_profiles, self.active_machine_profile_name, self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self.machine_profiles = normalize_machine_profiles(dialog.profiles)
@@ -1038,9 +1065,24 @@ class ToolCNCControl(AppTool):
 
         self.queue_commands(str(command).splitlines(), log=log)
 
+    def on_home_clicked(self, *_args):
+        if self.is_connected:
+            self.update_status_sig.emit({"state": "Homing", "Pn": self.active_limit_pins})
+        self.send_profile_command("home")
+
     def send_zero(self, axis):
+        if self.current_profile_key() in {"fluidnc", "grbl"}:
+            self.on_set_work_offset((axis,))
+            return
+
         command = self.current_profile().get("zero_axis", "").format(axis=axis)
         self.queue_command(command)
+
+    def on_zero_all_clicked(self, *_args):
+        if self.current_profile_key() in {"fluidnc", "grbl"}:
+            self.on_set_work_offset(("X", "Y", "Z"))
+            return
+        self.send_profile_command("zero_all")
 
     def send_jog(self, axis, direction):
         try:
@@ -1171,13 +1213,584 @@ class ToolCNCControl(AppTool):
         self.queue_commands(commands)
 
     def on_set_work_offset(self, axes):
-        _wcs_label, p_num = self.selected_work_offset()
+        wcs_label, p_num = self.selected_work_offset()
         axis_values = " ".join(f"{axis}0" for axis in axes)
-        self.queue_command(f"G10 L20 P{p_num} {axis_values}")
+        self.queue_commands([
+            wcs_label,
+            f"G10 L20 P{p_num} {axis_values}",
+            wcs_label
+        ])
 
     def on_apply_work_coordinate_system(self):
         wcs_label, _p_num = self.selected_work_offset()
         self.queue_command(wcs_label)
+
+    def selected_job_origin_mode(self):
+        combo = getattr(self.ui, "job_origin_combo", None)
+        if combo is None:
+            return "top_left"
+        return combo.currentData() or "top_left"
+
+    def selected_job_placement_mode(self):
+        combo = getattr(self.ui, "job_placement_combo", None)
+        if combo is None:
+            return "origin"
+        return combo.currentData() or "origin"
+
+    def selected_job_size(self, raw_width, raw_height, units):
+        try:
+            job_width = float(self.ui.job_size_x.value())
+        except Exception:
+            job_width = 0.0
+        try:
+            job_height = float(self.ui.job_size_y.value())
+        except Exception:
+            job_height = 0.0
+
+        if units == "inch":
+            job_width /= 25.4
+            job_height /= 25.4
+
+        if job_width <= 0:
+            job_width = raw_width
+        if job_height <= 0:
+            job_height = raw_height
+        return max(0.0, job_width), max(0.0, job_height)
+
+    def selected_job_margin(self, units):
+        try:
+            margin_x = float(self.ui.job_margin_x.value())
+        except Exception:
+            margin_x = 0.0
+        try:
+            margin_y = float(self.ui.job_margin_y.value())
+        except Exception:
+            margin_y = 0.0
+
+        if units == "inch":
+            margin_x /= 25.4
+            margin_y /= 25.4
+        return max(0.0, margin_x), max(0.0, margin_y)
+
+    @staticmethod
+    def material_bounds_for_origin(mode, job_width, job_height):
+        if mode == "center":
+            return [-job_width / 2.0, job_width / 2.0, -job_height / 2.0, job_height / 2.0]
+        if mode == "top_left":
+            return [0.0, job_width, -job_height, 0.0]
+        return [0.0, job_width, 0.0, job_height]
+
+    @staticmethod
+    def resolved_job_placement(origin_mode, placement):
+        if placement and placement != "origin":
+            return placement
+        if origin_mode == "center":
+            return "center"
+        if origin_mode == "top_left":
+            return "top_left"
+        return "bottom_left"
+
+    @staticmethod
+    def job_placement_alignment(placement):
+        if placement == "center":
+            return "center", "center"
+
+        if placement.endswith("_right"):
+            x_align = "right"
+        elif placement.endswith("_center"):
+            x_align = "center"
+        else:
+            x_align = "left"
+
+        if placement.startswith("top_") or placement == "top_left":
+            y_align = "top"
+        elif placement.startswith("center_"):
+            y_align = "center"
+        else:
+            y_align = "bottom"
+
+        return x_align, y_align
+
+    @staticmethod
+    def job_placement_label(placement):
+        labels = {
+            "origin": _("Same as Origin"),
+            "bottom_left": _("Bottom-Left"),
+            "bottom_center": _("Bottom-Center"),
+            "bottom_right": _("Bottom-Right"),
+            "center_left": _("Center-Left"),
+            "center": _("Center"),
+            "center_right": _("Center-Right"),
+            "top_left": _("Back-Left"),
+            "top_center": _("Back-Center"),
+            "top_right": _("Back-Right"),
+        }
+        return labels.get(placement, _("Placement"))
+
+    @staticmethod
+    def target_bounds_for_placement(material_bounds, raw_width, raw_height, margin_x, margin_y, placement):
+        x_min, x_max, y_min, y_max = material_bounds
+        inner_x_min = x_min + margin_x
+        inner_x_max = x_max - margin_x
+        inner_y_min = y_min + margin_y
+        inner_y_max = y_max - margin_y
+
+        if inner_x_max < inner_x_min:
+            midpoint = (x_min + x_max) / 2.0
+            inner_x_min = midpoint
+            inner_x_max = midpoint
+        if inner_y_max < inner_y_min:
+            midpoint = (y_min + y_max) / 2.0
+            inner_y_min = midpoint
+            inner_y_max = midpoint
+
+        x_align, y_align = ToolCNCControl.job_placement_alignment(placement)
+        if x_align == "right":
+            target_x_min = inner_x_max - raw_width
+        elif x_align == "center":
+            target_x_min = inner_x_min + ((inner_x_max - inner_x_min - raw_width) / 2.0)
+        else:
+            target_x_min = inner_x_min
+
+        if y_align == "top":
+            target_y_min = inner_y_max - raw_height
+        elif y_align == "center":
+            target_y_min = inner_y_min + ((inner_y_max - inner_y_min - raw_height) / 2.0)
+        else:
+            target_y_min = inner_y_min
+
+        return {
+            "X": [target_x_min, target_x_min + raw_width],
+            "Y": [target_y_min, target_y_min + raw_height],
+        }
+
+    @staticmethod
+    def margin_guides_for_bounds(material_bounds, margin_x, margin_y, factor):
+        x_min, x_max, y_min, y_max = material_bounds
+        guides = []
+        if margin_x > 0:
+            guides.append({"axis": "X", "value": (x_min + margin_x) * factor})
+            guides.append({"axis": "X", "value": (x_max - margin_x) * factor})
+        if margin_y > 0:
+            guides.append({"axis": "Y", "value": (y_min + margin_y) * factor})
+            guides.append({"axis": "Y", "value": (y_max - margin_y) * factor})
+        return guides
+
+    def on_fit_job_size_clicked(self, *_args):
+        name, lines = self.selected_preview_job()
+        if not lines:
+            self.append_console_sig.emit(_("No CNCJob object selected."), "error")
+            return
+
+        bounds, units = self.gcode_bounds(lines, cutting_only=True)
+        if bounds["X"][0] is None or bounds["Y"][0] is None:
+            bounds, units = self.gcode_bounds(lines)
+        if bounds["X"][0] is None or bounds["Y"][0] is None:
+            self.append_console_sig.emit(_("Selected CNCJob has no usable XY bounds."), "error")
+            return
+
+        width = bounds["X"][1] - bounds["X"][0]
+        height = bounds["Y"][1] - bounds["Y"][0]
+        if units == "inch":
+            width *= 25.4
+            height *= 25.4
+
+        self.ui.job_size_x.set_value(width)
+        self.ui.job_size_y.set_value(height)
+        self.append_console_sig.emit(
+            _("Job size fitted from %s: X%.3f Y%.3f mm") % (name, width, height),
+            "info"
+        )
+        self.on_preview_refresh(refresh_jobs=False)
+
+    def gcode_bounds(self, lines, cutting_only=False):
+        position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+        bounds = {axis: [None, None] for axis in "XYZ"}
+        absolute = True
+        units = None
+        current_motion = None
+        has_seen_z = False
+
+        for raw_line in lines:
+            clean_line = self.clean_gcode_line(raw_line)
+            if not clean_line:
+                continue
+
+            upper_line = clean_line.upper()
+            words = self.gcode_words(upper_line)
+            g_codes = [int(float(value)) for value in re.findall(
+                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
+            )]
+
+            if 20 in g_codes:
+                units = "inch"
+            if 21 in g_codes:
+                units = "mm"
+            if 90 in g_codes:
+                absolute = True
+            if 91 in g_codes:
+                absolute = False
+
+            motion = None
+            for g_code in g_codes:
+                if g_code in [0, 1, 2, 3]:
+                    motion = g_code
+                    current_motion = g_code
+            if motion is None:
+                motion = current_motion
+            if motion is None:
+                continue
+
+            next_position = dict(position)
+            has_axis = False
+            for axis in "XYZ":
+                if axis in words:
+                    has_axis = True
+                    next_position[axis] = position[axis] + words[axis] if not absolute else words[axis]
+            if not has_axis:
+                continue
+
+            line_has_z = "Z" in words
+            include_bounds = not cutting_only
+            if cutting_only and motion in [1, 2, 3]:
+                include_bounds = not has_seen_z or position["Z"] < 0 or next_position["Z"] < 0
+
+            if include_bounds:
+                for point in [position, next_position]:
+                    for axis in "XYZ":
+                        value = point[axis]
+                        if bounds[axis][0] is None or value < bounds[axis][0]:
+                            bounds[axis][0] = value
+                        if bounds[axis][1] is None or value > bounds[axis][1]:
+                            bounds[axis][1] = value
+
+            position = next_position
+            if line_has_z:
+                has_seen_z = True
+
+        return bounds, units
+
+    def effective_gcode_units(self, units):
+        if units in {"inch", "mm"}:
+            return units
+        return "inch" if str(getattr(self.app, "app_units", "MM")).upper() == "IN" else "mm"
+
+    def gcode_preview_segments(self, lines):
+        position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+        absolute = True
+        current_motion = None
+        segments = []
+        path_bounds = {"X": [None, None], "Y": [None, None]}
+        all_bounds = {"X": [None, None], "Y": [None, None]}
+        start_point = None
+        first_motion_point = None
+
+        def add_point(point, bounds):
+            for axis, value in [("X", point[0]), ("Y", point[1])]:
+                if bounds[axis][0] is None or value < bounds[axis][0]:
+                    bounds[axis][0] = value
+                if bounds[axis][1] is None or value > bounds[axis][1]:
+                    bounds[axis][1] = value
+
+        def add_segment(start, end, rapid=False):
+            nonlocal start_point, first_motion_point
+            if start[0] == end[0] and start[1] == end[1]:
+                return
+            segments.append({
+                "start": [start[0], start[1]],
+                "end": [end[0], end[1]],
+                "rapid": bool(rapid),
+            })
+            if first_motion_point is None:
+                first_motion_point = [start[0], start[1]]
+            add_point(start, all_bounds)
+            add_point(end, all_bounds)
+            if not rapid:
+                if start_point is None:
+                    start_point = [start[0], start[1]]
+                add_point(start, path_bounds)
+                add_point(end, path_bounds)
+
+        for raw_line in lines:
+            clean_line = self.clean_gcode_line(raw_line)
+            if not clean_line:
+                continue
+
+            upper_line = clean_line.upper()
+            words = self.gcode_words(upper_line)
+            g_codes = [int(float(value)) for value in re.findall(
+                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
+            )]
+
+            if 90 in g_codes:
+                absolute = True
+            if 91 in g_codes:
+                absolute = False
+
+            motion = None
+            for g_code in g_codes:
+                if g_code in [0, 1, 2, 3]:
+                    motion = g_code
+                    current_motion = g_code
+            if motion is None:
+                motion = current_motion
+            if motion is None:
+                continue
+
+            next_position = dict(position)
+            has_axis = False
+            for axis in "XYZ":
+                if axis in words:
+                    has_axis = True
+                    next_position[axis] = position[axis] + words[axis] if not absolute else words[axis]
+            if not has_axis:
+                continue
+
+            start_xy = (position["X"], position["Y"])
+            end_xy = (next_position["X"], next_position["Y"])
+
+            if motion in [2, 3] and ("I" in words or "J" in words):
+                center_x = position["X"] + words.get("I", 0.0)
+                center_y = position["Y"] + words.get("J", 0.0)
+                radius = math.hypot(position["X"] - center_x, position["Y"] - center_y)
+                if radius > 0:
+                    start_angle = math.atan2(position["Y"] - center_y, position["X"] - center_x)
+                    end_angle = math.atan2(next_position["Y"] - center_y, next_position["X"] - center_x)
+                    if motion == 3:
+                        while end_angle <= start_angle:
+                            end_angle += math.tau
+                    else:
+                        while end_angle >= start_angle:
+                            end_angle -= math.tau
+                    sweep = end_angle - start_angle
+                    steps = max(8, min(96, int(abs(sweep) * radius / 1.0)))
+                    previous = start_xy
+                    for step in range(1, steps + 1):
+                        angle = start_angle + (sweep * step / steps)
+                        point = (center_x + radius * math.cos(angle), center_y + radius * math.sin(angle))
+                        add_segment(previous, point, rapid=False)
+                        previous = point
+                else:
+                    add_segment(start_xy, end_xy, rapid=False)
+            else:
+                add_segment(start_xy, end_xy, rapid=(motion == 0))
+
+            position = next_position
+
+        if path_bounds["X"][0] is None or path_bounds["Y"][0] is None:
+            if all_bounds["X"][0] is None or all_bounds["Y"][0] is None:
+                return segments, None, start_point or first_motion_point
+            path_bounds = all_bounds
+
+        return (
+            segments,
+            [path_bounds["X"][0], path_bounds["X"][1], path_bounds["Y"][0], path_bounds["Y"][1]],
+            start_point or first_motion_point,
+        )
+
+    @staticmethod
+    def scaled_point(point, factor):
+        return [point[0] * factor, point[1] * factor]
+
+    def build_job_canvas_preview(self, name, raw_lines, preview_lines):
+        if not raw_lines:
+            return {}
+
+        context = self.stream_transform_context(raw_lines)
+        units = self.effective_gcode_units(context.get("units"))
+        factor = 25.4 if units == "inch" else 1.0
+        mode = context.get("mode", self.selected_job_origin_mode())
+        placement = context.get(
+            "placement",
+            self.resolved_job_placement(mode, self.selected_job_placement_mode())
+        )
+        job_width = float(context.get("job_width", 0.0) or 0.0)
+        job_height = float(context.get("job_height", 0.0) or 0.0)
+        material_bounds = context.get("material_bounds")
+
+        if job_width <= 0 or job_height <= 0:
+            preview_bounds, preview_units = self.gcode_bounds(preview_lines)
+            units = self.effective_gcode_units(preview_units)
+            factor = 25.4 if units == "inch" else 1.0
+            if preview_bounds["X"][0] is None or preview_bounds["Y"][0] is None:
+                return {}
+            job_width = preview_bounds["X"][1] - preview_bounds["X"][0]
+            job_height = preview_bounds["Y"][1] - preview_bounds["Y"][0]
+
+        if not material_bounds:
+            material_bounds = self.material_bounds_for_origin(mode, job_width, job_height)
+
+        segments, path_bounds, start_point = self.gcode_preview_segments(preview_lines)
+        scaled_segments = [
+            {
+                "start": self.scaled_point(segment["start"], factor),
+                "end": self.scaled_point(segment["end"], factor),
+                "rapid": segment.get("rapid", False),
+            }
+            for segment in segments
+        ]
+
+        margin_x = float(context.get("margin_x", 0.0) or 0.0)
+        margin_y = float(context.get("margin_y", 0.0) or 0.0)
+        if mode == "center":
+            origin_label = _("Center")
+        elif mode == "top_left":
+            origin_label = _("Back-Left")
+        else:
+            origin_label = _("Bottom-Left")
+
+        margin_guides = self.margin_guides_for_bounds(material_bounds, margin_x, margin_y, factor)
+        scaled_job_bounds = [value * factor for value in material_bounds]
+        scaled_path_bounds = [value * factor for value in path_bounds] if path_bounds else None
+        scaled_start = self.scaled_point(start_point, factor) if start_point else None
+        tolerance = 0.001
+        outside = False
+        if scaled_path_bounds:
+            outside = (
+                scaled_path_bounds[0] < scaled_job_bounds[0] - tolerance or
+                scaled_path_bounds[1] > scaled_job_bounds[1] + tolerance or
+                scaled_path_bounds[2] < scaled_job_bounds[2] - tolerance or
+                scaled_path_bounds[3] > scaled_job_bounds[3] + tolerance
+            )
+
+        return {
+            "label": _("%s | Job %.1f x %.1f mm | Origin: %s | Place: %s") % (
+                name or _("CNCJob"),
+                job_width * factor,
+                job_height * factor,
+                origin_label,
+                self.job_placement_label(placement),
+            ),
+            "job_bounds": scaled_job_bounds,
+            "segments": scaled_segments,
+            "path_bounds": scaled_path_bounds,
+            "origin": [0.0, 0.0],
+            "start": scaled_start,
+            "margin_guides": margin_guides,
+            "outside": outside,
+        }
+
+    def stream_transform_context(self, lines):
+        mode = self.selected_job_origin_mode()
+        bounds, units = self.gcode_bounds(lines, cutting_only=True)
+        if bounds["X"][0] is None or bounds["Y"][0] is None:
+            bounds, units = self.gcode_bounds(lines)
+        units = self.effective_gcode_units(units)
+        x_min = bounds.get("X", [None, None])[0]
+        x_max = bounds.get("X", [None, None])[1]
+        y_bounds = bounds.get("Y", [None, None])
+        y_min = y_bounds[0]
+        y_max = y_bounds[1]
+        if x_min is None or x_max is None or y_min is None or y_max is None:
+            return {
+                "mode": mode,
+                "enabled": False,
+                "absolute": True,
+                "units": units,
+            }
+
+        raw_width = x_max - x_min
+        raw_height = y_max - y_min
+        job_width, job_height = self.selected_job_size(raw_width, raw_height, units)
+        margin_x, margin_y = self.selected_job_margin(units)
+        material_bounds = self.material_bounds_for_origin(mode, job_width, job_height)
+        selected_placement = self.selected_job_placement_mode()
+        placement = self.resolved_job_placement(mode, selected_placement)
+
+        if mode == "absolute":
+            return {
+                "mode": mode,
+                "enabled": False,
+                "job_width": job_width,
+                "job_height": job_height,
+                "margin_x": margin_x,
+                "margin_y": margin_y,
+                "material_bounds": material_bounds,
+                "placement": placement,
+                "absolute": True,
+                "units": units,
+            }
+
+        target_bounds = self.target_bounds_for_placement(
+            material_bounds, raw_width, raw_height, margin_x, margin_y, placement
+        )
+        x_anchor = x_min - target_bounds["X"][0]
+        y_anchor = y_min - target_bounds["Y"][0]
+
+        return {
+            "mode": mode,
+            "enabled": True,
+            "x_anchor": x_anchor,
+            "y_anchor": y_anchor,
+            "job_width": job_width,
+            "job_height": job_height,
+            "margin_x": margin_x,
+            "margin_y": margin_y,
+            "material_bounds": material_bounds,
+            "placement": placement,
+            "target_bounds": target_bounds,
+            "absolute": True,
+            "units": units,
+        }
+
+    @staticmethod
+    def format_gcode_number(value):
+        text = f"{value:.4f}".rstrip("0").rstrip(".")
+        return text if text not in {"", "-0"} else "0"
+
+    def transform_stream_command(self, command, context):
+        clean_line = self.clean_gcode_line(command)
+        if not clean_line:
+            return command
+
+        upper_line = clean_line.upper()
+        g_codes = [int(float(value)) for value in re.findall(
+            r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
+        )]
+        if 90 in g_codes:
+            context["absolute"] = True
+        if 91 in g_codes:
+            context["absolute"] = False
+
+        if not context.get("enabled"):
+            return command
+        if upper_line.startswith("$") or any(code in g_codes for code in [10, 53, 92]):
+            return command
+
+        x_anchor = float(context.get("x_anchor", 0.0))
+        y_anchor = float(context.get("y_anchor", 0.0))
+        absolute = bool(context.get("absolute", True))
+        transformed = clean_line
+
+        def replace_x(match):
+            value = float(match.group(1))
+            new_value = value - x_anchor if absolute else value
+            return "X%s" % self.format_gcode_number(new_value)
+
+        def replace_y(match):
+            value = float(match.group(1))
+            new_value = value - y_anchor if absolute else value
+            return "Y%s" % self.format_gcode_number(new_value)
+
+        transformed = re.sub(
+            r"(?<![A-Za-z])X\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))",
+            replace_x,
+            transformed,
+            flags=re.IGNORECASE
+        )
+
+        transformed = re.sub(
+            r"(?<![A-Za-z])Y\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))",
+            replace_y,
+            transformed,
+            flags=re.IGNORECASE
+        )
+
+        return transformed
+
+    def transformed_gcode_lines(self, lines):
+        context = self.stream_transform_context(lines)
+        return [self.transform_stream_command(line, context) for line in lines]
 
     def on_toggle_laser(self):
         if self.ui.macro_laser.isChecked():
@@ -1222,7 +1835,13 @@ class ToolCNCControl(AppTool):
 
             if self.is_connected and self.status_poll_enabled:
                 now = time.time()
-                if now - self.last_status_query >= self.status_interval:
+                if isinstance(self.transport, HttpTransport):
+                    interval = self.http_status_interval
+                elif isinstance(self.transport, TcpTransport):
+                    interval = self.tcp_status_interval
+                else:
+                    interval = self.status_interval
+                if now - self.last_status_query >= interval:
                     self.poll_status()
                     self.last_status_query = now
 
@@ -1288,6 +1907,26 @@ class ToolCNCControl(AppTool):
                 data[key] = value
         self.update_status_sig.emit(data)
 
+    @staticmethod
+    def normalized_controller_state(state):
+        state = str(state or "Idle").strip()
+        if not state:
+            return "Idle"
+        base_state = state.split(":", 1)[0].strip()
+        aliases = {
+            "home": "Homing",
+            "homing": "Homing",
+            "idle": "Idle",
+            "run": "Run",
+            "jog": "Jog",
+            "hold": "Hold",
+            "alarm": "Alarm",
+            "door": "Door",
+            "check": "Check",
+            "sleep": "Sleep",
+        }
+        return aliases.get(base_state.lower(), base_state)
+
     def parse_marlin_position(self, line):
         if not ("X:" in line and "Y:" in line and "Z:" in line):
             return False
@@ -1337,7 +1976,7 @@ class ToolCNCControl(AppTool):
             self.controller_info_sig.emit(info)
 
     def update_status_display(self, data):
-        state = data.get("state", "Idle")
+        state = self.normalized_controller_state(data.get("state", "Idle"))
         self.ui.state_label.setText(state.upper())
         self.update_toolbar_connection_status(True, self.ui.connection_desc.text(), state=state)
 
@@ -1346,7 +1985,7 @@ class ToolCNCControl(AppTool):
             "Run": "#337ab7",
             "Jog": "#31b0d5",
             "Hold": "#f0ad4e",
-            "Home": "#5bc0de",
+            "Homing": "#5bc0de",
             "Alarm": "#d9534f",
             "Door": "#d9534f",
             "Check": "#777777",
@@ -1374,6 +2013,17 @@ class ToolCNCControl(AppTool):
             self.ui.mx_val.setText(coords[0])
             self.ui.my_val.setText(coords[1])
             self.ui.mz_val.setText(coords[2])
+
+        pins = data.get("Pn", "")
+        active_axes = "".join(axis for axis in "XYZ" if axis in str(pins).upper())
+        self.ui.set_limit_pins(active_axes)
+        if active_axes != self.active_limit_pins:
+            self.active_limit_pins = active_axes
+            if active_axes:
+                self.append_console_sig.emit(
+                    _("Active limit input(s): %s") % ", ".join(active_axes),
+                    "warn"
+                )
 
         if "FS" in data:
             values = (data["FS"].split(",") + ["0", "0"])[:2]
@@ -1449,6 +2099,34 @@ class ToolCNCControl(AppTool):
             self.queue_update_sig.emit()
 
             lines = item.get("lines", [])
+            transform_context = self.stream_transform_context(lines)
+            if transform_context.get("enabled"):
+                mode_labels = {
+                    "top_left": _("Back-Left"),
+                    "bottom_left": _("Bottom-Left"),
+                    "center": _("Center"),
+                }
+                mode_label = mode_labels.get(transform_context.get("mode"), _("Job Origin"))
+                placement_label = self.job_placement_label(transform_context.get("placement"))
+                self.append_console_sig.emit(
+                    _("Zeroed XY is mapped to CNCJob %s; placement is %s.") % (mode_label, placement_label),
+                    "info"
+                )
+                target_bounds = transform_context.get("target_bounds")
+                if target_bounds:
+                    self.append_console_sig.emit(
+                        _("Mapped XY bounds: X%.3f..%.3f  Y%.3f..%.3f") % (
+                            target_bounds["X"][0], target_bounds["X"][1],
+                            target_bounds["Y"][0], target_bounds["Y"][1],
+                        ),
+                        "info"
+                    )
+
+            wcs_label, _p_num = self.selected_work_offset()
+            self.ok_received.clear()
+            self.send_command(wcs_label, log=True)
+            self.ok_received.wait(timeout=2.0)
+
             for line_idx, command in enumerate(lines):
                 if not self.is_streaming:
                     item["status"] = _("Stopped")
@@ -1460,10 +2138,11 @@ class ToolCNCControl(AppTool):
 
                 self.current_line_idx = line_idx
                 self.ok_received.clear()
-                self.send_command(command, log=True)
+                sent_command = self.transform_stream_command(command, transform_context)
+                self.send_command(sent_command, log=True)
                 self.ok_received.wait(timeout=5.0)
                 sent += 1
-                self.update_progress_sig.emit((sent / total * 100.0) if total else 0.0, command)
+                self.update_progress_sig.emit((sent / total * 100.0) if total else 0.0, sent_command)
 
             if self.is_streaming:
                 item["status"] = _("Done")

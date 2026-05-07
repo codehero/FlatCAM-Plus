@@ -4,7 +4,7 @@
 
 CNC_PROFILES = {
     "fluidnc": {
-        "label": "FluidNC / GRBL",
+        "label": "FluidNC",
         "info": "$I",
         "web_info": "[ESP800]",
         "config": "$Config/Dump",
