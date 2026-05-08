@@ -36,6 +36,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **V-tool accuracy:** Shape, tip diameter, and related V-bit settings persist more reliably for isolation workflows.
 - **Copper-aware isolation:** The Isolation plugin now includes **Generate With Copper**, a second generation path that uses the selected isolation tool while preserving large copper pours and filtering frame-like outer paths.
 - **Excellon DB loading:** Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing.
+- **Reference-aware rotation:** Toolbar and plot-area Rotate actions use the Transform Plugin reference setting, so late-loaded Excellon drill files can be rotated around the Gerber board center instead of only their own selection bounds.
 
 ### CNC Workflow
 

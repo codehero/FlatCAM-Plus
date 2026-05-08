@@ -5172,6 +5172,78 @@ class App(QtCore.QObject):
                 self.inform.emit('[ERROR_NOTCL] %s: %s.' % (_("Action was not executed"), str(e)))
                 return
 
+    def _get_transform_reference_point(self, obj_list):
+        """
+        Return the reference point used by the simple transform actions.
+
+        The preferences UI already exposes a transform reference setting, but the
+        quick Rotate action historically always used the selected objects bounds.
+        Keeping Selection as the fallback preserves the old behavior while also
+        allowing late-loaded Excellon objects to be rotated around the Gerber
+        board center.
+        """
+
+        def selection_center(objects):
+            xminlist = []
+            yminlist = []
+            xmaxlist = []
+            ymaxlist = []
+
+            for obj in objects:
+                xmin, ymin, xmax, ymax = obj.bounds()
+                xminlist.append(xmin)
+                yminlist.append(ymin)
+                xmaxlist.append(xmax)
+                ymaxlist.append(ymax)
+
+            return (
+                0.5 * (min(xminlist) + max(xmaxlist)),
+                0.5 * (min(yminlist) + max(ymaxlist))
+            )
+
+        def option_matches(value, *names):
+            value = str(value).casefold()
+            return value in {str(name).casefold() for name in names}
+
+        reference = self.options.get("tools_transform_reference", _("Selection"))
+
+        if option_matches(reference, "Origin", _("Origin")):
+            return 0, 0
+
+        if option_matches(reference, "Point", _("Point")):
+            point_value = self.options.get("tools_transform_ref_point", "0, 0")
+            if isinstance(point_value, (tuple, list)) and len(point_value) >= 2:
+                return float(point_value[0]), float(point_value[1])
+
+            coords = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", str(point_value))
+            if len(coords) >= 2:
+                return float(coords[0]), float(coords[1])
+
+            raise ValueError(_("The reference point format is not valid."))
+
+        if option_matches(reference, "Object", _("Object")):
+            ref_object = self.options.get("tools_transform_ref_object", _("Gerber"))
+            ref_kind_map = {
+                "gerber": "gerber",
+                str(_("Gerber")).casefold(): "gerber",
+                "excellon": "excellon",
+                str(_("Excellon")).casefold(): "excellon",
+                "geometry": "geometry",
+                str(_("Geometry")).casefold(): "geometry"
+            }
+            ref_kind = ref_kind_map.get(str(ref_object).casefold(), "gerber")
+            candidates = [
+                obj for obj in self.collection.get_list()
+                if obj.kind == ref_kind and obj.obj_options.get('plot', True)
+            ]
+
+            if not candidates:
+                raise ValueError(_("No reference object found."))
+
+            return selection_center([candidates[0]])
+
+        return selection_center(obj_list)
+
     def on_rotate(self, silent=False, preset=None):
         """
         Executed when Options -> Rotate Selection menu entry is clicked.
@@ -5183,11 +5255,6 @@ class App(QtCore.QObject):
         self.defaults.report_usage("on_rotate()")
 
         obj_list = self.collection.get_selected()
-        xminlist = []
-        yminlist = []
-        xmaxlist = []
-        ymaxlist = []
-
         if not obj_list:
             self.inform.emit('[WARNING_NOTCL] %s' % _("No object is selected."))
         else:
@@ -5205,21 +5272,7 @@ class App(QtCore.QObject):
 
             if ok:
                 try:
-                    # first get a bounding box to fit all
-                    for obj in obj_list:
-                        xmin, ymin, xmax, ymax = obj.bounds()
-                        xminlist.append(xmin)
-                        yminlist.append(ymin)
-                        xmaxlist.append(xmax)
-                        ymaxlist.append(ymax)
-
-                    # get the minimum x,y and maximum x,y for all objects selected
-                    xminimal = min(xminlist)
-                    yminimal = min(yminlist)
-                    xmaximal = max(xmaxlist)
-                    ymaximal = max(ymaxlist)
-                    px = 0.5 * (xminimal + xmaximal)
-                    py = 0.5 * (yminimal + ymaximal)
+                    px, py = self._get_transform_reference_point(obj_list)
 
                     for sel_obj in obj_list:
                         sel_obj.rotate(-float(num), point=(px, py))
