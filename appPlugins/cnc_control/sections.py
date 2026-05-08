@@ -7,7 +7,7 @@ import gettext
 
 from PyQt6 import QtWidgets
 
-from appGUI.GUIElements import FCComboBox, FCDoubleSpinner, FCLabel
+from appGUI.GUIElements import FCCheckBox, FCComboBox, FCDoubleSpinner, FCLabel, FCSpinner
 
 from .widgets import DashboardGauge, FluidStyleButton
 
@@ -232,6 +232,107 @@ class ProbingWorkOffsetSection(CNCSectionPlugin):
         body.addStretch(1)
 
 
+class AutoLevelSection(CNCSectionPlugin):
+    section_id = "auto_level"
+    title = _("Auto Level")
+
+    def build(self, ui, body):
+        def setup_input(widget):
+            ui.setup_input(widget)
+            widget.setFixedHeight(34)
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            return widget
+
+        def double_input(value, minimum=-100000.0, maximum=100000.0, step=0.1, suffix=" mm"):
+            widget = FCDoubleSpinner()
+            setup_input(widget)
+            widget.set_precision(3)
+            widget.set_range(minimum, maximum)
+            widget.setSingleStep(step)
+            widget.setSuffix(suffix)
+            widget.set_value(value)
+            return widget
+
+        def int_input(value, minimum=1, maximum=100000, suffix=""):
+            widget = FCSpinner()
+            setup_input(widget)
+            widget.set_range(minimum, maximum)
+            widget.setValue(value)
+            if suffix:
+                widget.setSuffix(suffix)
+            return widget
+
+        header_lay = QtWidgets.QHBoxLayout()
+        header_lay.setContentsMargins(0, 0, 0, 0)
+        header_lay.setSpacing(8)
+        body.addLayout(header_lay)
+
+        ui.autolevel_enable_cb = FCCheckBox(_("Use Map"))
+        ui.autolevel_enable_cb.setToolTip(_("Apply the measured height map while streaming the selected CNCJob."))
+        ui.autolevel_status = FCLabel(_("No height map"), color="#777777")
+        header_lay.addWidget(ui.autolevel_enable_cb)
+        header_lay.addWidget(ui.autolevel_status, 1)
+
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(6)
+        body.addLayout(grid)
+
+        ui.autolevel_x_min = double_input(0.0)
+        ui.autolevel_x_max = double_input(0.0)
+        ui.autolevel_y_min = double_input(0.0)
+        ui.autolevel_y_max = double_input(0.0)
+        ui.autolevel_rows = int_input(4, 2, 200)
+        ui.autolevel_columns = int_input(4, 2, 200)
+        ui.autolevel_safe_z = double_input(5.0, -100000.0, 100000.0, 0.1)
+        ui.autolevel_probe_depth = double_input(-1.0, -100000.0, 0.0, 0.1)
+        ui.autolevel_probe_feed = int_input(120, 1, 60000, " mm/min")
+
+        rows = [
+            (_("X Min"), ui.autolevel_x_min, _("X Max"), ui.autolevel_x_max),
+            (_("Y Min"), ui.autolevel_y_min, _("Y Max"), ui.autolevel_y_max),
+            (_("Rows"), ui.autolevel_rows, _("Columns"), ui.autolevel_columns),
+            (_("Safe Z"), ui.autolevel_safe_z, _("Probe Z"), ui.autolevel_probe_depth),
+            (_("Probe Feed"), ui.autolevel_probe_feed, "", None),
+        ]
+        for row, (label_a, widget_a, label_b, widget_b) in enumerate(rows):
+            grid.addWidget(FCLabel(label_a, bold=True), row, 0)
+            grid.addWidget(widget_a, row, 1)
+            if widget_b is not None:
+                grid.addWidget(FCLabel(label_b, bold=True), row, 2)
+                grid.addWidget(widget_b, row, 3)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+
+        button_grid = QtWidgets.QGridLayout()
+        button_grid.setSpacing(6)
+        body.addLayout(button_grid)
+
+        ui.autolevel_fit_btn = FluidStyleButton(_("Fit Area"), "#337ab7", "#286090")
+        ui.autolevel_probe_btn = FluidStyleButton(_("Probe Map"), "#5cb85c", "#449d44")
+        ui.autolevel_stop_btn = FluidStyleButton(_("Stop"), "#d9534f", "#c9302c")
+        ui.autolevel_clear_btn = FluidStyleButton(_("Clear"), "#444444", "#222222")
+
+        ui.setup_button(ui.autolevel_fit_btn, "replot16.png", _("Set probing area from the selected CNCJob bounds."))
+        ui.setup_button(ui.autolevel_probe_btn, "calibrate_16.png", _("Probe the grid and build a height map."))
+        ui.setup_button(ui.autolevel_stop_btn, "power16.png", _("Stop the current probing cycle."))
+        ui.setup_button(ui.autolevel_clear_btn, "trash16.png", _("Clear the current height map."))
+
+        button_grid.addWidget(ui.autolevel_fit_btn, 0, 0)
+        button_grid.addWidget(ui.autolevel_probe_btn, 0, 1)
+        button_grid.addWidget(ui.autolevel_stop_btn, 0, 2)
+        button_grid.addWidget(ui.autolevel_clear_btn, 0, 3)
+        for column in range(4):
+            button_grid.setColumnStretch(column, 1)
+
+        ui.autolevel_progress = QtWidgets.QProgressBar()
+        ui.autolevel_progress.setObjectName("cnc_progress")
+        ui.autolevel_progress.setRange(0, 100)
+        ui.autolevel_progress.setValue(0)
+        body.addWidget(ui.autolevel_progress)
+        body.addStretch(1)
+
+
 class OverridesSystemSection(CNCSectionPlugin):
     section_id = "overrides_system"
     title = _("Overrides & System")
@@ -290,6 +391,7 @@ DEFAULT_CNC_SECTIONS = {
     "position": PositionSection,
     "jog": JogSection,
     "probing_work_offset": ProbingWorkOffsetSection,
+    "auto_level": AutoLevelSection,
     "overrides_system": OverridesSystemSection,
     "macros": MacroSection,
     "terminal": TerminalSection,

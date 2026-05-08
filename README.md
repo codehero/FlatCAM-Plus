@@ -2,7 +2,7 @@
 
 **FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
 
-**Current version:** `1.0.0` beta, released `2026/05/03`.
+**Current version:** `1.0.0` beta, released `2026/05/03`, updated `2026/05/08`.
 
 Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
 Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
@@ -34,16 +34,21 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Dynamic parameter sync:** Tool table, Milling parameters, and generated geometry are kept in sync before CNCJob generation.
 - **CNCJob generation hardening:** Missing Milling defaults in older projects or database tools are completed automatically before G-code generation.
 - **V-tool accuracy:** Shape, tip diameter, and related V-bit settings persist more reliably for isolation workflows.
+- **Copper-aware isolation:** The Isolation plugin now includes **Generate With Copper**, a second generation path that uses the selected isolation tool while preserving large copper pours and filtering frame-like outer paths.
+- **Excellon DB loading:** Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing.
 
 ### CNC Workflow
 
 - **Integrated CNC controller:** Connection management, live status, jogging, machine profiles, work zeroing, job streaming, macros, terminal commands, SD jobs, and FluidNC file operations are available inside the CNC workspace.
 - **Operational dashboard layout:** Feed/spindle status, G-code sender, position, jog, overrides, macros, job setup, preview, and terminal sections are arranged for direct machine operation.
 - **Unified CNC-style workspace UI:** Preferences, the canvas tab area, the left sidebar, project trees, and selected Gerber/Excellon/CNCJob property panels now share the CNC Control visual language with clearer buttons and bordered panels.
+- **Canvas context tools:** The plot-area right-click menu includes Rotate for selected objects, matching the toolbar Rotate workflow.
 - **CNC toolbar connection access:** The toolbar CNC connection/settings action opens the CNC connection modal directly, with serial, WiFi/TCP GRBL, and FluidNC Web/HTTP modes.
 - **Offline G-code validation:** The CNC dashboard Preview and Verify actions work without an active controller connection and report clear status, warnings, and empty-job feedback.
 - **Aspire-style job placement:** CNCJob coordinates can be remapped to a selected job size, origin, placement, and X/Y margin before preview or streaming, so material zeroing and design placement are handled inside the CNC Control workflow.
 - **Job-size preview canvas:** The G-code preview panel includes a 2D material canvas that draws the selected job inside the configured PCB/work area, including origin, grid, margin guides, rapid moves, cutting moves, and outside-job warnings.
+- **Auto leveling:** CNC Control can probe a PCB height map and apply measured Z compensation while streaming a selected CNCJob.
+- **Safer streaming:** Queue streaming now waits for controller `ok`/`error` acknowledgements before sending the next G-code line, preventing command flooding when the controller stops responding.
 - **GRBL status visibility:** Homing state and active X/Y/Z limit inputs are normalized and shown in the CNC dashboard for clearer WiFi/TCP GRBL operation.
 - **Machine-aware G-code metadata:** Exported G-code now records the active machine profile, travel limits, safe Z, and max spindle RPM as header comments, while Verify checks X/Y/Z motion bounds against the active profile.
 - **Modular CNC architecture:** CNC controller features are split into focused modules under `appPlugins/cnc_control/` for easier maintenance and future plugin-style extensions.
@@ -83,6 +88,13 @@ The CNC page is organized as a compact production dashboard:
 - **Profile manager:** The **Manage** button opens a modal editor for creating, editing, deleting, and saving profiles.
 - **Preferences access:** Profiles are also available under `Preferences -> Plugins -> Manufacturing Settings`.
 
+### Auto Leveling and Probe Workflow
+
+- **Probe pin workflow:** GRBL/FluidNC probe reports are parsed from `[PRB:x,y,z:1]` responses and used by the CNC Control height-map workflow.
+- **Height map probing:** The Auto Level panel can fit the probing area from the selected CNCJob, probe a configurable grid, and store a reusable height map.
+- **Map application:** When **Use Map** is enabled, queue streaming applies bilinear Z compensation to cutting moves while preserving the original XY placement workflow.
+- **Safe probing controls:** Probing uses configured safe Z, probe depth, probe feed, selected WCS, spindle stop, stop/cancel state, and progress feedback.
+
 ### Manufacturing Preferences
 
 - **Manufacturing Settings:** A top-level production group summarizes active machine setup in one predictable place.
@@ -92,6 +104,14 @@ The CNC page is organized as a compact production dashboard:
 - **Fallback defaults:** Preferences remain available as safe defaults for new presets, missing DB keys, older project files, and non-preset workflows.
 - **Backward compatibility:** Existing preference keys are preserved so saved defaults and project behavior continue to work.
 
+### PCB Copper Isolation
+
+- **Generate Geometry:** The existing Isolation workflow remains available for standard isolation routing.
+- **Generate With Copper:** A new button below **Generate Geometry** uses the selected isolation tool and parameters to create copper-pour-friendly isolation geometry.
+- **Copper pour preservation:** Large copper fills, such as GND pours exported from EasyEDA, are treated as copper to keep rather than copper to clear.
+- **Frame filtering:** Frame-like outer paths that wrap the Gerber bounds are filtered so board outlines are not accidentally included in the engraving job.
+- **Same downstream flow:** The resulting `_copper_iso` Geometry object is milled into a CNCJob with the normal Milling plugin workflow.
+
 ### Job Setup, Placement, and Work Zeroing
 
 - **Simplified setup panel:** The CNC dashboard uses a focused **Job Setup / Zero** panel instead of exposing probing, WCS, probe travel, plate, feed, and retract controls during normal job setup.
@@ -100,7 +120,8 @@ The CNC page is organized as a compact production dashboard:
 - **Placement selection:** Place the selected CNCJob inside the job size independently from the machine zero point, including Same as Origin, Center, Bottom/Back left-center-right, and center-left/right alignments.
 - **Margin control:** X/Y margins shrink the usable material area before placement, allowing repeatable edge clearance without editing the CAM source.
 - **Work zeroing:** XY, Z, or XYZ work zero can be set with `G10 L20`; supported GRBL/FluidNC workflows activate `G54` automatically before zeroing and before queue streaming.
-- **Transformed streaming:** `START QUEUE` streams the same transformed coordinates shown in preview, so the controller receives the job already mapped to the configured origin, placement, and margin.
+- **Transformed streaming:** `START QUEUE` streams the same transformed coordinates shown in preview, so the controller receives the job already mapped to the configured origin, placement, and X/Y margins.
+- **Absolute XY warning:** When `Use G-code Absolute XY` is selected, job margins are shown as guides but are not applied to streamed coordinates; CNC Control warns before streaming in this mode.
 - **Mapped bounds logging:** Before each streamed job, the terminal reports the mapped XY bounds so the operator can confirm placement numerically.
 
 ### Jobs, Preview, Files, and Macros
@@ -108,6 +129,7 @@ The CNC page is organized as a compact production dashboard:
 - **Direct job streaming:** Generated CNCJob objects can be streamed with progress tracking, pause/resume, and stop.
 - **Job Queue / Sender:** Multiple CNCJob objects can be queued, reordered, removed, and streamed sequentially.
 - **Queue progress:** The sender table shows queued, running, stopped, and completed jobs while the global progress bar tracks total queued lines.
+- **Acknowledgement-gated sender:** The sender waits for controller acknowledgements before advancing to the next G-code line and reports when the controller stops responding.
 - **G-Code Preview / Verification:** Selected jobs show line counts, motion statistics, bounds, estimated runtime, and safety warnings.
 - **Material canvas preview:** The preview panel draws the selected CNCJob inside the configured job size, including grid, origin crosshair, margin guides, rapid/cut paths, path bounds, and outside-job warnings.
 - **Mapped coordinate preview:** Preview and Verify analyze the transformed G-code used for streaming, not only the original plot-area coordinates.

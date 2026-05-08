@@ -50,6 +50,7 @@ class ToolCNCControl(AppTool):
     test_connection_sig = pyqtSignal(bool, str)
     queue_update_sig = pyqtSignal()
     preview_update_sig = pyqtSignal(dict)
+    auto_level_update_sig = pyqtSignal(dict)
 
     def __init__(self, app):
         self.app = app
@@ -66,6 +67,7 @@ class ToolCNCControl(AppTool):
         self.receiver_thread = None
         self.io_lock = threading.RLock()
         self.ok_received = threading.Event()
+        self.last_controller_ack = ""
         self.last_status_query = 0
         self.status_interval = 0.25
         self.tcp_status_interval = 0.5
@@ -82,6 +84,11 @@ class ToolCNCControl(AppTool):
         self.gcode_lines = []
         self.job_queue = []
         self.current_queue_idx = -1
+        self.is_auto_leveling = False
+        self.auto_level_cancel = threading.Event()
+        self.probe_result_event = threading.Event()
+        self.last_probe_result = None
+        self.auto_level_map = None
 
         self.ui = CNCControlUI(layout=self.layout, app=self.app)
         self.pluginName = self.ui.pluginName
@@ -184,6 +191,13 @@ class ToolCNCControl(AppTool):
         self.ui.job_margin_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
         self.ui.job_margin_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
         self.ui.fit_job_size_btn.clicked.connect(self.on_fit_job_size_clicked)
+        self.ui.autolevel_fit_btn.clicked.connect(self.on_auto_level_fit_area)
+        self.ui.autolevel_probe_btn.clicked.connect(self.on_auto_level_probe_clicked)
+        self.ui.autolevel_stop_btn.clicked.connect(self.on_auto_level_stop)
+        self.ui.autolevel_clear_btn.clicked.connect(self.on_auto_level_clear)
+        self.ui.autolevel_enable_cb.toggled.connect(
+            lambda *_args: self.on_preview_refresh(refresh_jobs=False)
+        )
         self.ui.queue_table.itemSelectionChanged.connect(
             lambda: self.on_preview_refresh(refresh_jobs=False)
         )
@@ -219,6 +233,7 @@ class ToolCNCControl(AppTool):
         self.test_connection_sig.connect(self.on_test_connection_finished)
         self.queue_update_sig.connect(self.update_queue_table)
         self.preview_update_sig.connect(self.update_preview_ui)
+        self.auto_level_update_sig.connect(self.update_auto_level_ui)
 
     def update_tool_list(self, *_args, preserve_selection=True, refresh_preview=True):
         current_name = self.ui.object_combo.currentText().strip() if preserve_selection else ""
@@ -776,6 +791,10 @@ class ToolCNCControl(AppTool):
             self.ui.jog_feed.setValue(profile["jog_feed"])
         if hasattr(self.ui, "probe_feed"):
             self.ui.probe_feed.setValue(profile["probe_feed"])
+        if hasattr(self.ui, "autolevel_probe_feed"):
+            self.ui.autolevel_probe_feed.setValue(profile["probe_feed"])
+        if hasattr(self.ui, "autolevel_safe_z"):
+            self.ui.autolevel_safe_z.set_value(profile["safe_z"])
         if hasattr(self.ui, "spindle_rpm"):
             current_rpm = int(self.ui.spindle_rpm.value())
             max_rpm = profile["spindle_max"]
@@ -1403,6 +1422,313 @@ class ToolCNCControl(AppTool):
         )
         self.on_preview_refresh(refresh_jobs=False)
 
+    def auto_level_settings(self):
+        def double_value(attr, default=0.0):
+            widget = getattr(self.ui, attr, None)
+            try:
+                return float(widget.value())
+            except Exception:
+                return float(default)
+
+        def int_value(attr, default=1):
+            widget = getattr(self.ui, attr, None)
+            try:
+                return int(widget.value())
+            except Exception:
+                return int(default)
+
+        x_min = double_value("autolevel_x_min")
+        x_max = double_value("autolevel_x_max")
+        y_min = double_value("autolevel_y_min")
+        y_max = double_value("autolevel_y_max")
+        if x_max < x_min:
+            x_min, x_max = x_max, x_min
+        if y_max < y_min:
+            y_min, y_max = y_max, y_min
+
+        probe_depth = double_value("autolevel_probe_depth", -1.0)
+        if probe_depth >= 0:
+            probe_depth = -abs(probe_depth) if probe_depth else -1.0
+
+        return {
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+            "rows": max(2, int_value("autolevel_rows", 4)),
+            "columns": max(2, int_value("autolevel_columns", 4)),
+            "safe_z": double_value("autolevel_safe_z", 5.0),
+            "probe_depth": probe_depth,
+            "probe_feed": max(1, int_value("autolevel_probe_feed", 120)),
+        }
+
+    @staticmethod
+    def auto_level_range_values(start, stop, count):
+        if count <= 1:
+            return [start]
+        step = (stop - start) / float(count - 1)
+        return [start + (step * index) for index in range(count)]
+
+    def auto_level_probe_points(self, settings):
+        x_values = self.auto_level_range_values(settings["x_min"], settings["x_max"], settings["columns"])
+        y_values = self.auto_level_range_values(settings["y_min"], settings["y_max"], settings["rows"])
+        points = []
+        for row, y_value in enumerate(y_values):
+            columns = range(len(x_values)) if row % 2 == 0 else range(len(x_values) - 1, -1, -1)
+            for column in columns:
+                points.append({
+                    "row": row,
+                    "column": column,
+                    "x": x_values[column],
+                    "y": y_value,
+                })
+        return x_values, y_values, points
+
+    @staticmethod
+    def auto_level_reference_point(x_values, y_values, measurements):
+        best = None
+        for row, y_value in enumerate(y_values):
+            for column, x_value in enumerate(x_values):
+                z_value = measurements[row][column]
+                distance = math.hypot(x_value, y_value)
+                if best is None or distance < best["distance"]:
+                    best = {
+                        "x": x_value,
+                        "y": y_value,
+                        "z": z_value,
+                        "distance": distance,
+                    }
+        return best or {"x": 0.0, "y": 0.0, "z": 0.0, "distance": 0.0}
+
+    def on_auto_level_fit_area(self, *_args):
+        name, lines = self.selected_preview_job()
+        if not lines:
+            self.append_console_sig.emit(_("No CNCJob object selected."), "error")
+            return
+
+        context = self.stream_transform_context(lines)
+        units = self.effective_gcode_units(context.get("units"))
+        bounds = None
+        target_bounds = context.get("target_bounds")
+        if target_bounds:
+            bounds = [
+                target_bounds["X"][0],
+                target_bounds["X"][1],
+                target_bounds["Y"][0],
+                target_bounds["Y"][1],
+            ]
+        else:
+            transform_context = self.stream_transform_context(lines)
+            preview_lines = [self.transform_stream_command(line, transform_context) for line in lines]
+            gcode_bounds, units = self.gcode_bounds(preview_lines, cutting_only=True)
+            if gcode_bounds["X"][0] is None or gcode_bounds["Y"][0] is None:
+                gcode_bounds, units = self.gcode_bounds(preview_lines)
+            if gcode_bounds["X"][0] is not None and gcode_bounds["Y"][0] is not None:
+                bounds = [
+                    gcode_bounds["X"][0],
+                    gcode_bounds["X"][1],
+                    gcode_bounds["Y"][0],
+                    gcode_bounds["Y"][1],
+                ]
+
+        if not bounds:
+            self.append_console_sig.emit(_("Selected CNCJob has no usable XY bounds."), "error")
+            return
+
+        units = self.effective_gcode_units(units)
+        factor = 25.4 if units == "inch" else 1.0
+        self.ui.autolevel_x_min.set_value(bounds[0] * factor)
+        self.ui.autolevel_x_max.set_value(bounds[1] * factor)
+        self.ui.autolevel_y_min.set_value(bounds[2] * factor)
+        self.ui.autolevel_y_max.set_value(bounds[3] * factor)
+        self.ui.autolevel_status.setText(_("Area fitted from %s") % (name or _("CNCJob")))
+        self.append_console_sig.emit(
+            _("Auto level area fitted: X%.3f..%.3f  Y%.3f..%.3f mm") % (
+                bounds[0] * factor, bounds[1] * factor, bounds[2] * factor, bounds[3] * factor
+            ),
+            "info"
+        )
+
+    def on_auto_level_probe_clicked(self, *_args):
+        if not self.is_connected:
+            self.append_console_sig.emit(_("Controller is not connected."), "error")
+            return
+        if self.is_streaming:
+            self.append_console_sig.emit(_("Stop queue streaming before probing."), "warn")
+            return
+        if self.is_auto_leveling:
+            return
+        if self.current_profile_key() not in {"fluidnc", "grbl"}:
+            self.append_console_sig.emit(_("Auto level probing currently requires GRBL/FluidNC probe reports."), "warn")
+            return
+
+        settings = self.auto_level_settings()
+        if math.isclose(settings["x_min"], settings["x_max"]) or math.isclose(settings["y_min"], settings["y_max"]):
+            self.on_auto_level_fit_area()
+            settings = self.auto_level_settings()
+
+        if math.isclose(settings["x_min"], settings["x_max"]) or math.isclose(settings["y_min"], settings["y_max"]):
+            self.append_console_sig.emit(_("Auto level area is empty."), "error")
+            return
+
+        x_values, y_values, points = self.auto_level_probe_points(settings)
+        if not points:
+            self.append_console_sig.emit(_("No probing points generated."), "error")
+            return
+
+        wcs_label, _p_num = self.selected_work_offset()
+        spindle_stop = self.current_profile().get("spindle_stop", "M5")
+        self.is_auto_leveling = True
+        self.auto_level_cancel.clear()
+        self.auto_level_update_sig.emit({
+            "busy": True,
+            "progress": 0,
+            "status": _("Probing 0/%d") % len(points),
+        })
+        threading.Thread(
+            target=self.auto_level_probe_worker,
+            args=(settings, x_values, y_values, points, wcs_label, spindle_stop),
+            daemon=True
+        ).start()
+
+    def on_auto_level_stop(self, *_args):
+        if not self.is_auto_leveling:
+            return
+        self.auto_level_cancel.set()
+        self.auto_level_update_sig.emit({"status": _("Stopping after current probe...")})
+
+    def on_auto_level_clear(self, *_args):
+        if self.is_auto_leveling:
+            return
+        self.auto_level_map = None
+        self.ui.autolevel_enable_cb.set_value(False)
+        self.auto_level_update_sig.emit({
+            "progress": 0,
+            "status": _("No height map"),
+            "map": None,
+        })
+        self.on_preview_refresh(refresh_jobs=False)
+
+    def send_command_and_wait(self, command, timeout=5.0):
+        self.ok_received.clear()
+        self.send_command(command, log=True)
+        return self.ok_received.wait(timeout=timeout)
+
+    def auto_level_probe_worker(self, settings, x_values, y_values, points, wcs_label, spindle_stop):
+        previous_poll = self.status_poll_enabled
+        measurements = [[None for _ in x_values] for _ in y_values]
+        total = len(points)
+
+        try:
+            self.status_poll_enabled = False
+            setup_commands = [wcs_label]
+            if isinstance(spindle_stop, str) and spindle_stop.strip():
+                setup_commands.extend(spindle_stop.splitlines())
+            setup_commands.extend([
+                "G21",
+                "G90",
+                "G0 Z%s" % self.format_gcode_number(settings["safe_z"]),
+            ])
+            for command in setup_commands:
+                if self.auto_level_cancel.is_set():
+                    raise RuntimeError(_("Auto level probing was stopped."))
+                if not self.send_command_and_wait(command, timeout=8.0):
+                    raise RuntimeError(_("Controller did not acknowledge: %s") % command)
+
+            probe_timeout = max(10.0, (abs(settings["probe_depth"]) / settings["probe_feed"] * 60.0) + 5.0)
+            for index, point in enumerate(points, start=1):
+                if self.auto_level_cancel.is_set():
+                    raise RuntimeError(_("Auto level probing was stopped."))
+
+                self.auto_level_update_sig.emit({
+                    "progress": ((index - 1) / total) * 100.0,
+                    "status": _("Probing %d/%d") % (index, total),
+                })
+
+                move_command = "G0 X%s Y%s" % (
+                    self.format_gcode_number(point["x"]),
+                    self.format_gcode_number(point["y"]),
+                )
+                if not self.send_command_and_wait(move_command, timeout=12.0):
+                    raise RuntimeError(_("Controller did not acknowledge: %s") % move_command)
+
+                self.last_probe_result = None
+                self.probe_result_event.clear()
+                self.ok_received.clear()
+                probe_command = "G38.2 Z%s F%d" % (
+                    self.format_gcode_number(settings["probe_depth"]),
+                    int(settings["probe_feed"]),
+                )
+                self.send_command(probe_command, log=True)
+                if not self.probe_result_event.wait(timeout=probe_timeout):
+                    raise RuntimeError(_("Probe result timed out."))
+
+                result = self.last_probe_result or {}
+                self.ok_received.wait(timeout=2.0)
+                if not result.get("success", False):
+                    raise RuntimeError(_("Probe failed at X%.3f Y%.3f.") % (point["x"], point["y"]))
+
+                measurements[point["row"]][point["column"]] = result["z"]
+
+                retract_command = "G0 Z%s" % self.format_gcode_number(settings["safe_z"])
+                if not self.send_command_and_wait(retract_command, timeout=8.0):
+                    raise RuntimeError(_("Controller did not acknowledge: %s") % retract_command)
+
+            reference = self.auto_level_reference_point(x_values, y_values, measurements)
+            auto_map = {
+                "unit": "mm",
+                "x_values": x_values,
+                "y_values": y_values,
+                "z_values": measurements,
+                "reference_x": reference["x"],
+                "reference_y": reference["y"],
+                "reference_z": reference["z"],
+                "rows": len(y_values),
+                "columns": len(x_values),
+                "point_count": total,
+                "created_at": time.strftime("%H:%M:%S"),
+            }
+            self.auto_level_map = auto_map
+            self.auto_level_update_sig.emit({
+                "busy": False,
+                "enabled": True,
+                "map": auto_map,
+                "progress": 100,
+                "status": _("Height map ready: %d points") % total,
+            })
+            self.append_console_sig.emit(_("Auto level height map ready: %d points.") % total, "info")
+        except Exception as err:
+            self.auto_level_update_sig.emit({
+                "busy": False,
+                "progress": 0,
+                "status": "%s: %s" % (_("Auto level failed"), err),
+            })
+            self.append_console_sig.emit("%s: %s" % (_("Auto level failed"), err), "error")
+        finally:
+            self.status_poll_enabled = previous_poll
+            self.is_auto_leveling = False
+            self.auto_level_update_sig.emit({"busy": False})
+
+    def update_auto_level_ui(self, data):
+        if "status" in data and hasattr(self.ui, "autolevel_status"):
+            self.ui.autolevel_status.setText(str(data["status"]))
+        if "progress" in data and hasattr(self.ui, "autolevel_progress"):
+            self.ui.autolevel_progress.setValue(int(max(0, min(100, float(data["progress"])))))
+        if "enabled" in data and hasattr(self.ui, "autolevel_enable_cb"):
+            self.ui.autolevel_enable_cb.set_value(bool(data["enabled"]))
+        if "map" in data and data.get("map") is None and hasattr(self.ui, "autolevel_progress"):
+            self.ui.autolevel_progress.setValue(0)
+
+        busy = bool(data.get("busy", self.is_auto_leveling))
+        if hasattr(self.ui, "autolevel_probe_btn"):
+            self.ui.autolevel_probe_btn.setEnabled(self.is_connected and not busy)
+        if hasattr(self.ui, "autolevel_stop_btn"):
+            self.ui.autolevel_stop_btn.setEnabled(self.is_connected and busy)
+        if hasattr(self.ui, "autolevel_clear_btn"):
+            self.ui.autolevel_clear_btn.setEnabled(not busy)
+        if "map" in data or "enabled" in data:
+            self.on_preview_refresh(refresh_jobs=False)
+
     def gcode_bounds(self, lines, cutting_only=False):
         position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
         bounds = {axis: [None, None] for axis in "XYZ"}
@@ -1738,22 +2064,112 @@ class ToolCNCControl(AppTool):
         text = f"{value:.4f}".rstrip("0").rstrip(".")
         return text if text not in {"", "-0"} else "0"
 
+    @staticmethod
+    def auto_level_map_is_valid(height_map):
+        if not isinstance(height_map, dict):
+            return False
+        x_values = height_map.get("x_values", [])
+        y_values = height_map.get("y_values", [])
+        z_values = height_map.get("z_values", [])
+        if len(x_values) < 2 or len(y_values) < 2:
+            return False
+        if len(z_values) != len(y_values):
+            return False
+        return all(isinstance(row, list) and len(row) == len(x_values) for row in z_values)
+
+    def active_auto_level_map(self):
+        enabled_widget = getattr(self.ui, "autolevel_enable_cb", None)
+        enabled = bool(enabled_widget.get_value()) if enabled_widget is not None else False
+        if not enabled:
+            return None
+        if not self.auto_level_map_is_valid(self.auto_level_map):
+            return None
+        return self.auto_level_map
+
+    def attach_auto_level_context(self, context):
+        height_map = self.active_auto_level_map()
+        context["autolevel_enabled"] = height_map is not None
+        context["autolevel_map"] = height_map
+        context["position"] = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+        context["current_motion"] = None
+        return context
+
+    @staticmethod
+    def auto_level_bracket(values, value):
+        if value <= values[0]:
+            return 0, 0
+        if value >= values[-1]:
+            last = len(values) - 1
+            return last, last
+        for index in range(len(values) - 1):
+            if values[index] <= value <= values[index + 1]:
+                return index, index + 1
+        last = len(values) - 1
+        return last, last
+
+    @staticmethod
+    def linear_interpolate(a, b, ratio):
+        return a + ((b - a) * ratio)
+
+    def auto_level_surface_z(self, height_map, x_mm, y_mm):
+        x_values = height_map["x_values"]
+        y_values = height_map["y_values"]
+        z_values = height_map["z_values"]
+
+        x0_idx, x1_idx = self.auto_level_bracket(x_values, x_mm)
+        y0_idx, y1_idx = self.auto_level_bracket(y_values, y_mm)
+        x0 = x_values[x0_idx]
+        x1 = x_values[x1_idx]
+        y0 = y_values[y0_idx]
+        y1 = y_values[y1_idx]
+        x_ratio = 0.0 if x1 == x0 else (x_mm - x0) / (x1 - x0)
+        y_ratio = 0.0 if y1 == y0 else (y_mm - y0) / (y1 - y0)
+
+        z00 = z_values[y0_idx][x0_idx]
+        z10 = z_values[y0_idx][x1_idx]
+        z01 = z_values[y1_idx][x0_idx]
+        z11 = z_values[y1_idx][x1_idx]
+        z0 = self.linear_interpolate(z00, z10, x_ratio)
+        z1 = self.linear_interpolate(z01, z11, x_ratio)
+        return self.linear_interpolate(z0, z1, y_ratio)
+
+    def auto_level_offset_at(self, context, x_value, y_value):
+        height_map = context.get("autolevel_map")
+        if not height_map:
+            return 0.0
+
+        units = self.effective_gcode_units(context.get("units"))
+        factor = 25.4 if units == "inch" else 1.0
+        surface_z = self.auto_level_surface_z(height_map, x_value * factor, y_value * factor)
+        offset_mm = surface_z - float(height_map.get("reference_z", 0.0) or 0.0)
+        return offset_mm / factor
+
+    def replace_axis_word(self, line, axis, value):
+        replacement = "%s%s" % (axis, self.format_gcode_number(value))
+        pattern = r"(?<![A-Za-z])%s\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))" % axis
+        if re.search(pattern, line, flags=re.IGNORECASE):
+            return re.sub(pattern, replacement, line, count=1, flags=re.IGNORECASE)
+        return "%s %s" % (line.rstrip(), replacement)
+
     def transform_stream_command(self, command, context):
         clean_line = self.clean_gcode_line(command)
         if not clean_line:
             return command
 
         upper_line = clean_line.upper()
+        words = self.gcode_words(upper_line)
         g_codes = [int(float(value)) for value in re.findall(
             r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
         )]
+        if 20 in g_codes:
+            context["units"] = "inch"
+        if 21 in g_codes:
+            context["units"] = "mm"
         if 90 in g_codes:
             context["absolute"] = True
         if 91 in g_codes:
             context["absolute"] = False
 
-        if not context.get("enabled"):
-            return command
         if upper_line.startswith("$") or any(code in g_codes for code in [10, 53, 92]):
             return command
 
@@ -1761,35 +2177,53 @@ class ToolCNCControl(AppTool):
         y_anchor = float(context.get("y_anchor", 0.0))
         absolute = bool(context.get("absolute", True))
         transformed = clean_line
+        modified = False
+        axis_values = {}
 
-        def replace_x(match):
-            value = float(match.group(1))
-            new_value = value - x_anchor if absolute else value
-            return "X%s" % self.format_gcode_number(new_value)
+        if context.get("enabled"):
+            for axis, anchor in [("X", x_anchor), ("Y", y_anchor)]:
+                if axis in words:
+                    new_value = words[axis] - anchor if absolute else words[axis]
+                    axis_values[axis] = new_value
+                    transformed = self.replace_axis_word(transformed, axis, new_value)
+                    modified = True
 
-        def replace_y(match):
-            value = float(match.group(1))
-            new_value = value - y_anchor if absolute else value
-            return "Y%s" % self.format_gcode_number(new_value)
+        position = context.setdefault("position", {"X": 0.0, "Y": 0.0, "Z": 0.0})
+        next_position = dict(position)
+        for axis in "XYZ":
+            if axis in words:
+                value = axis_values.get(axis, words[axis])
+                next_position[axis] = value if absolute else position[axis] + value
 
-        transformed = re.sub(
-            r"(?<![A-Za-z])X\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))",
-            replace_x,
-            transformed,
-            flags=re.IGNORECASE
-        )
+        motion = None
+        for g_code in g_codes:
+            if g_code in [0, 1, 2, 3]:
+                motion = g_code
+                context["current_motion"] = g_code
+        if motion is None:
+            motion = context.get("current_motion")
 
-        transformed = re.sub(
-            r"(?<![A-Za-z])Y\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))",
-            replace_y,
-            transformed,
-            flags=re.IGNORECASE
-        )
+        has_xy = "X" in words or "Y" in words
+        has_z = "Z" in words
+        program_z = next_position.get("Z", position.get("Z", 0.0))
+        if (
+                context.get("autolevel_enabled") and
+                motion in [1, 2, 3] and
+                program_z <= 0.000001 and
+                (has_xy or has_z)
+        ):
+            z_offset = self.auto_level_offset_at(context, next_position["X"], next_position["Y"])
+            adjusted_z = program_z + z_offset
+            transformed = self.replace_axis_word(transformed, "Z", adjusted_z)
+            modified = True
 
-        return transformed
+        context["position"] = next_position
+        return transformed if modified else command
 
-    def transformed_gcode_lines(self, lines):
+    def transformed_gcode_lines(self, lines, apply_auto_level=True):
         context = self.stream_transform_context(lines)
+        if apply_auto_level:
+            self.attach_auto_level_context(context)
         return [self.transform_stream_command(line, context) for line in lines]
 
     def on_toggle_laser(self):
@@ -1873,7 +2307,13 @@ class ToolCNCControl(AppTool):
         lower = line.lower()
 
         if lower == "ok" or lower.startswith("error"):
+            self.last_controller_ack = lower
             self.ok_received.set()
+
+        if self.parse_probe_result(line):
+            if echo:
+                self.append_console_sig.emit(line, "rx")
+            return
 
         if line.startswith("<") and line.endswith(">"):
             self.parse_status(line)
@@ -1894,6 +2334,29 @@ class ToolCNCControl(AppTool):
         if echo:
             stream_type = "error" if lower.startswith("error") or "alarm" in lower else "rx"
             self.append_console_sig.emit(line, stream_type)
+
+    def parse_probe_result(self, line):
+        match = re.search(r"\[PRB:([^:\]]+):([01])\]", line or "", flags=re.IGNORECASE)
+        if not match:
+            return False
+
+        coords = []
+        for value in match.group(1).split(","):
+            try:
+                coords.append(float(value))
+            except ValueError:
+                coords.append(0.0)
+        while len(coords) < 3:
+            coords.append(0.0)
+
+        self.last_probe_result = {
+            "x": coords[0],
+            "y": coords[1],
+            "z": coords[2],
+            "success": match.group(2) == "1",
+        }
+        self.probe_result_event.set()
+        return True
 
     def parse_status(self, line):
         parts = line[1:-1].split("|")
@@ -2087,9 +2550,42 @@ class ToolCNCControl(AppTool):
             self.job_queue[self.current_queue_idx]["status"] = _("Stopped")
             self.queue_update_sig.emit()
 
+    def wait_for_stream_ack(self, command, timeout=None, warn_after=5.0):
+        started = time.time()
+        warned = False
+
+        while self.is_streaming and self.is_connected:
+            if self.ok_received.wait(timeout=0.1):
+                ack = getattr(self, "last_controller_ack", "")
+                if str(ack).lower().startswith("error"):
+                    self.append_console_sig.emit(
+                        "%s: %s" % (_("Controller rejected command"), command),
+                        "error"
+                    )
+                    return False
+                return True
+
+            elapsed = time.time() - started
+            if warn_after is not None and not warned and elapsed >= warn_after:
+                self.append_console_sig.emit(
+                    "%s: %s" % (_("Waiting for controller response before sending more G-code"), command),
+                    "warn"
+                )
+                warned = True
+
+            if timeout is not None and elapsed >= timeout:
+                self.append_console_sig.emit(
+                    "%s: %s" % (_("Controller response timeout; streaming stopped"), command),
+                    "error"
+                )
+                return False
+
+        return False
+
     def stream_worker(self):
         total = sum(len(item.get("lines", [])) for item in self.job_queue)
         sent = 0
+        stream_aborted = False
         for job_idx, item in enumerate(self.job_queue):
             if not self.is_streaming:
                 break
@@ -2100,6 +2596,11 @@ class ToolCNCControl(AppTool):
 
             lines = item.get("lines", [])
             transform_context = self.stream_transform_context(lines)
+            self.attach_auto_level_context(transform_context)
+            stream_lines = [
+                self.transform_stream_command(command, transform_context)
+                for command in lines
+            ]
             if transform_context.get("enabled"):
                 mode_labels = {
                     "top_left": _("Back-Left"),
@@ -2121,13 +2622,33 @@ class ToolCNCControl(AppTool):
                         ),
                         "info"
                     )
+            elif (
+                    transform_context.get("mode") == "absolute" and
+                    (float(transform_context.get("margin_x", 0.0) or 0.0) > 0 or
+                     float(transform_context.get("margin_y", 0.0) or 0.0) > 0)
+            ):
+                self.append_console_sig.emit(
+                    _("Job margins are visible in preview, but are not applied while Origin is 'Use G-code Absolute XY'."),
+                    "warn"
+                )
+            if transform_context.get("autolevel_enabled"):
+                height_map = transform_context.get("autolevel_map", {})
+                self.append_console_sig.emit(
+                    _("Auto level map is active: %d points.") % int(height_map.get("point_count", 0) or 0),
+                    "info"
+                )
 
             wcs_label, _p_num = self.selected_work_offset()
             self.ok_received.clear()
+            self.last_controller_ack = ""
             self.send_command(wcs_label, log=True)
-            self.ok_received.wait(timeout=2.0)
+            if not self.wait_for_stream_ack(wcs_label, timeout=15.0):
+                item["status"] = _("Stopped")
+                self.queue_update_sig.emit()
+                stream_aborted = True
+                break
 
-            for line_idx, command in enumerate(lines):
+            for line_idx, sent_command in enumerate(stream_lines):
                 if not self.is_streaming:
                     item["status"] = _("Stopped")
                     self.queue_update_sig.emit()
@@ -2138,17 +2659,26 @@ class ToolCNCControl(AppTool):
 
                 self.current_line_idx = line_idx
                 self.ok_received.clear()
-                sent_command = self.transform_stream_command(command, transform_context)
+                if not str(sent_command).strip():
+                    continue
+                self.last_controller_ack = ""
                 self.send_command(sent_command, log=True)
-                self.ok_received.wait(timeout=5.0)
+                if not self.wait_for_stream_ack(sent_command, timeout=None):
+                    item["status"] = _("Stopped")
+                    self.queue_update_sig.emit()
+                    stream_aborted = True
+                    break
                 sent += 1
                 self.update_progress_sig.emit((sent / total * 100.0) if total else 0.0, sent_command)
+
+            if stream_aborted:
+                break
 
             if self.is_streaming:
                 item["status"] = _("Done")
                 self.queue_update_sig.emit()
 
-        completed = self.is_streaming
+        completed = self.is_streaming and not stream_aborted
         self.is_streaming = False
         self.streaming_paused = False
         self.current_queue_idx = -1

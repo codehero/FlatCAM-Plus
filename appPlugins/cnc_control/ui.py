@@ -560,6 +560,7 @@ class CNCControlUI:
         self.content_lay.addLayout(probing_preview_row)
 
         probing_preview_row.addWidget(self.section_plugins["probing_work_offset"].build_panel(self), 1)
+        probing_preview_row.addWidget(self.section_plugins["auto_level"].build_panel(self), 1)
         probing_preview_row.addWidget(self.section_plugins["gcode_preview_verification"].build_panel(self), 2)
 
         self.content_lay.addWidget(self.section_plugins["terminal"].build_panel(self), 1)
@@ -615,6 +616,10 @@ class CNCControlUI:
         self.machine_spindle_max_value.setText(f"{profile.get('spindle_max', 0)} RPM")
         if hasattr(self, "probe_feed"):
             self.probe_feed.setValue(int(profile.get("probe_feed", 100)))
+        if hasattr(self, "autolevel_probe_feed"):
+            self.autolevel_probe_feed.setValue(int(profile.get("probe_feed", 100)))
+        if hasattr(self, "autolevel_safe_z"):
+            self.autolevel_safe_z.set_value(float(profile.get("safe_z", 5.0)))
         travel = (
             f"X{profile.get('travel_x', 0):.0f} "
             f"Y{profile.get('travel_y', 0):.0f} "
@@ -1351,6 +1356,7 @@ class CNCControlUI:
             self.spindle_override_set_btn, self.spindle_plus, self.spindle_minus, self.spindle_reset,
             self.spindle_rpm, self.spindle_set_btn, self.spindle_stop_btn, self.macro_laser,
             self.set_xy_zero_btn, self.set_z_zero_btn, self.set_xyz_zero_btn,
+            self.autolevel_probe_btn, self.autolevel_stop_btn,
             self.command_entry,
             self.files_refresh_btn, self.files_upload_btn, self.files_mkdir_btn,
             self.files_delete_btn, self.files_up_btn, self.files_root_btn
@@ -1362,7 +1368,8 @@ class CNCControlUI:
         offline_controls = [
             self.object_combo, self.refresh_jobs_btn, self.queue_add_btn, self.queue_remove_btn,
             self.queue_up_btn, self.queue_down_btn, self.preview_refresh_btn, self.preview_verify_btn,
-            self.queue_table, self.gcode_job_canvas, self.gcode_preview_text, self.gcode_warning_table
+            self.queue_table, self.gcode_job_canvas, self.gcode_preview_text, self.gcode_warning_table,
+            self.autolevel_enable_cb, self.autolevel_fit_btn, self.autolevel_clear_btn
         ]
         for control in offline_controls:
             if control is not None and hasattr(control, 'setEnabled'):

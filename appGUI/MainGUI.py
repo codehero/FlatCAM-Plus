@@ -2408,6 +2408,8 @@ class MainGUI(QtWidgets.QMainWindow):
 
         self.popmenu_numeric_move = self.popMenu.addAction(
             QtGui.QIcon(self.app.resource_location + '/move32_bis.png'), _("Num Move"))
+        self.popmenu_rotate = self.popMenu.addAction(
+            QtGui.QIcon(self.app.resource_location + '/rotate.png'), _("Rotate"))
         self.popmenu_move2origin = self.popMenu.addAction(
             QtGui.QIcon(self.app.resource_location + '/move2origin32.png'), _("Move Selection to Origin"))
         self.popmenu_move2origin.setToolTip(

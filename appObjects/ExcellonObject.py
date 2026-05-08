@@ -1269,6 +1269,45 @@ class ExcellonObject(FlatCAMObj, Excellon):
 
         return any(str(key).startswith('tools_drill_') for key in db_data)
 
+    @staticmethod
+    def _tools_db_drill_priority(db_data):
+        targeted_tool = db_data.get('tool_target')
+        target_id = ExcellonObject._tools_db_target_id(targeted_tool)
+
+        if target_id == 2:
+            return 0
+
+        if ExcellonObject._tools_db_has_drill_data(db_data) and target_id == 0:
+            return 1
+
+        return None
+
+    @staticmethod
+    def _tools_db_diameter_matches(orig_tooldia, db_tooldia, db_data):
+        if abs(orig_tooldia - db_tooldia) <= 1e-9:
+            return True
+
+        try:
+            low_limit = float(db_data.get('tol_min', db_tooldia))
+            high_limit = float(db_data.get('tol_max', db_tooldia))
+        except (TypeError, ValueError):
+            low_limit = db_tooldia
+            high_limit = db_tooldia
+
+        if low_limit > high_limit:
+            low_limit, high_limit = high_limit, low_limit
+
+        return high_limit >= orig_tooldia >= low_limit
+
+    def _tools_db_dia_list(self, diameters):
+        if not diameters:
+            return "-"
+
+        return ', '.join(
+            '%.*f' % (self.decimals, dia)
+            for dia in sorted(set(diameters))
+        )
+
     def on_load_tools_from_db_click(self, *args):
         filename = self.app.tools_database_path()
 
@@ -1297,6 +1336,9 @@ class ExcellonObject(FlatCAMObj, Excellon):
 
         new_tools_dict = deepcopy(self.tools)
         matched_tools = 0
+        unmatched_tooldias = []
+        db_drill_tooldias = []
+        matching_dias_wrong_target = []
 
         for orig_tool, orig_tool_val in self.tools.items():
             try:
@@ -1316,21 +1358,25 @@ class ExcellonObject(FlatCAMObj, Excellon):
                 if not isinstance(db_data, dict):
                     continue
 
-                targeted_tool = db_data.get('tool_target')
-                target_id = self._tools_db_target_id(targeted_tool)
-                is_legacy_drill_tool = targeted_tool is None and self._tools_db_has_drill_data(db_data)
-                if target_id != 2 and not is_legacy_drill_tool:
-                    continue
-
                 try:
                     db_tooldia = float(db_tool_val['tooldia'])
-                    low_limit = float(db_data['tol_min'])
-                    high_limit = float(db_data['tol_max'])
                 except (KeyError, TypeError, ValueError):
                     continue
 
-                if orig_tooldia == db_tooldia or high_limit >= orig_tooldia >= low_limit:
-                    tool_found.append(db_tool_val)
+                drill_priority = self._tools_db_drill_priority(db_data)
+                if drill_priority is None:
+                    if self._tools_db_diameter_matches(orig_tooldia, db_tooldia, db_data):
+                        matching_dias_wrong_target.append(db_tooldia)
+                    continue
+
+                db_drill_tooldias.append(db_tooldia)
+
+                if self._tools_db_diameter_matches(orig_tooldia, db_tooldia, db_data):
+                    tool_found.append((drill_priority, db_tool_val))
+
+            if tool_found:
+                best_priority = min(priority for priority, _ in tool_found)
+                tool_found = [tool for priority, tool in tool_found if priority == best_priority]
 
             if len(tool_found) > 1:
                 self.app.inform.emit(
@@ -1345,7 +1391,11 @@ class ExcellonObject(FlatCAMObj, Excellon):
                 matched_tools += 1
                 new_tools_dict[orig_tool]['tooldia'] = float(db_tool_val['tooldia'])
 
-                tool_data = new_tools_dict[orig_tool].setdefault('data', deepcopy(self.obj_options))
+                tool_data = new_tools_dict[orig_tool].get('data')
+                if not isinstance(tool_data, dict):
+                    tool_data = {}
+                    new_tools_dict[orig_tool]['data'] = tool_data
+
                 for option_name, option_value in db_data.items():
                     if option_name.find('tools_drill_') == 0:
                         tool_data[option_name] = deepcopy(option_value)
@@ -1353,9 +1403,18 @@ class ExcellonObject(FlatCAMObj, Excellon):
                         continue
                     else:
                         tool_data[option_name] = deepcopy(option_value)
+            else:
+                unmatched_tooldias.append(orig_tooldia)
 
         if matched_tools == 0:
-            self.app.inform.emit('[WARNING_NOTCL] %s' % _("No matching tools found in Tools Database."))
+            msg = _("No matching tools found in Tools Database.")
+            msg += '\n%s: %s' % (_("Excellon diameters"), self._tools_db_dia_list(unmatched_tooldias))
+            msg += '\n%s: %s' % (_("Drilling DB diameters"), self._tools_db_dia_list(db_drill_tooldias))
+            if matching_dias_wrong_target:
+                msg += '\n%s' % _(
+                    "Matching diameter exists in Tools Database, but it is not marked as Drilling."
+                )
+            self.app.inform.emit('[WARNING_NOTCL] %s' % msg)
             return
 
         self.tools = new_tools_dict

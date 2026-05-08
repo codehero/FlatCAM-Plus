@@ -67,6 +67,7 @@ class ToolIsolation(Gerber, AppTool):
 
         # store here the default data for Geometry Data
         self.default_data = {}
+        self.copper_mode_active = False
 
         self.obj_name = ""
         self.grb_obj = None
@@ -259,6 +260,7 @@ class ToolIsolation(Gerber, AppTool):
         self.ui.addtool_from_db_btn.clicked.connect(self.on_tool_add_from_db_clicked)
 
         self.ui.generate_iso_button.clicked.connect(self.on_iso_button_click)
+        self.ui.generate_iso_copper_button.clicked.connect(self.on_iso_copper_button_click)
         self.ui.reset_button.clicked.connect(self.set_tool_ui)
 
         # Select All/None when in Polygon Selection mode
@@ -439,6 +441,7 @@ class ToolIsolation(Gerber, AppTool):
 
         self.obj_name = ""
         self.grb_obj = None
+        self.copper_mode_active = False
 
         self.first_click = False
         self.cursor_pos = None
@@ -898,6 +901,7 @@ class ToolIsolation(Gerber, AppTool):
 
         if not sel_rows or len(sel_rows) == 0:
             self.ui.generate_iso_button.setDisabled(True)
+            self.ui.generate_iso_copper_button.setDisabled(True)
             self.ui.tool_data_label.setText(
                 "<b>%s: <font color='#0000FF'>%s</font></b>" % (_('Parameters for'), _("No Tool Selected"))
             )
@@ -905,6 +909,7 @@ class ToolIsolation(Gerber, AppTool):
             return
         else:
             self.ui.generate_iso_button.setDisabled(False)
+            self.ui.generate_iso_copper_button.setDisabled(False)
 
         for current_row in sel_rows:
             # populate the form with the data from the tool associated with the row parameter
@@ -1653,7 +1658,11 @@ class ToolIsolation(Gerber, AppTool):
 
         self.app.worker_task.emit({'fcn': buffer_task, 'params': [self.app]})
 
-    def on_iso_button_click(self):
+    def on_iso_copper_button_click(self, *_args):
+        self.on_iso_button_click(copper_mode=True)
+
+    def on_iso_button_click(self, copper_mode=False):
+        self.copper_mode_active = bool(copper_mode)
         use_validation = self.ui.valid_cb.get_value()
         # assume that the validation is OK
         self.validation_status = True
@@ -1674,12 +1683,13 @@ class ToolIsolation(Gerber, AppTool):
             self.find_safe_tooldia_multiprocessing()
 
         def worker_task(iso_class):
-            with iso_class.app.proc_container.new('%s ...' % _("Isolating")):
-                iso_class.isolate_handler(iso_class.grb_obj)
+            proc_msg = _("Copper isolating") if copper_mode else _("Isolating")
+            with iso_class.app.proc_container.new('%s ...' % proc_msg):
+                iso_class.isolate_handler(iso_class.grb_obj, copper_mode=copper_mode)
 
         self.app.worker_task.emit({'fcn': worker_task, 'params': [self]})
 
-    def isolate_handler(self, isolated_obj):
+    def isolate_handler(self, isolated_obj, copper_mode=False):
         """
         Creates a geometry object with paths around the gerber features.
 
@@ -1700,7 +1710,11 @@ class ToolIsolation(Gerber, AppTool):
 
         selection = self.ui.select_combo.get_value()
         if selection == 0:  # ALL
-            self.isolate(isolated_obj=isolated_obj, sel_tools=sel_tools, tools_storage=self.iso_tools)
+            if copper_mode:
+                self.isolate_with_copper(isolated_obj=isolated_obj, sel_tools=sel_tools,
+                                         tools_storage=self.iso_tools)
+            else:
+                self.isolate(isolated_obj=isolated_obj, sel_tools=sel_tools, tools_storage=self.iso_tools)
         elif selection == 1:  # Area Selection
             self.app.inform.emit('[WARNING_NOTCL] %s' % _("Click the start point of the area."))
 
@@ -1745,7 +1759,282 @@ class ToolIsolation(Gerber, AppTool):
             ref_obj = self.app.collection.get_by_name(self.ui.reference_combo.get_value())
             ref_geo = unary_union(ref_obj.solid_geometry)
             use_geo = unary_union(isolated_obj.solid_geometry).difference(ref_geo)
-            self.isolate(isolated_obj=isolated_obj, geometry=use_geo, sel_tools=sel_tools, tools_storage=self.iso_tools)
+            if copper_mode:
+                self.isolate_with_copper(isolated_obj=isolated_obj, geometry=use_geo, sel_tools=sel_tools,
+                                         tools_storage=self.iso_tools)
+            else:
+                self.isolate(isolated_obj=isolated_obj, geometry=use_geo, sel_tools=sel_tools,
+                             tools_storage=self.iso_tools)
+
+    @staticmethod
+    def _non_empty_flat_geometry(geometry):
+        flat_geo = flatten_shapely_geometry(geometry)
+        if flat_geo is None:
+            return []
+        if not isinstance(flat_geo, list):
+            flat_geo = [flat_geo]
+        return [geo for geo in flat_geo if geo is not None and not geo.is_empty]
+
+    @staticmethod
+    def _geometry_bounds(geometry):
+        flat_geo = ToolIsolation._non_empty_flat_geometry(geometry)
+        if not flat_geo:
+            return None
+
+        return (
+            min(geo.bounds[0] for geo in flat_geo),
+            min(geo.bounds[1] for geo in flat_geo),
+            max(geo.bounds[2] for geo in flat_geo),
+            max(geo.bounds[3] for geo in flat_geo)
+        )
+
+    @staticmethod
+    def _bounds_area(bounds):
+        if not bounds:
+            return 0.0
+        return max(0.0, bounds[2] - bounds[0]) * max(0.0, bounds[3] - bounds[1])
+
+    @staticmethod
+    def _spans_source_bounds(geo, bounds, tolerance=0.0):
+        if not bounds:
+            return False
+
+        sxmin, symin, sxmax, symax = bounds
+        gxmin, gymin, gxmax, gymax = geo.bounds
+        return (
+            gxmin <= sxmin + tolerance and
+            gymin <= symin + tolerance and
+            gxmax >= sxmax - tolerance and
+            gymax >= symax - tolerance
+        )
+
+    @staticmethod
+    def _geometry_area_ratio(geo):
+        bbox_area = ToolIsolation._bounds_area(geo.bounds)
+        if bbox_area <= 0:
+            return 0.0
+        return float(getattr(geo, "area", 0.0) or 0.0) / bbox_area
+
+    def _is_frame_like_geometry(self, geo, source_bounds, tolerance, area_ratio_limit=0.20):
+        if not self._spans_source_bounds(geo, source_bounds, tolerance):
+            return False
+        return self._geometry_area_ratio(geo) <= area_ratio_limit
+
+    def _is_copper_pour_geometry(self, geo, source_bounds):
+        if not isinstance(geo, Polygon) or not source_bounds:
+            return False
+
+        source_area = self._bounds_area(source_bounds)
+        if source_area <= 0:
+            return False
+
+        sxmin, symin, sxmax, symax = source_bounds
+        gxmin, gymin, gxmax, gymax = geo.bounds
+        source_w = max(0.0, sxmax - sxmin)
+        source_h = max(0.0, symax - symin)
+        geo_w = max(0.0, gxmax - gxmin)
+        geo_h = max(0.0, gymax - gymin)
+
+        area_ratio = float(geo.area or 0.0) / source_area
+        spans_board = source_w > 0 and source_h > 0 and geo_w >= source_w * 0.55 and geo_h >= source_h * 0.55
+        has_clearance_holes = len(getattr(geo, "interiors", [])) > 0
+
+        return (spans_board and area_ratio >= 0.15) or (has_clearance_holes and area_ratio >= 0.08)
+
+    def _split_copper_geometry(self, geometry, source_bounds, tolerance):
+        copper_pours = []
+        regular_geo = []
+        removed_frames = 0
+
+        for geo in self._non_empty_flat_geometry(geometry):
+            if self._is_frame_like_geometry(geo, source_bounds, tolerance):
+                removed_frames += 1
+                continue
+
+            if self._is_copper_pour_geometry(geo, source_bounds):
+                copper_pours.append(geo)
+            else:
+                regular_geo.append(geo)
+
+        return copper_pours, regular_geo, removed_frames
+
+    def _filter_copper_output_geometry(self, geometry, source_bounds, tolerance):
+        filtered_geo = []
+        removed_frames = 0
+
+        for geo in self._non_empty_flat_geometry(geometry):
+            if self._is_frame_like_geometry(geo, source_bounds, tolerance):
+                removed_frames += 1
+                continue
+            filtered_geo.append(geo)
+
+        return filtered_geo, removed_frames
+
+    def _generate_copper_envelope(self, isolated_obj, source_geometry, source_bounds, offset, mill_dir):
+        tolerance = max(abs(offset) * 2.0, 0.001)
+        copper_pours, regular_geo, removed_source_frames = self._split_copper_geometry(
+            source_geometry, source_bounds, tolerance
+        )
+
+        generated_geo = []
+        removed_output_frames = 0
+
+        if copper_pours:
+            pour_iso = self.generate_envelope(
+                isolated_obj, offset, mill_dir, geometry=copper_pours, env_iso_type=1
+            )
+            if pour_iso == 'fail':
+                return 'fail', removed_source_frames, removed_output_frames
+            filtered_geo, removed = self._filter_copper_output_geometry(
+                pour_iso, source_bounds, tolerance
+            )
+            removed_output_frames += removed
+            generated_geo.extend(filtered_geo)
+
+        if regular_geo:
+            regular_iso = self.generate_envelope(
+                isolated_obj, offset, mill_dir, geometry=regular_geo, env_iso_type=2
+            )
+            if regular_iso == 'fail':
+                return 'fail', removed_source_frames, removed_output_frames
+            filtered_geo, removed = self._filter_copper_output_geometry(
+                regular_iso, source_bounds, tolerance
+            )
+            removed_output_frames += removed
+            generated_geo.extend(filtered_geo)
+
+        return generated_geo, removed_source_frames, removed_output_frames
+
+    def isolate_with_copper(self, isolated_obj, sel_tools, tools_storage, geometry=None, limited_area=None,
+                            negative_dia=None, plot=True, **args):
+        """
+        Generate PCB copper-pour friendly isolation.
+
+        Large copper pours are isolated only on their interiors, so the outside board frame is not milled.
+        Regular pads/traces are isolated normally and frame-like outline paths are filtered.
+        """
+
+        use_iso_except = args['iso_except'] if 'iso_except' in args else self.ui.except_cb.get_value()
+        use_simplification = args['iso_simplification'] if 'iso_simplification' in args else \
+            self.ui.simplify_cb.get_value()
+        simplification_tol = args['simplification_tol'] if 'simplification_tol' in args else \
+            self.ui.sim_tol_entry.get_value()
+
+        work_geo = self._non_empty_flat_geometry(geometry if geometry is not None else isolated_obj.solid_geometry)
+        if not work_geo:
+            self.app.inform.emit('[ERROR_NOTCL] %s' % _("No geometry to isolate."))
+            return 'fail'
+
+        source_bounds = self._geometry_bounds(work_geo)
+        if not source_bounds:
+            self.app.inform.emit('[ERROR_NOTCL] %s' % _("No geometry to isolate."))
+            return 'fail'
+
+        total_source_frames = 0
+        total_output_frames = 0
+
+        for tool in sel_tools:
+            tool_data = tools_storage[tool]['data']
+
+            for key in tools_storage[tool]:
+                if key == 'data':
+                    tools_storage[tool][key]["tools_iso_isoexcept"] = use_iso_except
+                    tools_storage[tool][key]["tools_iso_simplification"] = use_simplification
+                    tools_storage[tool][key]["tools_iso_simplification_tol"] = simplification_tol
+                    tools_storage[tool][key]["tools_mill_job_type"] = 2
+                    tools_storage[tool][key]["tools_mill_tool_shape"] = self.ui.tool_shape_combo.get_value()
+                    tools_storage[tool][key]["tools_mill_cutz"] = self.ui.cutz_entry.get_value()
+                    tools_storage[tool][key]["tools_mill_vtipdia"] = self.ui.tipdia_entry.get_value()
+                    tools_storage[tool][key]["tools_mill_vtipangle"] = self.ui.tipangle_entry.get_value()
+                    tools_storage[tool][key]["tools_iso_passes"] = self.ui.passes_entry.get_value()
+                    tools_storage[tool][key]["tools_iso_overlap"] = self.ui.iso_overlap_entry.get_value()
+                    tools_storage[tool][key]["tools_iso_milling_type"] = self.ui.milling_type_radio.get_value()
+
+            passes = max(1, int(tool_data['tools_iso_passes']))
+            overlap = float(tool_data['tools_iso_overlap']) / 100.0
+            milling_type = tool_data['tools_iso_milling_type']
+            mill_dir = 0 if milling_type == 'cl' else 1
+            tool_dia = float(tools_storage[tool]['tooldia'])
+            outname = "%s_%.*f" % (isolated_obj.obj_options["name"], self.decimals, float(tool_dia))
+
+            for i in range(passes):
+                iso_offset = tool_dia * ((2 * i + 1) / 2.0000001) - (i * overlap * tool_dia)
+                if negative_dia:
+                    iso_offset = -iso_offset
+
+                iso_geo, removed_source, removed_output = self._generate_copper_envelope(
+                    isolated_obj, work_geo, source_bounds, iso_offset, mill_dir
+                )
+                total_source_frames += removed_source
+                total_output_frames += removed_output
+
+                if iso_geo == 'fail':
+                    self.app.inform.emit('[ERROR_NOTCL] %s' % _("Isolation geometry could not be generated."))
+                    continue
+
+                if use_iso_except:
+                    self.app.proc_container.update_view_text(' %s' % _("Subtracting Geo"))
+                    iso_geo = self.area_subtraction(iso_geo)
+
+                if limited_area:
+                    self.app.proc_container.update_view_text(' %s' % _("Intersecting Geo"))
+                    iso_geo = self.area_intersection(iso_geo, intersection_geo=limited_area)
+
+                new_solid_geo = self._non_empty_flat_geometry(iso_geo)
+                if use_simplification:
+                    new_solid_geo = [
+                        geo.simplify(tolerance=simplification_tol) for geo in new_solid_geo if not geo.is_empty
+                    ]
+
+                new_solid_geo = [geo for geo in new_solid_geo if geo is not None and not geo.is_empty]
+                if not new_solid_geo:
+                    self.app.inform.emit('[ERROR_NOTCL] %s' % _("Empty Geometry."))
+                    continue
+
+                if passes > 1:
+                    iso_name = outname + "_copper_iso" + str(i + 1)
+                else:
+                    iso_name = outname + "_copper_iso"
+
+                tool_data_for_obj = deepcopy(tool_data)
+                tool_data_for_obj.update({
+                    "name": iso_name,
+                    "tools_mill_tooldia": float(tool_dia),
+                })
+
+                def iso_init(geo_obj, fc_obj, solid_geo=deepcopy(new_solid_geo), dia=tool_dia,
+                             obj_tool_data=deepcopy(tool_data_for_obj)):
+                    geo_obj.obj_options["tools_mill_tooldia"] = str(dia)
+                    geo_obj.solid_geometry = self._non_empty_flat_geometry(solid_geo)
+                    geo_obj.tools = {
+                        1: {
+                            'tooldia': float(dia),
+                            'data': deepcopy(obj_tool_data),
+                            'solid_geometry': self._non_empty_flat_geometry(geo_obj.solid_geometry)
+                        }
+                    }
+                    geo_obj.multigeo = True
+
+                    if not geo_obj.solid_geometry:
+                        fc_obj.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Empty Geometry in"),
+                                                                     geo_obj.obj_options["name"]))
+                        return 'fail'
+
+                    msg = '[success] %s: %s' % (_("Copper isolation geometry created"),
+                                                geo_obj.obj_options["name"])
+                    fc_obj.inform.emit(msg)
+
+                a_select = True if self.validation_status else False
+                self.app.app_obj.new_object("geometry", iso_name, iso_init, plot=plot, autoselected=a_select)
+
+        if total_source_frames or total_output_frames:
+            self.app.inform.emit(
+                '[success] %s: %d / %d' % (
+                    _("Copper mode filtered frame paths"),
+                    total_source_frames,
+                    total_output_frames
+                )
+            )
 
     def isolate(self, isolated_obj, sel_tools, tools_storage, geometry=None, limited_area=None, negative_dia=None,
                 plot=True, **args):
@@ -2567,11 +2856,19 @@ class ToolIsolation(Gerber, AppTool):
                 poly_list = deepcopy(list(self.poly_dict.values()))
                 if self.ui.poly_int_cb.get_value() is True:
                     # isolate the interior polygons with a negative tool
-                    self.isolate(isolated_obj=self.grb_obj, geometry=poly_list, negative_dia=True, sel_tools=sel_tools,
-                                 tools_storage=self.iso_tools)
+                    if getattr(self, "copper_mode_active", False):
+                        self.isolate_with_copper(isolated_obj=self.grb_obj, geometry=poly_list, negative_dia=True,
+                                                 sel_tools=sel_tools, tools_storage=self.iso_tools)
+                    else:
+                        self.isolate(isolated_obj=self.grb_obj, geometry=poly_list, negative_dia=True,
+                                     sel_tools=sel_tools, tools_storage=self.iso_tools)
                 else:
-                    self.isolate(isolated_obj=self.grb_obj, geometry=poly_list, sel_tools=sel_tools,
-                                 tools_storage=self.iso_tools)
+                    if getattr(self, "copper_mode_active", False):
+                        self.isolate_with_copper(isolated_obj=self.grb_obj, geometry=poly_list, sel_tools=sel_tools,
+                                                 tools_storage=self.iso_tools)
+                    else:
+                        self.isolate(isolated_obj=self.grb_obj, geometry=poly_list, sel_tools=sel_tools,
+                                     tools_storage=self.iso_tools)
                 self.poly_dict.clear()
             else:
                 self.app.inform.emit('[ERROR_NOTCL] %s' % _("List of single polygons is empty. Aborting."))
@@ -2808,8 +3105,12 @@ class ToolIsolation(Gerber, AppTool):
                 return 'fail'
 
             self.sel_rect = unary_union(self.sel_rect)
-            self.isolate(isolated_obj=self.grb_obj, limited_area=self.sel_rect, sel_tools=sel_tools,
-                         tools_storage=self.iso_tools, plot=True)
+            if getattr(self, "copper_mode_active", False):
+                self.isolate_with_copper(isolated_obj=self.grb_obj, limited_area=self.sel_rect, sel_tools=sel_tools,
+                                         tools_storage=self.iso_tools, plot=True)
+            else:
+                self.isolate(isolated_obj=self.grb_obj, limited_area=self.sel_rect, sel_tools=sel_tools,
+                             tools_storage=self.iso_tools, plot=True)
             self.sel_rect = []
 
     # called on mouse move
@@ -3938,8 +4239,11 @@ class IsoUI:
         # #############################################################################################################
         # Generate Geometry object
         # #############################################################################################################
+        gen_vlay = QtWidgets.QVBoxLayout()
+        self.tools_box.addLayout(gen_vlay)
+
         gen_hlay = QtWidgets.QHBoxLayout()
-        self.tools_box.addLayout(gen_hlay)
+        gen_vlay.addLayout(gen_hlay)
 
         self.generate_iso_button = FCButton("%s" % _("Generate Geometry"), bold=True)
         self.generate_iso_button.setIcon(QtGui.QIcon(self.app.resource_location + '/geometry32.png'))
@@ -3955,6 +4259,14 @@ class IsoUI:
               "diameter above.")
         )
         gen_hlay.addWidget(self.generate_iso_button, stretch=1)
+
+        self.generate_iso_copper_button = FCButton("%s" % _("Generate With Copper"), bold=True)
+        self.generate_iso_copper_button.setIcon(QtGui.QIcon(self.app.resource_location + '/copperfill32.png'))
+        self.generate_iso_copper_button.setToolTip(
+            _("Create isolation geometry for copper-pour PCBs.\n"
+              "It uses the selected tool and skips frame-like outer copper paths.")
+        )
+        gen_vlay.addWidget(self.generate_iso_copper_button)
 
         # Milling Plugin shortcut
         self.milling_button = QtWidgets.QToolButton()

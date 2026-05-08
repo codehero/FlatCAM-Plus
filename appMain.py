@@ -1015,6 +1015,7 @@ class App(QtCore.QObject):
         self.follow_tool = None
         self.drilling_tool = None
         self.milling_tool = None
+        self.levelling_tool = None
         self.cnc_preview_3d_tool = None
         self.image_tool = None
         self.copper_thieving_tool = None
@@ -1109,6 +1110,7 @@ class App(QtCore.QObject):
         self.f_handlers = appIO(app=self)
         self.edit_class = appEditor(app=self)
         self.cnc_control_tool = ToolCNCControl(self)
+        self.levelling_tool = self.cnc_control_tool
         self.cnc_preview_3d_tool = ToolCNCPreview3D(self)
         self.ai_assistant_tool = ToolAIAssistant(self)
 
@@ -1677,6 +1679,7 @@ class App(QtCore.QObject):
 
 
         self.cnc_control_tool = ToolCNCControl(self)
+        self.levelling_tool = self.cnc_control_tool
         self.cnc_control_tool.install(icon=QtGui.QIcon(self.resource_location + '/cnc32.png'),
                                       pos=self.ui.menu_plugins, separator=True)
 
@@ -1979,6 +1982,7 @@ class App(QtCore.QObject):
         self.ui.popmenu_edit.triggered.connect(self.on_editing_start)
         self.ui.popmenu_save.triggered.connect(lambda: self.on_editing_finished())
         self.ui.popmenu_numeric_move.triggered.connect(lambda: self.on_numeric_move())
+        self.ui.popmenu_rotate.triggered.connect(self.on_rotate)
         self.ui.popmenu_move.triggered.connect(self.obj_move)
         self.ui.popmenu_move2origin.triggered.connect(self.on_move2origin)
 
@@ -5793,6 +5797,7 @@ class App(QtCore.QObject):
                 self.ui.popmenu_edit.setDisabled(False)
 
                 self.ui.popmenu_numeric_move.setDisabled(False)
+                self.ui.popmenu_rotate.setDisabled(False)
                 self.ui.popmenu_move2origin.setDisabled(False)
                 self.ui.popmenu_move.setDisabled(False)
                 for obj in sel_obj_list:
@@ -5805,6 +5810,7 @@ class App(QtCore.QObject):
                 self.ui.popmenu_edit.setDisabled(True)
 
                 self.ui.popmenu_numeric_move.setDisabled(True)
+                self.ui.popmenu_rotate.setDisabled(True)
                 self.ui.popmenu_move2origin.setDisabled(True)
                 self.ui.popmenu_move.setDisabled(True)
 
