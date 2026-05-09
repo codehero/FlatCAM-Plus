@@ -16,11 +16,69 @@ import vispy.scene as scene
 from vispy.scene.cameras.base_camera import BaseCamera
 # from vispy.scene.widgets import Widget as VisPyWidget
 from vispy.color import Color
+from vispy.visuals.shaders import Function
 
 import time
 
 white = Color("#ffffff")
 black = Color("#000000")
+
+
+_DOTTED_GRID_COLOR = """
+uniform vec4 u_gridlines_bounds;
+uniform float u_border_width;
+
+vec4 grid_color(vec2 pos) {
+    vec4 px_pos = $map_to_doc(vec4(pos, 0, 1));
+    px_pos /= px_pos.w;
+
+    // Compute vectors representing width, height of pixel in local coords.
+    vec4 local_pos = $map_doc_to_local(px_pos);
+    vec4 dx = $map_doc_to_local(px_pos + vec4(1.0, 0, 0, 0));
+    vec4 dy = $map_doc_to_local(px_pos + vec4(0, 1.0, 0, 0));
+    local_pos /= local_pos.w;
+    dx = dx / dx.w - local_pos;
+    dy = dy / dy.w - local_pos;
+
+    vec2 px = vec2(abs(dx.x) + abs(dy.x), abs(dx.y) + abs(dy.y));
+    float log10 = log(10.0);
+    float sx = pow(10.0, floor(log(px.x) / log10) + 1.) * $scale.x;
+    float sy = pow(10.0, floor(log(px.y) / log10) + 1.) * $scale.y;
+
+    float step_x = 5.0 * sx;
+    float step_y = 5.0 * sy;
+    if (step_x / px.x < 14.0) {
+        step_x = 10.0 * sx;
+    }
+    if (step_y / px.y < 14.0) {
+        step_y = 10.0 * sy;
+    }
+
+    vec2 grid_step = vec2(step_x, step_y);
+    vec2 cell_pos = mod(local_pos.xy + 0.5 * grid_step, grid_step) - 0.5 * grid_step;
+    vec2 dot_pos_px = vec2(cell_pos.x / px.x, cell_pos.y / px.y);
+    float dot_distance = length(dot_pos_px);
+    float alpha = 1.0 - smoothstep(1.15, 1.95, dot_distance);
+
+    if (alpha <= 0.0) {
+        discard;
+    }
+
+    if (any(lessThan(local_pos.xy + u_border_width / 2, u_gridlines_bounds.xz)) ||
+        any(greaterThan(local_pos.xy - u_border_width / 2, u_gridlines_bounds.yw))) {
+        discard;
+    }
+
+    return vec4($color.rgb, $color.a * alpha * 0.42);
+}
+"""
+
+
+def apply_dotted_grid_shader(grid, color, scale=(1, 1)):
+    grid._grid_color_fn = Function(_DOTTED_GRID_COLOR)
+    grid._grid_color_fn['color'] = Color(color).rgba
+    grid._grid_color_fn['scale'] = scale
+    grid.shared_program.frag['get_data'] = grid._grid_color_fn
 
 
 class VisPyCanvas(scene.SceneCanvas):
@@ -65,26 +123,48 @@ class VisPyCanvas(scene.SceneCanvas):
         self.central_widget.bgcolor = back_color
         self.central_widget.border_color = back_color
 
-        self.grid_widget = self.central_widget.add_grid(margin=10)
+        self.ruler_margin = 10
+        self.ruler_height = 28
+        self.ruler_width = 55
+        ruler_bg = Color('#f3f4f6') if (theme == 'default' or theme == 'light') and not dark_canvas else Color('#2f3338')
+        ruler_border = Color('#c9cdd3') if (theme == 'default' or theme == 'light') and not dark_canvas else Color('#555b63')
+
+        self.grid_widget = self.central_widget.add_grid(margin=self.ruler_margin)
         self.grid_widget.spacing = 0
 
-        top_padding = self.grid_widget.add_widget(row=0, col=0, col_span=2)
-        top_padding.height_max = 0
+        self.ruler_corner = self.grid_widget.add_widget(row=0, col=0)
+        self.ruler_corner.bgcolor = ruler_bg
+        self.ruler_corner.border_color = ruler_border
+        self.ruler_corner.height_min = self.ruler_height
+        self.ruler_corner.height_max = self.ruler_height
+        self.ruler_corner.width_min = self.ruler_width
+        self.ruler_corner.width_max = self.ruler_width
+
+        self.xaxis = scene.AxisWidget(
+            orientation='top', axis_color=tick_color, text_color=tick_color, font_size=a_fsize, axis_width=1,
+            anchors=['center', 'top']
+        )
+        self.xaxis.bgcolor = ruler_bg
+        self.xaxis.border_color = ruler_border
+        self.xaxis.height_min = self.ruler_height
+        self.xaxis.height_max = self.ruler_height
+        self.xaxis.axis.major_tick_length = 8
+        self.xaxis.axis.minor_tick_length = 4
+        self.xaxis.axis.tick_label_margin = 4
+        self.grid_widget.add_widget(self.xaxis, row=0, col=1)
 
         self.yaxis = scene.AxisWidget(
             orientation='left', axis_color=tick_color, text_color=tick_color, font_size=a_fsize, axis_width=1
         )
-        self.yaxis.width_max = 55
+        self.yaxis.bgcolor = ruler_bg
+        self.yaxis.border_color = ruler_border
+        self.yaxis.width_min = self.ruler_width
+        self.yaxis.width_max = self.ruler_width
+        self.yaxis.axis.major_tick_length = 8
+        self.yaxis.axis.minor_tick_length = 4
+        self.yaxis.axis.tick_label_margin = 4
         self.yaxis.axis._text.rotation = 45
         self.grid_widget.add_widget(self.yaxis, row=1, col=0)
-
-        self.xaxis = scene.AxisWidget(
-            orientation='bottom', axis_color=tick_color, text_color=tick_color, font_size=a_fsize, axis_width=1,
-            anchors=['center', 'bottom']
-        )
-        self.xaxis.height_min = 5
-        self.xaxis.height_max = 35
-        self.grid_widget.add_widget(self.xaxis, row=2, col=1)
 
         right_padding = self.grid_widget.add_widget(row=0, col=2, row_span=2)
         # right_padding.width_max = 24
@@ -117,14 +197,39 @@ class VisPyCanvas(scene.SceneCanvas):
         self.view = view
         if (theme == 'default' or theme == 'light') and not dark_canvas:
             self.grid = scene.GridLines(parent=self.view.scene, color='dimgray')
+            apply_dotted_grid_shader(self.grid, 'dimgray')
         else:
             self.grid = scene.GridLines(parent=self.view.scene, color='#dededeff')
+            apply_dotted_grid_shader(self.grid, '#dededeff')
 
         self.grid.set_gl_state(depth_test=False)
 
         self.freeze()
 
         # self.measure_fps()
+
+    def set_rulers_visible(self, visible=True):
+        """
+        Show or collapse the Photoshop-style top/left ruler widgets.
+        """
+
+        height = self.ruler_height if visible else 0
+        width = self.ruler_width if visible else 0
+
+        self.xaxis.height_min = height
+        self.xaxis.height_max = height
+        self.yaxis.width_min = width
+        self.yaxis.width_max = width
+        self.ruler_corner.height_min = height
+        self.ruler_corner.height_max = height
+        self.ruler_corner.width_min = width
+        self.ruler_corner.width_max = width
+
+        self.xaxis.visible = visible
+        self.yaxis.visible = visible
+        self.ruler_corner.visible = visible
+        self.grid_widget._update_child_widget_dim()
+        self.update()
 
     def translate_coords(self, pos):
         """

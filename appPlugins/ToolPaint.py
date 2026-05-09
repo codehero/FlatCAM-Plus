@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Modified: Marius Adrian Stanciu (c)                 #
 # Date: 3/10/2019                                          #
@@ -138,7 +138,7 @@ class ToolPaint(Gerber, AppTool):
 
     def on_type_obj_changed(self, val):
         obj_type = 0 if val == 'gerber' else 2
-        self.ui.obj_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.obj_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.obj_combo.setCurrentIndex(0)
         self.ui.obj_combo.obj_type = {"gerber": "Gerber", "geometry": "Geometry"}[val]
 
@@ -152,7 +152,7 @@ class ToolPaint(Gerber, AppTool):
 
     def on_reference_combo_changed(self):
         obj_type = self.ui.reference_type_combo.currentIndex()
-        self.ui.reference_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.reference_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.reference_combo.setCurrentIndex(0)
         self.ui.reference_combo.obj_type = {0: "Gerber", 1: "Excellon", 2: "Geometry"}[obj_type]
 
@@ -2883,7 +2883,7 @@ class ToolPaint(Gerber, AppTool):
         self.app.tools_db_tab.ui.cancel_tool_from_db.show()
 
     def reset_fields(self):
-        self.ui.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class PaintUI:
@@ -2966,7 +2966,7 @@ class PaintUI:
         # #############################################################################################################
         self.obj_combo = FCComboBox()
         self.obj_combo.setModel(self.app.collection)
-        self.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.obj_combo.is_last = False
 
         obj_grid.addWidget(self.obj_combo, 2, 0, 1, 2)
@@ -3297,7 +3297,7 @@ class PaintUI:
         # Reference Object
         self.reference_combo = FCComboBox()
         self.reference_combo.setModel(self.app.collection)
-        self.reference_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.reference_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.reference_combo.is_last = True
 
         gen_grid.addWidget(self.reference_combo, 8, 0, 1, 2)

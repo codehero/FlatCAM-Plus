@@ -193,6 +193,18 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         if self.fcapp.options['global_axis'] is True:
             self.on_toggle_axis(state=True, silent=True)
 
+        self.rulers_enabled = self.fcapp.options.get('global_rulers', True)
+        self.ruler_guide_color = Color('#1d8cffcc').rgba
+        self.ruler_preview_color = Color('#1d8cff99').rgba
+        self.ruler_guide_lines = []
+        self.ruler_preview_line = None
+        self.ruler_drag_orientation = None
+        self.ruler_active_guide = None
+        self.ruler_guide_drag_offset = 0.0
+        self.ruler_cursor_active = False
+        self.ruler_suppress_mouse = False
+        self.set_rulers_visible(self.rulers_enabled)
+
         # enable Grid lines
         self.grid_lines_enabled = True
 
@@ -219,6 +231,9 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         self.fit_view()
 
         self.graph_event_connect('mouse_wheel', self.on_mouse_scroll)
+        self.graph_event_connect('mouse_press', self.on_ruler_mouse_press)
+        self.graph_event_connect('mouse_move', self.on_ruler_mouse_move)
+        self.graph_event_connect('mouse_release', self.on_ruler_mouse_release)
 
         # <QtCore.QObject>
         # self.container.addWidget(self.native)
@@ -233,6 +248,238 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         g_color = int(color[2:4], 16) / 255
         b_color = int(color[4:6], 16) / 255
         return r_color, g_color, b_color
+
+    def _ruler_hit_area(self, event_pos):
+        if not self.rulers_enabled or event_pos is None:
+            return None
+
+        x, y = float(event_pos[0]), float(event_pos[1])
+        left_width = self.ruler_margin + self.ruler_width
+        top_height = self.ruler_margin + self.ruler_height
+        width, height = self.size
+
+        if self.ruler_margin <= y <= top_height and left_width <= x <= width - self.ruler_margin:
+            return 'horizontal'
+
+        if self.ruler_margin <= x <= left_width and top_height <= y <= height - self.ruler_margin:
+            return 'vertical'
+
+        return None
+
+    def _ruler_pos_in_plot_area(self, event_pos):
+        if event_pos is None:
+            return False
+
+        x, y = float(event_pos[0]), float(event_pos[1])
+        width, height = self.size
+        return (
+            x >= self.ruler_margin + self.ruler_width and
+            y >= self.ruler_margin + self.ruler_height and
+            x <= width - self.ruler_margin and
+            y <= height - self.ruler_margin
+        )
+
+    def _ruler_canvas_to_world(self, event_pos):
+        pos = self.translate_coords(np.asarray(event_pos, dtype=float))
+        return float(pos[0]), float(pos[1])
+
+    def _ruler_hit_tolerance(self, event_pos):
+        x, y = float(event_pos[0]), float(event_pos[1])
+        world_x, world_y = self._ruler_canvas_to_world((x, y))
+        world_x_delta, _ = self._ruler_canvas_to_world((x + 6, y))
+        _, world_y_delta = self._ruler_canvas_to_world((x, y + 6))
+        return abs(world_x_delta - world_x), abs(world_y_delta - world_y)
+
+    def _ruler_guide_at(self, event_pos):
+        if event_pos is None:
+            return None
+
+        try:
+            world_x, world_y = self._ruler_canvas_to_world(event_pos)
+            tol_x, tol_y = self._ruler_hit_tolerance(event_pos)
+        except Exception:
+            return None
+
+        for guide in reversed(self.ruler_guide_lines):
+            if guide['orientation'] == 'vertical' and abs(world_x - guide['value']) <= tol_x:
+                return guide
+            if guide['orientation'] == 'horizontal' and abs(world_y - guide['value']) <= tol_y:
+                return guide
+
+        return None
+
+    def is_ruler_event(self, event):
+        if self.ruler_suppress_mouse:
+            if getattr(event, 'type', None) == 'mouse_release':
+                self.ruler_suppress_mouse = False
+            return True
+
+        if self.ruler_drag_orientation is not None or self.ruler_active_guide is not None:
+            return True
+
+        event_pos = getattr(event, 'pos', None)
+        if self._ruler_guide_at(event_pos) is not None:
+            return True
+
+        return self._ruler_hit_area(event_pos) is not None
+
+    def _set_ruler_cursor(self, orientation=None):
+        if orientation == 'vertical':
+            self.native.setCursor(QtCore.Qt.CursorShape.SizeHorCursor)
+            self.ruler_cursor_active = True
+        elif orientation == 'horizontal':
+            self.native.setCursor(QtCore.Qt.CursorShape.SizeVerCursor)
+            self.ruler_cursor_active = True
+        elif self.ruler_cursor_active:
+            self.native.unsetCursor()
+            self.ruler_cursor_active = False
+
+    def _update_ruler_preview(self, event_pos):
+        x, y = self._ruler_canvas_to_world(event_pos)
+        vertical = self.ruler_drag_orientation == 'vertical'
+        guide_pos = x if vertical else y
+
+        if self.ruler_preview_line is None:
+            self.ruler_preview_line = InfiniteLine(
+                pos=guide_pos, color=self.ruler_preview_color, vertical=vertical,
+                line_width=1.0, parent=self.view.scene
+            )
+            self.ruler_preview_line.set_gl_state(depth_test=False)
+        else:
+            self.ruler_preview_line.set_data(pos=guide_pos, color=self.ruler_preview_color)
+
+        self.view.scene.update()
+
+    def _clear_ruler_preview(self):
+        if self.ruler_preview_line is not None:
+            self.ruler_preview_line.parent = None
+            self.ruler_preview_line = None
+
+    def add_ruler_guide(self, orientation, value):
+        vertical = orientation == 'vertical'
+        line = InfiniteLine(
+            pos=value, color=self.ruler_guide_color, vertical=vertical,
+            line_width=1.0, parent=self.view.scene
+        )
+        line.set_gl_state(depth_test=False)
+        guide = {
+            'line': line,
+            'orientation': orientation,
+            'value': value
+        }
+        self.ruler_guide_lines.append(guide)
+        self.view.scene.update()
+        return guide
+
+    def _set_ruler_guide_value(self, guide, value):
+        guide['value'] = value
+        guide['line'].set_data(pos=value, color=self.ruler_guide_color)
+        self.view.scene.update()
+
+    def remove_ruler_guide(self, guide):
+        try:
+            guide['line'].parent = None
+            self.ruler_guide_lines.remove(guide)
+        except (ValueError, KeyError, TypeError):
+            pass
+        self.view.scene.update()
+
+    def on_toggle_rulers(self, signal=None, state=None, silent=None):
+        if state is None:
+            state = not self.rulers_enabled
+
+        self.rulers_enabled = bool(state)
+        self.fcapp.options['global_rulers'] = self.rulers_enabled
+        self.set_rulers_visible(self.rulers_enabled)
+
+        if hasattr(self.fcapp.ui, 'ruler_btn'):
+            self.fcapp.ui.ruler_btn.setChecked(self.rulers_enabled)
+        if hasattr(self.fcapp.ui, 'menuview_toggle_rulers'):
+            self.fcapp.ui.menuview_toggle_rulers.setChecked(self.rulers_enabled)
+
+        if not self.rulers_enabled:
+            self.ruler_drag_orientation = None
+            self._clear_ruler_preview()
+            self._set_ruler_cursor(None)
+
+        if silent is None:
+            msg = _("Rulers enabled.") if self.rulers_enabled else _("Rulers disabled.")
+            self.fcapp.inform[str, bool].emit(msg, False)
+
+    def on_ruler_mouse_press(self, event):
+        guide = self._ruler_guide_at(event.pos)
+        if guide is not None:
+            if event.button in [2, 3]:
+                self.remove_ruler_guide(guide)
+                self.ruler_suppress_mouse = True
+                event.handled = True
+                return
+
+            if event.button == 1:
+                x, y = self._ruler_canvas_to_world(event.pos)
+                self.ruler_active_guide = guide
+                guide_value = x if guide['orientation'] == 'vertical' else y
+                self.ruler_guide_drag_offset = guide['value'] - guide_value
+                self._set_ruler_cursor(guide['orientation'])
+                event.handled = True
+                return
+
+        if event.button != 1:
+            return
+
+        orientation = self._ruler_hit_area(event.pos)
+        if orientation is None:
+            return
+
+        self.ruler_drag_orientation = orientation
+        self.ruler_suppress_mouse = False
+        self._set_ruler_cursor(orientation)
+        self._update_ruler_preview(event.pos)
+        event.handled = True
+
+    def on_ruler_mouse_move(self, event):
+        if self.ruler_active_guide is not None:
+            x, y = self._ruler_canvas_to_world(event.pos)
+            value = x if self.ruler_active_guide['orientation'] == 'vertical' else y
+            self._set_ruler_cursor(self.ruler_active_guide['orientation'])
+            self._set_ruler_guide_value(self.ruler_active_guide, value + self.ruler_guide_drag_offset)
+            event.handled = True
+            return
+
+        if self.ruler_drag_orientation is not None:
+            self._set_ruler_cursor(self.ruler_drag_orientation)
+            self._update_ruler_preview(event.pos)
+            event.handled = True
+            return
+
+        guide = self._ruler_guide_at(event.pos)
+        self._set_ruler_cursor(guide['orientation'] if guide is not None else self._ruler_hit_area(event.pos))
+
+    def on_ruler_mouse_release(self, event):
+        if self.ruler_active_guide is not None:
+            if not self._ruler_pos_in_plot_area(event.pos):
+                self.remove_ruler_guide(self.ruler_active_guide)
+
+            self.ruler_active_guide = None
+            self.ruler_guide_drag_offset = 0.0
+            self.ruler_suppress_mouse = True
+            self._set_ruler_cursor(None)
+            event.handled = True
+            return
+
+        if self.ruler_drag_orientation is None:
+            return
+
+        orientation = self.ruler_drag_orientation
+        if self._ruler_pos_in_plot_area(event.pos):
+            x, y = self._ruler_canvas_to_world(event.pos)
+            self.add_ruler_guide(orientation, x if orientation == 'vertical' else y)
+
+        self.ruler_drag_orientation = None
+        self.ruler_suppress_mouse = True
+        self._clear_ruler_preview()
+        self._set_ruler_cursor(None)
+        event.handled = True
 
     def on_toggle_axis(self, signal=None, state=None, silent=None):
         if not state:
@@ -412,7 +659,7 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
             self.fcapp.options['global_grid_lines'] = False
             self.grid_lines_enabled = True
             # self.grid.parent = None
-            self.grid._grid_color_fn['color'] = Color('#FFFFFFFF').rgba
+            self.grid._grid_color_fn['color'] = Color('#FFFFFF00').rgba
             if silent is None:
                 self.fcapp.inform[str, bool].emit(_("Grid disabled."), False)
 

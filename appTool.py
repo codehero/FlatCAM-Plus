@@ -95,11 +95,18 @@ class AppTool(QtWidgets.QWidget):
         self.app.ui.plugin_scroll_area.setWidget(self)
         apply_modern_sidebar_style(self.app.ui.plugin_scroll_area, self.app)
 
-        # Switch notebook to tool page
-        self.app.ui.notebook.setCurrentWidget(self.app.ui.plugin_tab)
+        # Switch/open tool page in the plot tab area.
+        if hasattr(self.app.ui, "ensure_plugin_tab_visible"):
+            self.app.ui.ensure_plugin_tab_visible(title=self.pluginName)
+        else:
+            self.app.ui.notebook.setCurrentWidget(self.app.ui.plugin_tab)
 
         # Set the tool name as the widget object name
         self.app.ui.plugin_scroll_area.widget().setObjectName(self.pluginName)
+        if hasattr(self.app.ui, "plot_tab_area"):
+            idx = self.app.ui.plot_tab_area.indexOf(self.app.ui.plugin_tab)
+            if idx >= 0:
+                self.app.ui.plot_tab_area.setTabText(idx, self.pluginName)
         apply_modern_panel_style(self, self.app)
 
         self.show()

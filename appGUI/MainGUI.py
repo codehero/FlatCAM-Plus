@@ -95,14 +95,15 @@ class MainGUI(QtWidgets.QMainWindow):
         if self.app.options['global_theme'] in ['default', 'light']:
             return """
                 QToolBar {
-                    background: #ffffff;
+                    background: transparent;
                     color: #263244;
                     border: 0px;
                     border-radius: 0px;
-                    padding: 4px 2px;
+                    padding: 3px 4px;
                     spacing: 2px;
                     margin: 0px;
                     font-weight: 600;
+                    min-height: 38px;
                 }
                 QToolBar::handle:horizontal {
                     width: 0px;
@@ -127,8 +128,9 @@ class MainGUI(QtWidgets.QMainWindow):
                     background: transparent;
                     color: #263244;
                     border: 1px solid transparent;
-                    border-radius: 5px;
-                    padding: 5px 7px;
+                    border-radius: 6px;
+                    padding: 6px 8px;
+                    min-height: 28px;
                 }
                 QToolBar QToolButton:hover,
                 QToolBar QToolButton::menu-button:hover {
@@ -145,7 +147,7 @@ class MainGUI(QtWidgets.QMainWindow):
                     color: #a8b2c1;
                 }
                 QToolBar QToolButton[popupButton="true"] {
-                    padding: 5px 18px 5px 7px;
+                    padding: 6px 19px 6px 8px;
                     min-width: 38px;
                 }
                 QToolBar QToolButton::menu-indicator,
@@ -177,14 +179,15 @@ class MainGUI(QtWidgets.QMainWindow):
 
         return """
             QToolBar {
-                background: #262626;
+                background: transparent;
                 color: #ffffff;
                 border: 0px;
                 border-radius: 0px;
-                padding: 4px 2px;
+                padding: 3px 4px;
                 spacing: 2px;
                 margin: 0px;
                 font-weight: 600;
+                min-height: 38px;
             }
             QToolBar::handle:horizontal {
                 width: 0px;
@@ -209,8 +212,9 @@ class MainGUI(QtWidgets.QMainWindow):
                 background: transparent;
                 color: #ffffff;
                 border: 1px solid transparent;
-                border-radius: 5px;
-                padding: 5px 7px;
+                border-radius: 6px;
+                padding: 6px 8px;
+                min-height: 28px;
             }
             QToolBar QToolButton:hover,
             QToolBar QToolButton::menu-button:hover {
@@ -227,7 +231,7 @@ class MainGUI(QtWidgets.QMainWindow):
                 color: #777777;
             }
             QToolBar QToolButton[popupButton="true"] {
-                padding: 5px 18px 5px 7px;
+                padding: 6px 19px 6px 8px;
                 min-width: 38px;
             }
             QToolBar QToolButton::menu-indicator,
@@ -321,6 +325,124 @@ class MainGUI(QtWidgets.QMainWindow):
             }
         """
 
+    def main_menu_style_sheet(self):
+        if self.app.options['global_theme'] in ['default', 'light']:
+            return """
+                QMenu {
+                    background: #ffffff;
+                    color: #263244;
+                    border: 1px solid #dfe4ec;
+                    border-radius: 10px;
+                    padding: 10px;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                QMenu::item {
+                    background: transparent;
+                    color: #263244;
+                    padding: 7px 28px 7px 32px;
+                    border-radius: 6px;
+                }
+                QMenu::item:selected {
+                    background: #eef4ff;
+                    color: #111827;
+                }
+                QMenu::item:disabled {
+                    color: #a8b2c1;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background: #e3e8f0;
+                    margin: 8px 10px;
+                }
+                QMenu::icon {
+                    padding-left: 6px;
+                }
+            """
+
+        return """
+            QMenu {
+                background: #1f1f1f;
+                color: #f4f4f5;
+                border: 1px solid #303030;
+                border-radius: 10px;
+                padding: 10px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QMenu::item {
+                background: transparent;
+                color: #f4f4f5;
+                padding: 7px 28px 7px 32px;
+                border-radius: 6px;
+            }
+            QMenu::item:selected {
+                background: #3f8ee8;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #777777;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #373737;
+                margin: 8px 10px;
+            }
+            QMenu::icon {
+                padding-left: 6px;
+            }
+        """
+
+    def toolbar_status_button_style_sheet(self):
+        if self.app.options['global_theme'] in ['default', 'light']:
+            return """
+                QToolButton#cnc_connection_status_btn {
+                    background: #ffffff;
+                    color: #991b1b;
+                    border: 1px solid #f1c3c3;
+                    border-radius: 8px;
+                    padding: 6px 10px;
+                    font-weight: 600;
+                }
+                QToolButton#cnc_connection_status_btn:hover {
+                    background: #fff5f5;
+                    border-color: #efaaaa;
+                }
+                QToolButton#cnc_connection_status_btn[connected="true"] {
+                    color: #166534;
+                    background: #eefbf2;
+                    border-color: #b7e3c2;
+                }
+                QToolButton#cnc_connection_status_btn::menu-indicator {
+                    image: none;
+                    width: 0px;
+                }
+            """
+
+        return """
+            QToolButton#cnc_connection_status_btn {
+                background: #2a1f1f;
+                color: #ffb4b4;
+                border: 1px solid #6b3535;
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-weight: 600;
+            }
+            QToolButton#cnc_connection_status_btn:hover {
+                background: #332424;
+                border-color: #8a4646;
+            }
+            QToolButton#cnc_connection_status_btn[connected="true"] {
+                color: #9ff0b5;
+                background: #1f2d23;
+                border-color: #356845;
+            }
+            QToolButton#cnc_connection_status_btn::menu-indicator {
+                image: none;
+                width: 0px;
+            }
+        """
+
     def compact_toolbar_style_sheet(self):
         return """
             QToolBar {
@@ -336,6 +458,575 @@ class MainGUI(QtWidgets.QMainWindow):
             }
         """
 
+    def centered_toolbar_host_style_sheet(self):
+        if self.app.options['global_theme'] in ['default', 'light']:
+            outer_bg = "#ffffff"
+            inner_bg = "#eef0f3"
+            border = "#dfe4ec"
+        else:
+            outer_bg = "#262626"
+            inner_bg = "#171717"
+            border = "#444444"
+
+        return f"""
+            QFrame#Toolbar_Center_Host {{
+                background: {outer_bg};
+                border: 1px solid {border};
+                border-radius: 12px;
+            }}
+            QWidget#toolbar_center_widget {{
+                background: {inner_bg};
+                border: 0px;
+                border-radius: 8px;
+            }}
+        """
+
+    def sidebar_toggle_button_style_sheet(self):
+        if self.app.options['global_theme'] in ['default', 'light']:
+            return """
+                QToolButton {
+                    background: #ffffff;
+                    border: 1px solid #dfe4ec;
+                    border-radius: 8px;
+                    padding: 2px;
+                }
+                QToolButton:hover {
+                    background: #eef4ff;
+                    border-color: #b9d1ff;
+                }
+            """
+
+        return """
+            QToolButton {
+                background: #262626;
+                border: 1px solid #444444;
+                border-radius: 8px;
+                padding: 2px;
+            }
+            QToolButton:hover {
+                background: #323232;
+                border-color: #666666;
+            }
+        """
+
+    def create_centered_toolbar_host(self):
+        self.toolbar_center_host = QtWidgets.QFrame(self)
+        self.toolbar_center_host.setObjectName("Toolbar_Center_Host")
+        self.toolbar_center_host.setContentsMargins(0, 0, 0, 0)
+        self.toolbar_center_host.setStyleSheet(self.centered_toolbar_host_style_sheet())
+        self.toolbar_center_host.setMinimumHeight(58)
+        self.toolbar_center_host.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred
+        )
+
+        self.toolbar_center_widget = QtWidgets.QWidget(self.toolbar_center_host)
+        self.toolbar_center_widget.setObjectName("toolbar_center_widget")
+        self.toolbar_center_widget.setMinimumHeight(46)
+        self.toolbar_center_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred
+        )
+
+        host_layout = QtWidgets.QVBoxLayout(self.toolbar_center_host)
+        host_layout.setContentsMargins(5, 5, 5, 5)
+        host_layout.setSpacing(0)
+        host_layout.addWidget(self.toolbar_center_widget)
+
+        self.toolbar_center_layout = QtWidgets.QHBoxLayout(self.toolbar_center_widget)
+        self.toolbar_center_layout.setContentsMargins(0, 0, 0, 0)
+        self.toolbar_center_layout.setSpacing(2)
+        self.toolbar_center_layout.addStretch(1)
+
+        self.cnc_connection_status_btn = QtWidgets.QToolButton(self.toolbar_center_widget)
+        self.cnc_connection_status_btn.setObjectName("cnc_connection_status_btn")
+        self.cnc_connection_status_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.cnc_connection_status_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/link32.png'))
+        self.cnc_connection_status_btn.setText(_("CNC Not Connected"))
+        self.cnc_connection_status_btn.setToolTip(_("Open CNC connection settings."))
+        self.cnc_connection_status_btn.setAutoRaise(False)
+        self.cnc_connection_status_btn.setProperty("connected", "false")
+        self.cnc_connection_status_btn.setStyleSheet(self.toolbar_status_button_style_sheet())
+        self.toolbar_center_layout.addWidget(self.cnc_connection_status_btn)
+
+        if hasattr(self, "right_lay"):
+            self.right_lay.insertWidget(0, self.toolbar_center_host)
+
+    def add_centered_toolbar(self, toolbar):
+        toolbar.setParent(self.toolbar_center_widget)
+        self.toolbar_center_layout.insertWidget(max(0, self.toolbar_center_layout.count() - 2), toolbar)
+
+    def create_sidebar_toggle_buttons(self):
+        self.left_sidebar_toggle_btn = QtWidgets.QToolButton(self)
+        self.left_sidebar_toggle_btn.setObjectName("left_sidebar_toggle_btn")
+        self.left_sidebar_toggle_btn.setFixedSize(20, 62)
+        self.left_sidebar_toggle_btn.setIconSize(QtCore.QSize(14, 14))
+        self.left_sidebar_toggle_btn.setToolTip(_("Toggle Project"))
+        self.left_sidebar_toggle_btn.setStyleSheet(self.sidebar_toggle_button_style_sheet())
+        self.left_sidebar_toggle_btn.clicked.connect(self.on_toggle_notebook)
+
+        self.right_sidebar_toggle_btn = QtWidgets.QToolButton(self)
+        self.right_sidebar_toggle_btn.setObjectName("right_sidebar_toggle_btn")
+        self.right_sidebar_toggle_btn.setFixedSize(20, 62)
+        self.right_sidebar_toggle_btn.setIconSize(QtCore.QSize(14, 14))
+        self.right_sidebar_toggle_btn.setToolTip(_("Toggle Properties"))
+        self.right_sidebar_toggle_btn.setStyleSheet(self.sidebar_toggle_button_style_sheet())
+        self.right_sidebar_toggle_btn.clicked.connect(self.on_toggle_properties_sidebar)
+
+        try:
+            self.splitter.splitterMoved.connect(lambda *_: self.position_sidebar_toggle_buttons())
+        except (AttributeError, TypeError):
+            pass
+
+        self.update_sidebar_toggle_icons()
+        self.position_sidebar_toggle_buttons()
+
+    def update_sidebar_toggle_icons(self):
+        if not hasattr(self, "left_sidebar_toggle_btn"):
+            return
+
+        sizes = self.normalized_splitter_sizes()
+        left_visible = (
+            hasattr(self, "splitter_left") and
+            not self.splitter_left.isHidden() and
+            len(sizes) > 0 and sizes[0] > 0
+        )
+        right_visible = (
+            hasattr(self, "properties_sidebar") and
+            not self.properties_sidebar.isHidden() and
+            len(sizes) > 2 and sizes[2] > 0
+        )
+
+        self.left_sidebar_toggle_btn.setIcon(QtGui.QIcon(
+            self.app.resource_location + ('/left_arrow32.png' if left_visible else '/right_arrow32.png')
+        ))
+        self.right_sidebar_toggle_btn.setIcon(QtGui.QIcon(
+            self.app.resource_location + ('/right_arrow32.png' if right_visible else '/left_arrow32.png')
+        ))
+
+    def position_sidebar_toggle_buttons(self):
+        if not hasattr(self, "left_sidebar_toggle_btn"):
+            return
+
+        sizes = self.normalized_splitter_sizes()
+        splitter_origin = self.splitter.mapTo(self, QtCore.QPoint(0, 0))
+        splitter_width = self.splitter.width()
+        splitter_height = self.splitter.height()
+        y_pos = splitter_origin.y() + max(0, int((splitter_height - self.left_sidebar_toggle_btn.height()) / 2))
+
+        left_visible = (
+            hasattr(self, "splitter_left") and
+            not self.splitter_left.isHidden() and
+            len(sizes) > 0 and sizes[0] > 0
+        )
+        left_x = (
+            splitter_origin.x() + max(0, sizes[0] - int(self.left_sidebar_toggle_btn.width() / 2))
+            if left_visible else
+            splitter_origin.x()
+        )
+        self.left_sidebar_toggle_btn.move(left_x, y_pos)
+
+        right_visible = (
+            hasattr(self, "properties_sidebar") and
+            not self.properties_sidebar.isHidden() and
+            len(sizes) > 2 and sizes[2] > 0
+        )
+        right_x = (
+            splitter_origin.x() + max(0, splitter_width - sizes[2] - int(self.right_sidebar_toggle_btn.width() / 2))
+            if right_visible else
+            splitter_origin.x() + max(0, splitter_width - self.right_sidebar_toggle_btn.width())
+        )
+        self.right_sidebar_toggle_btn.move(right_x, y_pos)
+
+        self.left_sidebar_toggle_btn.raise_()
+        self.right_sidebar_toggle_btn.raise_()
+
+    def workspace_panel_style_sheet(self):
+        if self.app.options['global_theme'] in ['default', 'light']:
+            workspace_bg = "#eef2f6"
+            surface = "#ffffff"
+            soft_surface = "#f6f8fb"
+            border = "#dfe4ec"
+            accent = "#2563eb"
+            accent_hover = "#1d4ed8"
+            text = "#1f2937"
+            muted_text = "#64748b"
+            chip_bg = "#eef4ff"
+            chip_border = "#d8e6ff"
+            chip_text = "#31527a"
+        else:
+            workspace_bg = "#181818"
+            surface = "#262626"
+            soft_surface = "#1c1c1c"
+            border = "#444444"
+            accent = "#3f8ee8"
+            accent_hover = "#2f78c8"
+            text = "#f4f4f5"
+            muted_text = "#b6b6b6"
+            chip_bg = "#202a35"
+            chip_border = "#344354"
+            chip_text = "#b8d7ff"
+
+        return f"""
+            QFrame#project_start_widget {{
+                background: {workspace_bg};
+                border: 0px;
+            }}
+            QFrame#workspace_status_container {{
+                background: {surface};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            QFrame#project_start_shell {{
+                background: {surface};
+                border: 1px solid {border};
+                border-radius: 18px;
+            }}
+            QFrame#project_start_brand_panel {{
+                background: {soft_surface};
+                border: 1px solid {border};
+                border-radius: 14px;
+            }}
+            QFrame#project_start_logo_badge {{
+                background: {surface};
+                border: 1px solid {border};
+                border-radius: 14px;
+            }}
+            QLabel#project_start_eyebrow {{
+                color: {accent};
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QLabel#project_start_title {{
+                color: {text};
+                font-size: 26px;
+                font-weight: 700;
+            }}
+            QLabel#project_start_subtitle {{
+                color: {muted_text};
+                font-size: 13px;
+            }}
+            QLabel#project_start_chip {{
+                color: {chip_text};
+                background: {chip_bg};
+                border: 1px solid {chip_border};
+                border-radius: 12px;
+                padding: 4px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton#project_start_primary,
+            QPushButton#project_start_secondary {{
+                min-width: 250px;
+                min-height: 58px;
+                border-radius: 12px;
+                padding: 10px 18px;
+                font-size: 14px;
+                font-weight: 700;
+                text-align: left;
+            }}
+            QPushButton#project_start_primary {{
+                color: #ffffff;
+                background: {accent};
+                border: 1px solid {accent};
+            }}
+            QPushButton#project_start_primary:hover {{
+                background: {accent_hover};
+                border-color: {accent_hover};
+            }}
+            QPushButton#project_start_secondary {{
+                color: {text};
+                background: {soft_surface};
+                border: 1px solid {border};
+            }}
+            QPushButton#project_start_secondary:hover {{
+                background: {chip_bg};
+                border-color: {chip_border};
+            }}
+        """
+
+    def build_project_start_widget(self):
+        start_widget = QtWidgets.QFrame(self)
+        start_widget.setObjectName("project_start_widget")
+        start_widget.setStyleSheet(self.workspace_panel_style_sheet())
+        start_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        start_widget.setMinimumHeight(460)
+
+        layout = QtWidgets.QVBoxLayout(start_widget)
+        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setSpacing(0)
+        layout.addStretch(1)
+
+        splash_shell = QtWidgets.QFrame(start_widget)
+        splash_shell.setObjectName("project_start_shell")
+        splash_shell.setMaximumWidth(860)
+        splash_shell.setMinimumHeight(360)
+        splash_shell.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred
+        )
+
+        shell_layout = QtWidgets.QVBoxLayout(splash_shell)
+        shell_layout.setContentsMargins(28, 28, 28, 28)
+        shell_layout.setSpacing(22)
+
+        brand_panel = QtWidgets.QFrame(splash_shell)
+        brand_panel.setObjectName("project_start_brand_panel")
+        brand_layout = QtWidgets.QHBoxLayout(brand_panel)
+        brand_layout.setContentsMargins(18, 16, 18, 16)
+        brand_layout.setSpacing(16)
+
+        logo_badge = QtWidgets.QFrame(brand_panel)
+        logo_badge.setObjectName("project_start_logo_badge")
+        logo_badge.setFixedSize(64, 64)
+        logo_layout = QtWidgets.QVBoxLayout(logo_badge)
+        logo_layout.setContentsMargins(8, 8, 8, 8)
+
+        logo_label = QtWidgets.QLabel(logo_badge)
+        logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo_pixmap = QtGui.QPixmap(self.app.resource_location + '/app64.png')
+        if not logo_pixmap.isNull():
+            logo_label.setPixmap(logo_pixmap.scaled(
+                42, 42,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation
+            ))
+        logo_layout.addWidget(logo_label)
+        brand_layout.addWidget(logo_badge)
+
+        title_box = QtWidgets.QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 0, 0)
+        title_box.setSpacing(4)
+
+        eyebrow_label = FCLabel(_("Proje Başlangıcı"))
+        eyebrow_label.setObjectName("project_start_eyebrow")
+        title_box.addWidget(eyebrow_label)
+
+        title_label = FCLabel(APP_NAME)
+        title_label.setObjectName("project_start_title")
+        title_box.addWidget(title_label)
+
+        subtitle_label = FCLabel(_("Yeni bir çalışma alanı oluşturun veya kayıtlı projenize devam edin."))
+        subtitle_label.setObjectName("project_start_subtitle")
+        subtitle_label.setWordWrap(True)
+        title_box.addWidget(subtitle_label)
+
+        brand_layout.addLayout(title_box, 1)
+        shell_layout.addWidget(brand_panel)
+
+        self.start_new_project_btn = QtWidgets.QPushButton(_("Yeni Proje Oluştur"))
+        self.start_new_project_btn.setObjectName("project_start_primary")
+        self.start_new_project_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/new_file32.png'))
+        self.start_new_project_btn.setIconSize(QtCore.QSize(24, 24))
+        self.start_new_project_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.start_new_project_btn.clicked.connect(lambda: self.app.f_handlers.on_file_new_click())
+
+        self.start_open_project_btn = QtWidgets.QPushButton(_("Proje Aç"))
+        self.start_open_project_btn.setObjectName("project_start_secondary")
+        self.start_open_project_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/folder32.png'))
+        self.start_open_project_btn.setIconSize(QtCore.QSize(24, 24))
+        self.start_open_project_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.start_open_project_btn.clicked.connect(lambda: self.app.f_handlers.on_file_open_project())
+
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(14)
+        button_row.addStretch(1)
+        button_row.addWidget(self.start_new_project_btn)
+        button_row.addWidget(self.start_open_project_btn)
+        button_row.addStretch(1)
+
+        shell_layout.addLayout(button_row)
+
+        chip_row = QtWidgets.QHBoxLayout()
+        chip_row.setContentsMargins(0, 0, 0, 0)
+        chip_row.setSpacing(8)
+        chip_row.addStretch(1)
+        for chip_text in (_("Gerber"), _("Excellon"), _("Geometry"), _("CNC Job")):
+            chip_label = FCLabel(chip_text)
+            chip_label.setObjectName("project_start_chip")
+            chip_row.addWidget(chip_label)
+        chip_row.addStretch(1)
+        shell_layout.addLayout(chip_row)
+
+        layout.addWidget(
+            splash_shell, 0,
+            QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        layout.addStretch(2)
+
+        return start_widget
+
+    def request_new_project_details(self):
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(_("Yeni Proje Oluştur"))
+        dialog.setWindowIcon(QtGui.QIcon(self.app.resource_location + '/app24.png'))
+        dialog.setModal(True)
+
+        form_layout = QtWidgets.QFormLayout()
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(10)
+
+        name_entry = FCEntry()
+        name_entry.setText(_("Yeni Proje"))
+
+        location_row = QtWidgets.QHBoxLayout()
+        location_row.setContentsMargins(0, 0, 0, 0)
+        location_row.setSpacing(6)
+
+        location_entry = FCEntry()
+        location_entry.setText(self.app.get_last_save_folder())
+        browse_btn = QtWidgets.QPushButton(_("Seç"))
+        browse_btn.setMinimumWidth(68)
+
+        def browse_location():
+            folder = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                _("Kayıt yerini seç"),
+                location_entry.text()
+            )
+            if folder:
+                location_entry.setText(folder)
+
+        browse_btn.clicked.connect(browse_location)
+        location_row.addWidget(location_entry, 1)
+        location_row.addWidget(browse_btn)
+
+        form_layout.addRow(_("Proje adı:"), name_entry)
+        form_layout.addRow(_("Kayıt yeri:"), location_row)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok |
+            QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(_("Oluştur"))
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText(_("İptal"))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(16)
+        layout.addLayout(form_layout)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+
+        project_name = name_entry.text().strip()
+        project_folder = location_entry.text().strip()
+        if not project_name or not project_folder:
+            return None
+
+        filename = project_name
+        if not filename.lower().endswith(".flatprj"):
+            filename += ".FlatPrj"
+
+        return project_name, os.path.join(project_folder, filename)
+
+    def show_start_workspace(self):
+        if hasattr(self, "right_content_stack"):
+            self.right_content_stack.setCurrentWidget(self.project_start_widget)
+        if hasattr(self, "toolbar_center_host"):
+            self.toolbar_center_host.setVisible(False)
+        if hasattr(self, "workspace_status_container"):
+            self.workspace_status_container.setVisible(False)
+        if hasattr(self, "properties_sidebar"):
+            self.set_properties_sidebar_visible(False)
+
+    def activate_project_workspace(self, project_name=None):
+        if project_name:
+            self.set_current_project_name(project_name)
+        if hasattr(self, "right_content_stack"):
+            self.right_content_stack.setCurrentWidget(self.plot_tab_area)
+        if hasattr(self, "toolbar_center_host"):
+            self.toolbar_center_host.setVisible(True)
+        if hasattr(self, "workspace_status_container"):
+            self.workspace_status_container.setVisible(True)
+
+    def set_current_project_name(self, project_name):
+        self.current_project_name = project_name
+        if hasattr(self.app, "collection"):
+            self.app.collection.set_project_name(project_name)
+
+    def open_plot_widget_tab(self, widget, title, object_name=None, make_current=True):
+        if object_name:
+            widget.setObjectName(object_name)
+
+        existing_idx = self.plot_tab_area.indexOf(widget)
+        if existing_idx < 0:
+            existing_idx = self.plot_tab_area.addTab(widget, title)
+        else:
+            self.plot_tab_area.setTabText(existing_idx, title)
+
+        if make_current:
+            self.activate_project_workspace()
+            self.plot_tab_area.setCurrentIndex(existing_idx)
+
+        return existing_idx
+
+    def open_object_properties_tab(self, obj):
+        if obj is None:
+            return None
+
+        try:
+            title = str(obj.obj_options["name"])
+        except (AttributeError, KeyError, TypeError):
+            title = _("Properties")
+
+        return self.ensure_properties_tab_visible(title=title)
+
+    def set_properties_sidebar_title(self, title=None):
+        if not hasattr(self, "properties_sidebar_title"):
+            return
+
+        self.properties_sidebar_title.setText(title or _("Properties"))
+
+    def ensure_properties_sidebar_visible(self, title=None):
+        self.set_properties_sidebar_title(title)
+        if hasattr(self, "right_sidebar_stack"):
+            idx = self.right_sidebar_stack.indexOf(self.properties_tab)
+            if idx < 0:
+                self.right_sidebar_stack.addWidget(self.properties_tab)
+            self.right_sidebar_stack.setCurrentWidget(self.properties_tab)
+        self.set_properties_sidebar_visible(True)
+        return self.properties_sidebar
+
+    def ensure_properties_tab_visible(self, title=None):
+        title = title or _("Properties")
+        return self.ensure_properties_sidebar_visible(title=title)
+
+    def ensure_plugin_tab_visible(self, title=None):
+        title = title or _("Plugin")
+        self.set_properties_sidebar_title(title)
+        if hasattr(self, "right_sidebar_stack"):
+            for idx in reversed(range(self.right_sidebar_stack.count())):
+                widget = self.right_sidebar_stack.widget(idx)
+                if widget is not self.plugin_tab and widget.objectName() == "plugin_tab":
+                    self.right_sidebar_stack.removeWidget(widget)
+            idx = self.right_sidebar_stack.indexOf(self.plugin_tab)
+            if idx < 0:
+                self.right_sidebar_stack.addWidget(self.plugin_tab)
+            self.right_sidebar_stack.setCurrentWidget(self.plugin_tab)
+        self.set_properties_sidebar_visible(True)
+        return self.properties_sidebar
+
+    def remove_centered_toolbar_host(self):
+        toolbar_host = getattr(self, "toolbar_center_host", None)
+        if toolbar_host is None:
+            return
+
+        parent_layout = toolbar_host.parentWidget().layout() if toolbar_host.parentWidget() is not None else None
+        if parent_layout is not None:
+            parent_layout.removeWidget(toolbar_host)
+        toolbar_host.deleteLater()
+        self.toolbar_center_host = None
+        self.toolbar_center_widget = None
+        self.toolbar_center_layout = None
+
     def configure_toolbar(self, toolbar, compact=False):
         toolbar.setContentsMargins(0, 0, 0, 0)
         if compact:
@@ -344,6 +1035,7 @@ class MainGUI(QtWidgets.QMainWindow):
             toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             return
 
+        toolbar.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
         toolbar.setStyleSheet(self.toolbar_style_sheet())
         toolbar.setIconSize(QtCore.QSize(22, 22))
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
@@ -421,6 +1113,86 @@ class MainGUI(QtWidgets.QMainWindow):
             if child_menu is not None:
                 self.configure_popup_menu(child_menu)
 
+    def configure_main_menu(self, menu):
+        menu.setToolTipsVisible(True)
+        menu.setStyleSheet(self.main_menu_style_sheet())
+        menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        for action in menu.actions():
+            child_menu = action.menu()
+            if child_menu is not None:
+                self.configure_main_menu(child_menu)
+
+    def build_application_menu(self):
+        self.application_menu = QtWidgets.QMenu(self)
+        self.application_menu.setObjectName("application_menu")
+        self.application_menu.addAction(self.menu_toggle_nb)
+        self.application_menu.addAction(self.menu_toggle_properties)
+        self.application_menu.addSeparator()
+
+        for menu in [
+            self.menufile,
+            self.menuedit,
+            self.menuview,
+            self.menuobjects,
+            self.menuoptions,
+            self.menucnc,
+            self.menu_plugins,
+            self.menuhelp
+        ]:
+            self.application_menu.addMenu(menu)
+
+        self.application_menu.addSeparator()
+        self.application_menu.addMenu(self.geo_editor_menu)
+        self.application_menu.addMenu(self.exc_editor_menu)
+        self.application_menu.addMenu(self.grb_editor_menu)
+
+        self.configure_main_menu(self.application_menu)
+
+    def add_main_menu_toolbar_button(self):
+        if not hasattr(self, "application_menu"):
+            return
+        current_action = getattr(self, "application_menu_button_action", None)
+        if current_action is not None and current_action in self.toolbarfile.actions():
+            return
+
+        self.application_menu_button = QtWidgets.QToolButton(self.toolbarfile)
+        self.application_menu_button.setObjectName("application_menu_button")
+        self.application_menu_button.setIcon(QtGui.QIcon(self.app.resource_location + '/app24.png'))
+        self.application_menu_button.setText(_("Menu"))
+        self.application_menu_button.setToolTip(_("Main menu"))
+        self.application_menu_button.setMenu(self.application_menu)
+        self.application_menu_button.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.application_menu_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.application_menu_button.setAutoRaise(True)
+        self.application_menu_button.setIconSize(QtCore.QSize(24, 24))
+        self.application_menu_button.setMinimumSize(QtCore.QSize(42, 34))
+        self.application_menu_button.setStyleSheet("""
+            QToolButton#application_menu_button {
+                background: #e8f2ff;
+                border: 1px solid #d6e8ff;
+                border-radius: 8px;
+                padding: 5px 8px;
+            }
+            QToolButton#application_menu_button:hover {
+                background: #dcecff;
+                border-color: #b9d7ff;
+            }
+            QToolButton#application_menu_button:pressed,
+            QToolButton#application_menu_button:checked {
+                background: #cfe4ff;
+                border-color: #8bbdff;
+            }
+            QToolButton#application_menu_button::menu-indicator {
+                image: none;
+                width: 0px;
+                height: 0px;
+            }
+        """)
+
+        self.application_menu_button_action = self.toolbarfile.addWidget(self.application_menu_button)
+        self.toolbarfile.addSeparator()
+
     def add_toolbar_dropdown(self, toolbar, icon_name, tooltip, actions, text=None):
         menu = QtWidgets.QMenu(toolbar)
         self.configure_popup_menu(menu)
@@ -480,6 +1252,7 @@ class MainGUI(QtWidgets.QMainWindow):
                 [
                     self.menuview_toggle_grid,
                     self.menuview_toggle_grid_lines,
+                    self.menuview_toggle_rulers,
                     self.menuview_toggle_axis,
                     self.menuview_toggle_workspace,
                     self.menuview_toggle_hud
@@ -510,7 +1283,6 @@ class MainGUI(QtWidgets.QMainWindow):
                 [self.cnc_toolbar_btn, self.cnc_toolbar_settings_btn, None, self.cnc_toolbar_status_action],
                 text=_("CNC")
             )
-        self.toolbarplugins.addAction(self.cnc_toolbar_status_action)
 
         self.cnc_toolbar_connection_handler = None
         self.update_cnc_toolbar_status(False, "")
@@ -536,15 +1308,27 @@ class MainGUI(QtWidgets.QMainWindow):
         if connected:
             icon = QtGui.QIcon(self.app.resource_location + '/link32.png')
             text = _("Connection Settings")
-            tooltip = _("CNC Connected: ") + description
+            status_text = _("CNC Connected")
+            tooltip = _("CNC Connected")
+            if description:
+                tooltip += ": " + description
         else:
             icon = QtGui.QIcon(self.app.resource_location + '/link32.png')
             text = _("Connection Settings")
+            status_text = _("CNC Not Connected")
             tooltip = _("Open CNC connection settings.")
 
         self.cnc_toolbar_status_action.setIcon(icon)
         self.cnc_toolbar_status_action.setText(text)
         self.cnc_toolbar_status_action.setToolTip(tooltip)
+
+        if hasattr(self, "cnc_connection_status_btn"):
+            self.cnc_connection_status_btn.setIcon(icon)
+            self.cnc_connection_status_btn.setText(status_text)
+            self.cnc_connection_status_btn.setToolTip(tooltip)
+            self.cnc_connection_status_btn.setProperty("connected", "true" if connected else "false")
+            self.cnc_connection_status_btn.style().unpolish(self.cnc_connection_status_btn)
+            self.cnc_connection_status_btn.style().polish(self.cnc_connection_status_btn)
 
         if hasattr(self, "cnc_toolbar_status_action_menu"):
             self.cnc_toolbar_status_action_menu.setIcon(icon)
@@ -557,6 +1341,13 @@ class MainGUI(QtWidgets.QMainWindow):
             actions.append(self.cnc_toolbar_status_action)
         if hasattr(self, "cnc_toolbar_status_action_menu"):
             actions.append(self.cnc_toolbar_status_action_menu)
+        if hasattr(self, "cnc_connection_status_btn"):
+            try:
+                self.cnc_connection_status_btn.clicked.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            if handler is not None:
+                self.cnc_connection_status_btn.clicked.connect(handler)
 
         for action in actions:
             if action:
@@ -609,7 +1400,15 @@ class MainGUI(QtWidgets.QMainWindow):
         # self.menu_toggle_nb = QtGui.QAction("NB")
 
         self.menu_toggle_nb.setCheckable(True)
+        self.menu_toggle_nb.setChecked(True)
         self.menu.addAction(self.menu_toggle_nb)
+
+        self.menu_toggle_properties = QtGui.QAction(
+            QtGui.QIcon(self.app.resource_location + '/gear32.png'), _("Toggle Properties"))
+        self.menu_toggle_properties.setToolTip(_("Toggle Properties"))
+        self.menu_toggle_properties.setCheckable(True)
+        self.menu_toggle_properties.setChecked(False)
+        self.menu.addAction(self.menu_toggle_properties)
 
         # ########################################################################
         # ########################## File # ######################################
@@ -1080,7 +1879,14 @@ class MainGUI(QtWidgets.QMainWindow):
             '%s\t%s' % (_("Toggle Plot Area"), _('Ctrl+F10')))
         self.menuview_toggle_notebook = self.menuview.addAction(
             QtGui.QIcon(self.app.resource_location + '/notebook32.png'),
-            '%s\t%s' % (_("Toggle Project/Properties/Tool"), _('`')))
+            '%s\t%s' % (_("Toggle Project"), _('`')))
+        self.menuview_toggle_notebook.setCheckable(True)
+        self.menuview_toggle_notebook.setChecked(True)
+        self.menuview_toggle_properties_sidebar = self.menuview.addAction(
+            QtGui.QIcon(self.app.resource_location + '/gear32.png'),
+            _("Toggle Properties"))
+        self.menuview_toggle_properties_sidebar.setCheckable(True)
+        self.menuview_toggle_properties_sidebar.setChecked(False)
 
         self.menuview.addSeparator()
         self.menuview_toggle_grid = self.menuview.addAction(
@@ -1089,6 +1895,11 @@ class MainGUI(QtWidgets.QMainWindow):
         self.menuview_toggle_grid_lines = self.menuview.addAction(
             QtGui.QIcon(self.app.resource_location + '/grid_lines32.png'),
             '%s\t%s' % (_("Toggle Grid Lines"), _('Shift+G')))
+        self.menuview_toggle_rulers = self.menuview.addAction(
+            QtGui.QIcon(self.app.resource_location + '/axis32.png'),
+            '%s\t%s' % (_("Toggle Rulers"), _('Shift+R')))
+        self.menuview_toggle_rulers.setCheckable(True)
+        self.menuview_toggle_rulers.setChecked(self.app.defaults.get("global_rulers", True))
         self.menuview_toggle_axis = self.menuview.addAction(
             QtGui.QIcon(self.app.resource_location + '/axis32.png'),
             '%s\t%s' % (_("Toggle Axis"), _('Shift+A')))
@@ -1358,6 +2169,9 @@ class MainGUI(QtWidgets.QMainWindow):
         self.exc_editor_menu.menuAction().setVisible(False)
         self.exc_editor_menu.setDisabled(True)
 
+        self.build_application_menu()
+        self.menu.setVisible(False)
+
         # ########################################################################
         # ########################## Project Tab Context Menu # ##################
         # ########################################################################
@@ -1438,68 +2252,82 @@ class MainGUI(QtWidgets.QMainWindow):
         # IMPORTANT #
         # The order: SPLITTER -> NOTEBOOK -> SNAP TOOLBAR is important and without it the GUI will not be initialized as
         # desired.
-        self.splitter = QtWidgets.QSplitter()
+        self.splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.splitter.setChildrenCollapsible(False)
         self.setCentralWidget(self.splitter)
 
         # self.notebook = QtWidgets.QTabWidget()
-        self.notebook = FCDetachableTab2(protect=True, protect_by_name=[_("Project"), _("Properties")], parent=self)
+        self.notebook = FCDetachableTab2(protect=True, protect_by_name=[_("Project")], parent=self)
         # self.notebook.setTabsClosable(False)
         self.notebook.useOldIndex(True)
         self.notebook.auto_remove_closed_tab = False
+        self.notebook.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
 
         self.splitter.addWidget(self.notebook)
 
         self.splitter_left = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        self.splitter_left.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
         self.splitter.addWidget(self.splitter_left)
         self.splitter_left.addWidget(self.notebook)
         self.splitter_left.setHandleWidth(0)
+        self.splitter_left.setStretchFactor(0, 1)
 
         # ########################################################################
         # ########################## ToolBAR # ###################################
         # ########################################################################
 
         # ## TOOLBAR INSTALLATION ###
+        self.create_centered_toolbar_host()
+
         self.toolbarfile = QtWidgets.QToolBar(_('File Toolbar'))
         self.toolbarfile.setObjectName('File_TB')
         self.configure_toolbar(self.toolbarfile)
-        self.addToolBar(self.toolbarfile)
+        self.add_centered_toolbar(self.toolbarfile)
 
         self.toolbaredit = QtWidgets.QToolBar(_('Edit Toolbar'))
         self.toolbaredit.setObjectName('Edit_TB')
         self.configure_toolbar(self.toolbaredit)
-        self.addToolBar(self.toolbaredit)
+        self.add_centered_toolbar(self.toolbaredit)
 
         self.toolbarview = QtWidgets.QToolBar(_('View Toolbar'))
         self.toolbarview.setObjectName('View_TB')
         self.configure_toolbar(self.toolbarview)
-        self.addToolBar(self.toolbarview)
+        self.add_centered_toolbar(self.toolbarview)
 
         self.toolbarshell = QtWidgets.QToolBar(_('Shell Toolbar'))
         self.toolbarshell.setObjectName('Shell_TB')
         self.configure_toolbar(self.toolbarshell)
-        self.addToolBar(self.toolbarshell)
+        self.add_centered_toolbar(self.toolbarshell)
 
         self.toolbarplugins = QtWidgets.QToolBar(_('Plugin Toolbar'))
         self.toolbarplugins.setObjectName('Plugins_TB')
         self.configure_toolbar(self.toolbarplugins)
-        self.addToolBar(self.toolbarplugins)
+        self.add_centered_toolbar(self.toolbarplugins)
 
         self.exc_edit_toolbar = QtWidgets.QToolBar(_('Excellon Editor Toolbar'))
         self.exc_edit_toolbar.setObjectName('ExcEditor_TB')
         self.configure_toolbar(self.exc_edit_toolbar)
-        self.addToolBar(self.exc_edit_toolbar)
-
-        self.addToolBarBreak()
+        self.add_centered_toolbar(self.exc_edit_toolbar)
 
         self.geo_edit_toolbar = QtWidgets.QToolBar(_('Geometry Editor Toolbar'))
         self.geo_edit_toolbar.setObjectName('GeoEditor_TB')
         self.configure_toolbar(self.geo_edit_toolbar)
-        self.addToolBar(self.geo_edit_toolbar)
+        self.add_centered_toolbar(self.geo_edit_toolbar)
 
         self.grb_edit_toolbar = QtWidgets.QToolBar(_('Gerber Editor Toolbar'))
         self.grb_edit_toolbar.setObjectName('GrbEditor_TB')
         self.configure_toolbar(self.grb_edit_toolbar)
-        self.addToolBar(self.grb_edit_toolbar)
+        self.add_centered_toolbar(self.grb_edit_toolbar)
 
         # ### INFOBAR TOOLBARS ###################################################
         self.delta_coords_toolbar = CoordsToolbar(_('Delta Coordinates Toolbar'))
@@ -1520,6 +2348,8 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################################################################
         # ########################## File Toolbar# ###############################
         # ########################################################################
+        self.add_main_menu_toolbar_button()
+
         self.file_open_btn = self.toolbar_action('/folder32.png', _("Open Project"), _("Open a project."))
         self.file_open_gerber_btn = self.toolbar_action(
             '/open_gerber32.png', _("Open Gerber"), _("Open a Gerber file."))
@@ -1601,6 +2431,10 @@ class MainGUI(QtWidgets.QMainWindow):
         self.zoom_in_btn = self.toolbar_action('/zoom_in32.png', _("Zoom In"))
         self.zoom_out_btn = self.toolbar_action('/zoom_out32.png', _("Zoom Out"))
         self.zoom_fit_btn = self.toolbar_action('/zoom_fit32.png', _("Zoom Fit"))
+        self.ruler_btn = self.toolbar_action('/axis32.png', _("Ruler"), _("Show or hide canvas rulers."))
+        self.ruler_btn.setCheckable(True)
+        self.ruler_btn.setChecked(self.app.defaults.get("global_rulers", True))
+        self.toolbarview.addAction(self.ruler_btn)
         self.plot_dropdown, self.plot_dropdown_action, self.plot_menu = \
             self.add_toolbar_dropdown(
                 self.toolbarview, '/replot32.png', _("Plot"), [self.replot_btn, self.clear_plot_btn])
@@ -1923,6 +2757,7 @@ class MainGUI(QtWidgets.QMainWindow):
                                     QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable |
                                     QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.shell_dock)
+        self.shell_dock.hide()
 
         # ########################################################################
         # ########################## Notebook # ##################################
@@ -1933,18 +2768,28 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################################################################
         self.project_tab = QtWidgets.QWidget()
         self.project_tab.setObjectName("project_tab")
+        self.project_tab.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
 
         self.project_frame_lay = QtWidgets.QVBoxLayout(self.project_tab)
         self.project_frame_lay.setContentsMargins(0, 0, 0, 0)
 
         self.project_frame = QtWidgets.QFrame()
+        self.project_frame.setObjectName("project_frame")
         self.project_frame.setContentsMargins(0, 0, 0, 0)
-        self.project_frame_lay.addWidget(self.project_frame)
+        self.project_frame.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.project_frame_lay.addWidget(self.project_frame, 1)
 
         self.project_tab_layout = QtWidgets.QVBoxLayout(self.project_frame)
         self.project_tab_layout.setContentsMargins(2, 2, 2, 2)
         self.notebook.addTab(self.project_tab, _("Project"))
         self.notebook.protectTab(0)
+        self.notebook.tabBar.hide()
         self.project_frame.setDisabled(False)
 
         # ########################################################################
@@ -1960,8 +2805,6 @@ class MainGUI(QtWidgets.QMainWindow):
         apply_modern_sidebar_style(self.properties_scroll_area, self.app)
         # self.properties_scroll_area.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.properties_tab_layout.addWidget(self.properties_scroll_area)
-        self.notebook.addTab(self.properties_tab, _("Properties"))
-        self.notebook.protectTab(1)
 
         # ########################################################################
         # ########################## TOOL Tab # ##################################
@@ -1981,20 +2824,85 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################## RIGHT Widget # ##############################
         # ########################################################################
         self.right_widget = QtWidgets.QWidget()
-        self.right_widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Ignored)
+        self.right_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
         self.splitter.addWidget(self.right_widget)
 
         self.right_lay = QtWidgets.QVBoxLayout()
         self.right_lay.setContentsMargins(0, 0, 0, 0)
+        self.right_lay.setSpacing(10)
         self.right_widget.setLayout(self.right_lay)
+        if self.right_lay.indexOf(self.toolbar_center_host) < 0:
+            self.right_lay.addWidget(self.toolbar_center_host)
+        self.toolbar_center_host.setVisible(False)
+
+        self.properties_sidebar = QtWidgets.QFrame()
+        self.properties_sidebar.setObjectName("right_properties_sidebar")
+        self.properties_sidebar.setMinimumWidth(340)
+        self.properties_sidebar.setMaximumWidth(460)
+        self.properties_sidebar.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.splitter.addWidget(self.properties_sidebar)
+
+        self.properties_sidebar_layout = QtWidgets.QVBoxLayout(self.properties_sidebar)
+        self.properties_sidebar_layout.setContentsMargins(8, 8, 8, 8)
+        self.properties_sidebar_layout.setSpacing(8)
+
+        self.properties_sidebar_header = QtWidgets.QFrame(self.properties_sidebar)
+        self.properties_sidebar_header.setObjectName("right_properties_header")
+        self.properties_sidebar_header_layout = QtWidgets.QHBoxLayout(self.properties_sidebar_header)
+        self.properties_sidebar_header_layout.setContentsMargins(10, 6, 6, 6)
+        self.properties_sidebar_header_layout.setSpacing(6)
+
+        self.properties_sidebar_title = FCLabel(_("Properties"))
+        self.properties_sidebar_title.setObjectName("right_properties_title")
+        self.properties_sidebar_header_layout.addWidget(self.properties_sidebar_title, 1)
+
+        self.properties_sidebar_close_btn = QtWidgets.QToolButton(self.properties_sidebar_header)
+        self.properties_sidebar_close_btn.setObjectName("right_properties_close_btn")
+        self.properties_sidebar_close_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/right_arrow32.png'))
+        self.properties_sidebar_close_btn.setIconSize(QtCore.QSize(14, 14))
+        self.properties_sidebar_close_btn.setToolTip(_("Toggle Properties"))
+        self.properties_sidebar_close_btn.clicked.connect(lambda: self.set_properties_sidebar_visible(False))
+        self.properties_sidebar_header_layout.addWidget(self.properties_sidebar_close_btn)
+
+        self.properties_sidebar_layout.addWidget(self.properties_sidebar_header)
+        self.right_sidebar_stack = QtWidgets.QStackedWidget(self.properties_sidebar)
+        self.right_sidebar_stack.setObjectName("right_sidebar_stack")
+        self.right_sidebar_stack.addWidget(self.properties_tab)
+        self.right_sidebar_stack.addWidget(self.plugin_tab)
+        self.properties_sidebar_layout.addWidget(self.right_sidebar_stack, 1)
+        self.properties_sidebar.setVisible(False)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setStretchFactor(2, 0)
+
+        self.create_sidebar_toggle_buttons()
+
+        self.right_content_stack = QtWidgets.QStackedWidget()
+        self.right_content_stack.setObjectName("right_content_stack")
+        self.right_content_stack.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.right_content_stack.setMinimumHeight(460)
+        self.right_lay.addWidget(self.right_content_stack, 1)
+
+        self.project_start_widget = self.build_project_start_widget()
+        self.right_content_stack.addWidget(self.project_start_widget)
 
         # ########################################################################
         # ########################## PLOT AREA Tab # #############################
         # ########################################################################
         self.plot_tab_area = FCDetachableTab2(protect=False, protect_by_name=[_('Plot Area')], parent=self)
         self.plot_tab_area.useOldIndex(True)
+        self.notebook.redirect_plot_area_widgets = True
 
-        self.right_lay.addWidget(self.plot_tab_area)
+        self.right_content_stack.addWidget(self.plot_tab_area)
         self.plot_tab_area.setTabsClosable(True)
 
         self.plot_tab = PlotTabWithDragDrop(app=self.app)
@@ -2003,7 +2911,7 @@ class MainGUI(QtWidgets.QMainWindow):
 
         self.right_layout = QtWidgets.QVBoxLayout()
         self.right_layout.setObjectName("right_layout")
-        self.right_layout.setContentsMargins(2, 2, 2, 2)
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
         self.plot_tab.setLayout(self.right_layout)
 
         # remove the close button from the Plot Area tab (first tab index = 0) as this one will always be ON
@@ -2427,35 +3335,50 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################################################################
         # ########################## INFO BAR # ##################################
         # ########################################################################
-        self.infobar = self.statusBar()
+        self.statusBar().hide()
+        self.workspace_status_container = QtWidgets.QFrame()
+        self.workspace_status_container.setObjectName("workspace_status_container")
+        self.workspace_status_container.setStyleSheet(self.workspace_panel_style_sheet())
+        self.workspace_status_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        self.workspace_status_container.setMinimumHeight(34)
+        self.workspace_status_layout = QtWidgets.QHBoxLayout(self.workspace_status_container)
+        self.workspace_status_layout.setContentsMargins(10, 4, 10, 4)
+        self.workspace_status_layout.setSpacing(4)
+        self.right_lay.addWidget(self.workspace_status_container)
+        self.workspace_status_container.setVisible(False)
+
+        self.infobar = self.workspace_status_container
         self.fcinfo = AppInfoBar(app=self.app)
 
-        self.infobar.addWidget(self.fcinfo, stretch=1)
+        self.workspace_status_layout.addWidget(self.fcinfo, stretch=1)
 
-        self.infobar.addWidget(self.delta_coords_toolbar)
+        self.workspace_status_layout.addWidget(self.delta_coords_toolbar)
         self.delta_coords_toolbar.setVisible(self.app.defaults["global_delta_coords_bar_show"])
 
-        self.infobar.addWidget(self.coords_toolbar)
+        self.workspace_status_layout.addWidget(self.coords_toolbar)
         self.coords_toolbar.setVisible(self.app.defaults["global_coords_bar_show"])
 
         self.grid_toolbar.setMaximumHeight(24)
-        self.infobar.addWidget(self.grid_toolbar)
+        self.workspace_status_layout.addWidget(self.grid_toolbar)
         self.grid_toolbar.setVisible(self.app.defaults["global_grid_bar_show"])
 
         self.status_toolbar.setMaximumHeight(24)
-        self.infobar.addWidget(self.status_toolbar)
+        self.workspace_status_layout.addWidget(self.status_toolbar)
         self.status_toolbar.setVisible(self.app.defaults["global_statusbar_show"])
 
         self.units_label = FCLabel("[mm]")
         self.units_label.setToolTip(_("The application dimensional units is millimeter."))
         self.units_label.setMargin(2)
-        self.infobar.addWidget(self.units_label)
+        self.workspace_status_layout.addWidget(self.units_label)
 
         # this used to be done in the APP.__init__()
         self.activity_view = FlatCAMActivityView(icon_location=self.app.resource_location,
                                                  icon_kind=self.app.defaults["global_activity_icon"],
                                                  replot_callback=self.app.on_toolbar_replot)
-        self.infobar.addWidget(self.activity_view)
+        self.workspace_status_layout.addWidget(self.activity_view)
 
         # disabled
         # self.progress_bar = QtWidgets.QProgressBar()
@@ -2537,13 +3460,23 @@ class MainGUI(QtWidgets.QMainWindow):
         # ################## RESTORE UI from QSettings #################
         # ########################################################################
         q_settings = QSettings("Open Source", "FlatCAM_Plus")
+        modern_workspace_layout_version = 3
+        try:
+            stored_workspace_layout_version = int(q_settings.value('modern_workspace_layout_version', 0))
+        except (TypeError, ValueError):
+            stored_workspace_layout_version = 0
+
+        if stored_workspace_layout_version != modern_workspace_layout_version:
+            q_settings.remove('saved_gui_state')
+            q_settings.setValue('modern_workspace_layout_version', modern_workspace_layout_version)
+
         if q_settings.contains("saved_gui_state"):
             self.restoreState(q_settings.value('saved_gui_state'), 0)
         tb_lock_state = q_settings.value('toolbar_lock', "true")
         show_text_state = "false"
         q_settings.setValue('menu_show_text', show_text_state)
         win_geo = q_settings.value('window_geometry', (100, 100, 800, 400))
-        splitter_left = int(q_settings.value('splitter_left', 1))
+        splitter_left = max(320, int(q_settings.value('splitter_left', 320)))
 
         if q_settings.contains("layout"):
             layout = q_settings.value('layout', type=str)
@@ -2568,7 +3501,8 @@ class MainGUI(QtWidgets.QMainWindow):
         self.setGeometry(win_geo[0], win_geo[1], win_geo[2], win_geo[3])
         self.app.log.debug("MainGUI.__init__() --> UI state restored from QSettings.")
 
-        self.splitter.setSizes([splitter_left, 0])
+        self.splitter.setSizes([splitter_left, 1000, 0])
+        self.ensure_notebook_visible()
 
         self.lock_toolbar(lock=True if tb_lock_state == 'true' else False)
         self.show_text_under_action(show_text=True if show_text_state == 'true' else False)
@@ -2624,6 +3558,7 @@ class MainGUI(QtWidgets.QMainWindow):
         self.add_cnc_toolbar_controls()
         self.add_ai_toolbar_controls()
         self.add_options_toolbar_controls()
+        self.show_start_workspace()
 
         # self.screenChanged.connect(self.on_screen_change)
 
@@ -2870,6 +3805,8 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################################################################
         # ##################### File Toolbar #####################################
         # ########################################################################
+        self.add_main_menu_toolbar_button()
+
         self.file_open_btn = self.toolbar_action('/folder32.png', _("Open Project"), _("Open a project."))
         self.file_open_gerber_btn = self.toolbar_action(
             '/open_gerber32.png', _("Open Gerber"), _("Open a Gerber file."))
@@ -2951,6 +3888,10 @@ class MainGUI(QtWidgets.QMainWindow):
         self.zoom_in_btn = self.toolbar_action('/zoom_in32.png', _("Zoom In"))
         self.zoom_out_btn = self.toolbar_action('/zoom_out32.png', _("Zoom Out"))
         self.zoom_fit_btn = self.toolbar_action('/zoom_fit32.png', _("Zoom Fit"))
+        self.ruler_btn = self.toolbar_action('/axis32.png', _("Ruler"), _("Show or hide canvas rulers."))
+        self.ruler_btn.setCheckable(True)
+        self.ruler_btn.setChecked(self.app.defaults.get("global_rulers", True))
+        self.toolbarview.addAction(self.ruler_btn)
         self.plot_dropdown, self.plot_dropdown_action, self.plot_menu = \
             self.add_toolbar_dropdown(
                 self.toolbarview, '/replot32.png', _("Plot"), [self.replot_btn, self.clear_plot_btn])
@@ -3194,19 +4135,13 @@ class MainGUI(QtWidgets.QMainWindow):
         # self.show()
 
     def on_select_tab(self, name):
-        # if the splitter is hidden, display it, else hide it but only if the current widget is the same
-        if self.splitter.sizes()[0] == 0:
-            self.splitter.setSizes([1, 1])
-        else:
-            if self.notebook.currentWidget().objectName() == name + '_tab':
-                self.splitter.setSizes([0, 1])
-
         if name == 'project':
+            self.ensure_notebook_visible()
             self.notebook.setCurrentWidget(self.project_tab)
         elif name == 'properties':
-            self.notebook.setCurrentWidget(self.properties_tab)
+            self.ensure_properties_tab_visible()
         elif name == 'tool':
-            self.notebook.setCurrentWidget(self.plugin_tab)
+            self.ensure_plugin_tab_visible()
 
     def createPopupMenu(self):
         menu = super().createPopupMenu()
@@ -3225,11 +4160,11 @@ class MainGUI(QtWidgets.QMainWindow):
         """
 
         if lock:
-            for widget in self.children():
+            for widget in self.findChildren(QtWidgets.QToolBar):
                 if isinstance(widget, QtWidgets.QToolBar):
                     widget.setMovable(False)
         else:
-            for widget in self.children():
+            for widget in self.findChildren(QtWidgets.QToolBar):
                 if isinstance(widget, QtWidgets.QToolBar):
                     widget.setMovable(True)
 
@@ -3240,11 +4175,11 @@ class MainGUI(QtWidgets.QMainWindow):
 
     def show_text_under_action(self, show_text=True):
         if show_text:
-            for widget in self.children():
+            for widget in self.findChildren(QtWidgets.QToolBar):
                 if isinstance(widget, QtWidgets.QToolBar):
                     widget.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         else:
-            for widget in self.children():
+            for widget in self.findChildren(QtWidgets.QToolBar):
                 if isinstance(widget, QtWidgets.QToolBar):
                     widget.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
 
@@ -3373,12 +4308,88 @@ class MainGUI(QtWidgets.QMainWindow):
 
         :return:
         """
-        if self.splitter.sizes()[0] == 0:
-            self.splitter.setSizes([1, 1])
-            self.menu_toggle_nb.setChecked(True)
-        else:
-            self.splitter.setSizes([0, 1])
-            self.menu_toggle_nb.setChecked(False)
+        sidebar = getattr(self, "splitter_left", None)
+        is_visible = sidebar is not None and not sidebar.isHidden() and self.splitter.sizes()[0] > 0
+        self.set_left_sidebar_visible(not is_visible)
+
+    def ensure_notebook_visible(self):
+        """
+        Keep the left project/properties/tool sidebar visible.
+        """
+        self.set_left_sidebar_visible(True)
+
+        try:
+            self.splitter.setCollapsible(0, False)
+        except (AttributeError, RuntimeError):
+            pass
+
+    def normalized_splitter_sizes(self):
+        sizes = list(self.splitter.sizes())
+        count = self.splitter.count()
+        while len(sizes) < count:
+            sizes.append(0)
+
+        if count >= 2 and sizes[1] <= 0:
+            sizes[1] = 1000
+
+        return sizes
+
+    def update_sidebar_toggle_actions(self):
+        left_visible = (
+            hasattr(self, "splitter_left") and
+            not self.splitter_left.isHidden() and
+            self.normalized_splitter_sizes()[0] > 0
+        )
+        right_visible = (
+            hasattr(self, "properties_sidebar") and
+            not self.properties_sidebar.isHidden() and
+            len(self.normalized_splitter_sizes()) > 2 and
+            self.normalized_splitter_sizes()[2] > 0
+        )
+
+        if getattr(self, "menu_toggle_nb", None) is not None:
+            self.menu_toggle_nb.setChecked(left_visible)
+        if getattr(self, "menuview_toggle_notebook", None) is not None:
+            self.menuview_toggle_notebook.setChecked(left_visible)
+        if getattr(self, "menu_toggle_properties", None) is not None:
+            self.menu_toggle_properties.setChecked(right_visible)
+        if getattr(self, "menuview_toggle_properties_sidebar", None) is not None:
+            self.menuview_toggle_properties_sidebar.setChecked(right_visible)
+        self.update_sidebar_toggle_icons()
+        self.position_sidebar_toggle_buttons()
+
+    def set_left_sidebar_visible(self, visible=True):
+        if not hasattr(self, "splitter_left"):
+            return
+
+        sizes = self.normalized_splitter_sizes()
+        self.splitter_left.setVisible(visible)
+        sizes[0] = 320 if visible else 0
+        if len(sizes) > 1 and sizes[1] <= 0:
+            sizes[1] = 1000
+        self.splitter.setSizes(sizes)
+        self.update_sidebar_toggle_actions()
+        self.position_sidebar_toggle_buttons()
+
+    def set_properties_sidebar_visible(self, visible=True):
+        if not hasattr(self, "properties_sidebar"):
+            return
+
+        sizes = self.normalized_splitter_sizes()
+        self.properties_sidebar.setVisible(visible)
+        if len(sizes) > 2:
+            sizes[2] = 360 if visible else 0
+        if len(sizes) > 1 and sizes[1] <= 0:
+            sizes[1] = 1000
+        self.splitter.setSizes(sizes)
+        self.update_sidebar_toggle_actions()
+        self.position_sidebar_toggle_buttons()
+
+    def on_toggle_properties_sidebar(self):
+        sidebar = getattr(self, "properties_sidebar", None)
+        sizes = self.normalized_splitter_sizes()
+        is_visible = sidebar is not None and not sidebar.isHidden() and len(sizes) > 2 and sizes[2] > 0
+        self.set_properties_sidebar_visible(not is_visible)
 
     def on_toggle_grid(self):
         """
@@ -5004,11 +6015,12 @@ class MainGUI(QtWidgets.QMainWindow):
 
             q_settings = QSettings("Open Source", "FlatCAM_Plus")
             q_settings.setValue('saved_gui_state', self.saveState(0))
+            q_settings.setValue('modern_workspace_layout_version', 3)
             q_settings.setValue('toolbar_lock', self.lock_action.isChecked())
             q_settings.setValue('menu_show_text', self.show_text_action.isChecked())
             if not self.isMaximized():
                 q_settings.setValue('window_geometry', (g_rect.x(), g_rect.y(), g_rect.width(), g_rect.height()))
-            q_settings.setValue('splitter_left', self.splitter.sizes()[0])
+            q_settings.setValue('splitter_left', max(320, self.splitter.sizes()[0]))
             # This will write the setting to the platform specific storage.
             del q_settings
             try:
@@ -5017,6 +6029,10 @@ class MainGUI(QtWidgets.QMainWindow):
                 QtWidgets.QApplication.quit()
                 # sys.exit(0)
         event.ignore()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.position_sidebar_toggle_buttons()
 
     # def moveEvent(self, event):
     #     oldScreen = QtWidgets.QApplication.screenAt(event.oldPos())

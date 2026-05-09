@@ -109,7 +109,7 @@ class AppDefaults:
 
         "global_systray_icon": True,
         "global_shell_at_startup": False,  # Show the shell at startup.
-        "global_project_at_startup": False,
+        "global_project_at_startup": True,
         "global_version_check": True,
         "global_send_stats": True,
         "global_worker_number": int((os.cpu_count()) / 2) if os.cpu_count() > 4 else 1,
@@ -162,6 +162,7 @@ class AppDefaults:
         "global_workspace_orientation": 'p',
         "global_axis": True,
         "global_axis_color": '#B34D4D',
+        "global_rulers": True,
         "global_hud": False,
         "global_grid_lines": True,
         "global_grid_snap": True,

@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -164,13 +164,13 @@ class AlignObjects(AppTool):
 
     def on_type_obj_changed(self, val):
         obj_type = {'grb': 0, 'exc': 1}[val]
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.object_combo.setCurrentIndex(0)
         self.ui.object_combo.obj_type = {'grb': "Gerber", 'exc': "Excellon"}[val]
 
     def on_type_aligner_changed(self, val):
         obj_type = {'grb': 0, 'exc': 1}[val]
-        self.ui.aligner_object_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.aligner_object_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.aligner_object_combo.setCurrentIndex(0)
         self.ui.aligner_object_combo.obj_type = {'grb': "Gerber", 'exc': "Excellon"}[val]
 
@@ -390,8 +390,8 @@ class AlignObjects(AppTool):
         )
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.aligner_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.aligner_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class AlignUI:
@@ -447,7 +447,7 @@ class AlignUI:
         # Object to be aligned
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.object_combo.is_last = True
 
         self.object_combo.setToolTip(
@@ -486,7 +486,7 @@ class AlignUI:
         # Object to be aligned to = aligner
         self.aligner_object_combo = FCComboBox()
         self.aligner_object_combo.setModel(self.app.collection)
-        self.aligner_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.aligner_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.aligner_object_combo.is_last = True
 
         self.aligner_object_combo.setToolTip(

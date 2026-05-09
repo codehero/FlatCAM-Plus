@@ -1,4 +1,4 @@
-
+﻿
 from PyQt6 import QtWidgets, QtGui, QtCore
 from appTool import AppTool
 from appGUI.GUIElements import VerticalScrollArea, FCLabel, FCButton, FCFrame, GLay, FCComboBox, RadioSet, \
@@ -260,14 +260,14 @@ class DblSidedTool(AppTool):
         :return:        None
         :rtype:         None
         """
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(val, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(val))
         self.ui.object_combo.setCurrentIndex(0)
         self.ui.object_combo.obj_type = {
             0: "Gerber", 1: "Excellon", 2: "Geometry"}[val]
 
     def on_combo_box_type(self, val):
         obj_type = {'grb': 0, 'exc': 1, 'geo': 2}[val]
-        self.ui.box_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.box_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.box_combo.setCurrentIndex(0)
         self.ui.box_combo.obj_type = {
             "grb": "Gerber", "exc": "Excellon", "geo": "Geometry"}[val]
@@ -674,8 +674,8 @@ class DblSidedTool(AppTool):
         self.ui.point_entry.set_value(val)
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
         self.ui.object_combo.setCurrentIndex(0)
         self.ui.box_combo.setCurrentIndex(0)
@@ -755,7 +755,7 @@ class DsidedUI:
         # ## Gerber Object to mirror
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.object_combo.is_last = True
 
         obj_grid.addWidget(self.object_combo, 2, 0, 1, 2)
@@ -968,7 +968,7 @@ class DsidedUI:
         # Object used as BOX reference
         self.box_combo = FCComboBox()
         self.box_combo.setModel(self.app.collection)
-        self.box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.box_combo.is_last = True
 
         grid_box_ref.addWidget(self.box_combo, 2, 0, 1, 2)
@@ -992,7 +992,7 @@ class DsidedUI:
         # Excellon Object that holds the holes
         self.exc_combo = FCComboBox()
         self.exc_combo.setModel(self.app.collection)
-        self.exc_combo.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.exc_combo.setRootModelIndex(self.app.collection.get_group_index(1))
         self.exc_combo.is_last = True
 
         grid_snap_ref.addWidget(self.exc_hole_lbl, 0, 0, 1, 2)

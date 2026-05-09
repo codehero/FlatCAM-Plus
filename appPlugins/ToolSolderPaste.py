@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -1240,9 +1240,9 @@ class SolderPaste(AppTool):
         self.app.inform.emit('[success] %s: %s' % (_("Saved to"), filename))
 
     def reset_fields(self):
-        self.ui.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.geo_obj_combo.setRootModelIndex(self.app.collection.index(2, 0, QtCore.QModelIndex()))
-        self.ui.cnc_obj_combo.setRootModelIndex(self.app.collection.index(3, 0, QtCore.QModelIndex()))
+        self.ui.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.geo_obj_combo.setRootModelIndex(self.app.collection.get_group_index(2))
+        self.ui.cnc_obj_combo.setRootModelIndex(self.app.collection.get_group_index(3))
 
 
 class SolderUI:
@@ -1281,7 +1281,7 @@ class SolderUI:
 
         self.obj_combo = FCComboBox(callback=solder_class.on_rmb_combo)
         self.obj_combo.setModel(self.app.collection)
-        self.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.obj_combo.is_last = True
         self.obj_combo.obj_type = "Gerber"
 
@@ -1683,7 +1683,7 @@ class SolderUI:
         # Geometry Object to be used for Solderpaste dispensing
         self.geo_obj_combo = FCComboBox(callback=solder_class.on_rmb_combo)
         self.geo_obj_combo.setModel(self.app.collection)
-        self.geo_obj_combo.setRootModelIndex(self.app.collection.index(2, 0, QtCore.QModelIndex()))
+        self.geo_obj_combo.setRootModelIndex(self.app.collection.get_group_index(2))
         self.geo_obj_combo.is_last = True
         self.geo_obj_combo.obj_type = "Geometry"
 
@@ -1718,7 +1718,7 @@ class SolderUI:
         # Gerber Object to be used for solderpaste dispensing
         self.cnc_obj_combo = FCComboBox(callback=solder_class.on_rmb_combo)
         self.cnc_obj_combo.setModel(self.app.collection)
-        self.cnc_obj_combo.setRootModelIndex(self.app.collection.index(3, 0, QtCore.QModelIndex()))
+        self.cnc_obj_combo.setRootModelIndex(self.app.collection.get_group_index(3))
         self.cnc_obj_combo.is_last = True
         self.geo_obj_combo.obj_type = "CNCJob"
 

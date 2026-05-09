@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -1988,8 +1988,8 @@ class ToolPunchGerber(Gerber, AppTool):
         self.reset_fields()
 
     def reset_fields(self):
-        self.ui.gerber_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.exc_combo.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.ui.gerber_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.exc_combo.setRootModelIndex(self.app.collection.get_group_index(1))
         self.clear_aperture_marking()
 
         self.ui_disconnect()
@@ -2047,7 +2047,7 @@ class PunchUI:
         # ## Gerber Object
         self.gerber_object_combo = FCComboBox()
         self.gerber_object_combo.setModel(self.app.collection)
-        self.gerber_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.gerber_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.gerber_object_combo.is_last = False
         self.gerber_object_combo.obj_type = "Gerber"
 
@@ -2189,7 +2189,7 @@ class PunchUI:
 
         self.exc_combo = FCComboBox()
         self.exc_combo.setModel(self.app.collection)
-        self.exc_combo.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.exc_combo.setRootModelIndex(self.app.collection.get_group_index(1))
         self.exc_combo.is_last = True
         self.exc_combo.obj_type = "Excellon"
 

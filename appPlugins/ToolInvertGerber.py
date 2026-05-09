@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -196,7 +196,7 @@ class ToolInvertGerber(AppTool):
         self.app.app_obj.new_object('gerber', outname, init_func)
 
     def reset_fields(self):
-        self.ui.gerber_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.gerber_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
     @staticmethod
     def poly2rings(poly):
@@ -234,7 +234,7 @@ class InvertUI:
         # Target Gerber Object
         self.gerber_combo = FCComboBox()
         self.gerber_combo.setModel(self.app.collection)
-        self.gerber_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.gerber_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.gerber_combo.is_last = True
         self.gerber_combo.obj_type = "Gerber"
 

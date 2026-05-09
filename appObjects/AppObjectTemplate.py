@@ -10,7 +10,7 @@
 # File modified by: Marius Stanciu                         #
 # ##########################################################
 
-from PyQt6 import QtCore, QtGui
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 from appGUI.ObjectUI import ObjectUI
 from appGUI.PanelStyles import apply_modern_panel_style, apply_modern_sidebar_style
@@ -46,7 +46,13 @@ class ValidationError(Exception):
         self.errors = errors
 
 
-class FlatCAMObj(QtCore.QObject):
+class _QtInitTerminator:
+    # Stops PyQt's cooperative QObject init before it reaches CAM data bases.
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class FlatCAMObj(QtCore.QObject, _QtInitTerminator):
     """
     Base type of objects handled in FlatCAM. These become interactive
     in the appGUI, can be plotted, and their options can be modified
@@ -72,7 +78,7 @@ class FlatCAMObj(QtCore.QObject):
         :return: FlatCAMObj
         """
 
-        super().__init__(app=app)
+        QtCore.QObject.__init__(self)
 
         self.app = app
 
@@ -292,7 +298,7 @@ class FlatCAMObj(QtCore.QObject):
             pass
 
         try:
-            self.ui.transformations_button.clicked.connect(lambda: self.app.transform_tool.run(toggle=True))
+            self.ui.transformations_button.clicked.connect(self.on_transformations_button_click)
         except (TypeError, AttributeError):
             pass
 
@@ -321,11 +327,15 @@ class FlatCAMObj(QtCore.QObject):
         try:
             apply_modern_panel_style(self.ui, self.app)
             apply_modern_sidebar_style(self.app.ui.properties_scroll_area, self.app)
+            if hasattr(self.app.ui, "set_properties_sidebar_title"):
+                self.app.ui.set_properties_sidebar_title(str(self.obj_options["name"]))
             self.app.ui.properties_scroll_area.setWidget(self.ui)
         except RuntimeError:
             try:
                 apply_modern_panel_style(self.ui, self.app)
                 apply_modern_sidebar_style(self.app.ui.properties_scroll_area, self.app)
+                if hasattr(self.app.ui, "set_properties_sidebar_title"):
+                    self.app.ui.set_properties_sidebar_title(str(self.obj_options["name"]))
                 self.app.ui.properties_scroll_area.setWidget(self.ui)
             except Exception:
                 pass
@@ -403,6 +413,34 @@ class FlatCAMObj(QtCore.QObject):
             self.app.app_obj.object_changed.emit(self)
 
         self.app.worker_task.emit({'fcn': worker_task, 'params': []})
+
+    def on_transformations_button_click(self, *_):
+        transform_actions = [
+            getattr(self.app.ui, 'menuoptions_transform_rotate', None),
+            getattr(self.app.ui, 'menuoptions_transform_skewx', None),
+            getattr(self.app.ui, 'menuoptions_transform_skewy', None),
+            getattr(self.app.ui, 'menuoptions_transform_flipx', None),
+            getattr(self.app.ui, 'menuoptions_transform_flipy', None)
+        ]
+        transform_actions = [action for action in transform_actions if action is not None]
+
+        if not transform_actions:
+            self.app.inform.emit('[WARNING_NOTCL] %s' % _("No transform actions are available."))
+            return
+
+        menu = QtWidgets.QMenu(self.ui.transformations_button)
+        configure_popup_menu = getattr(self.app.ui, 'configure_popup_menu', None)
+        if configure_popup_menu:
+            configure_popup_menu(menu)
+
+        for idx, action in enumerate(transform_actions):
+            if idx in (1, 3):
+                menu.addSeparator()
+            menu.addAction(action)
+
+        self.read_form()
+        button = self.ui.transformations_button
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
 
     def on_skew_button_click(self):
         self.app.defaults.report_usage("obj_on_skew_button")

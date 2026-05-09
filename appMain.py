@@ -808,11 +808,9 @@ class App(QtCore.QObject):
         self.ui = MainGUI(self)
         # ########################
 
-        # decide if to show or hide the Notebook side of the screen at startup
-        if self.options["global_project_at_startup"] is True:
-            self.ui.splitter.setSizes([1, 1])
-        else:
-            self.ui.splitter.setSizes([0, 1])
+        # Keep the Notebook side of the screen visible at startup.
+        self.ui.splitter.setSizes([320, 1000, 0])
+        self.ui.ensure_notebook_visible()
 
         # ###########################################################################################################
         # ########################################### Initialize Tcl Shell ##########################################
@@ -887,7 +885,7 @@ class App(QtCore.QObject):
         # ### Adjust tabs width ## ##
         # self.collection.view.setMinimumWidth(self.ui.options_scroll_area.widget().sizeHint().width() +
         #     self.ui.options_scroll_area.verticalScrollBar().sizeHint().width())
-        self.collection.view.setMinimumWidth(290)
+        self.collection.view.setMinimumWidth(320)
         self.log.debug("Finished creating Object Collection.")
 
         # ###########################################################################################################
@@ -1178,6 +1176,7 @@ class App(QtCore.QObject):
         self.file_opened.connect(self.register_recent)
         self.file_opened.connect(lambda kind, filename: self.register_folder(filename))
         self.file_saved.connect(lambda kind, filename: self.register_save_folder(filename))
+        self.file_opened.connect(self.on_project_file_opened)
 
         # when the options dictionary values change
         self.options.set_change_callback(callback=self.on_options_value_changed)
@@ -1563,7 +1562,7 @@ class App(QtCore.QObject):
         # when changing those properties the associated keys change, so we get an updated Properties default Tab
         if key_changed in [
             "global_grid_lines", "global_grid_snap", "global_axis", "global_workspace", "global_workspaceT",
-            "global_workspace_orientation", "global_hud"
+            "global_workspace_orientation", "global_hud", "global_rulers"
         ]:
             self.on_properties_tab_click()
 
@@ -1927,10 +1926,16 @@ class App(QtCore.QObject):
         self.ui.menuview_toggle_parea.triggered.connect(self.ui.on_toggle_plotarea)
         self.ui.menuview_toggle_notebook.triggered.connect(self.ui.on_toggle_notebook)
         self.ui.menu_toggle_nb.triggered.connect(self.ui.on_toggle_notebook)
+        self.ui.menuview_toggle_properties_sidebar.triggered.connect(self.ui.on_toggle_properties_sidebar)
+        self.ui.menu_toggle_properties.triggered.connect(self.ui.on_toggle_properties_sidebar)
         self.ui.menuview_toggle_grid.triggered.connect(self.ui.on_toggle_grid)
         self.ui.menuview_toggle_workspace.triggered.connect(self.on_workspace_toggle)
 
         self.ui.menuview_toggle_grid_lines.triggered.connect(self.plotcanvas.on_toggle_grid_lines)
+        if hasattr(self.ui, "menuview_toggle_rulers") and hasattr(self.plotcanvas, "on_toggle_rulers"):
+            self.ui.menuview_toggle_rulers.triggered.connect(
+                lambda checked: self.plotcanvas.on_toggle_rulers(state=checked)
+            )
         self.ui.menuview_toggle_axis.triggered.connect(self.plotcanvas.on_toggle_axis)
         self.ui.menuview_toggle_hud.triggered.connect(self.plotcanvas.on_toggle_hud)
         self.ui.menuview_show_log.triggered.connect(self.on_show_log)
@@ -2057,6 +2062,9 @@ class App(QtCore.QObject):
         self.ui.zoom_fit_btn.triggered.connect(self.on_zoom_fit)
         self.ui.zoom_in_btn.triggered.connect(lambda: self.plotcanvas.zoom(1 / 1.5))
         self.ui.zoom_out_btn.triggered.connect(lambda: self.plotcanvas.zoom(1.5))
+        if hasattr(self.ui, "ruler_btn") and hasattr(self.plotcanvas, "on_toggle_rulers"):
+            self.ui.ruler_btn.setChecked(self.options.get("global_rulers", True))
+            self.ui.ruler_btn.triggered.connect(lambda checked: self.plotcanvas.on_toggle_rulers(state=checked))
 
         # Edit Toolbar Signals
         self.ui.editor_start_btn.triggered.connect(self.on_editing_start)
@@ -2117,6 +2125,7 @@ class App(QtCore.QObject):
         # first remove the toolbars:
         self.log.debug(" -> Remove Toolbars")
         try:
+            self.ui.remove_centered_toolbar_host()
             self.ui.removeToolBar(self.ui.toolbarfile)
             self.ui.removeToolBar(self.ui.toolbaredit)
             self.ui.removeToolBar(self.ui.toolbarview)
@@ -2175,50 +2184,50 @@ class App(QtCore.QObject):
             self.ui.addToolBar(Qt.ToolBarArea.RightToolBarArea, self.ui.exc_edit_toolbar)
         else:
             # ## TOOLBAR INSTALLATION # ##
+            self.ui.create_centered_toolbar_host()
+
             self.ui.toolbarfile = QtWidgets.QToolBar('File Toolbar')
             self.ui.toolbarfile.setObjectName('File_TB')
             self.ui.configure_toolbar(self.ui.toolbarfile)
-            self.ui.addToolBar(self.ui.toolbarfile)
+            self.ui.add_centered_toolbar(self.ui.toolbarfile)
 
             self.ui.toolbaredit = QtWidgets.QToolBar('Edit Toolbar')
             self.ui.toolbaredit.setObjectName('Edit_TB')
             self.ui.configure_toolbar(self.ui.toolbaredit)
-            self.ui.addToolBar(self.ui.toolbaredit)
+            self.ui.add_centered_toolbar(self.ui.toolbaredit)
 
             self.ui.toolbarview = QtWidgets.QToolBar('View Toolbar')
             self.ui.toolbarview.setObjectName('View_TB')
             self.ui.configure_toolbar(self.ui.toolbarview)
-            self.ui.addToolBar(self.ui.toolbarview)
+            self.ui.add_centered_toolbar(self.ui.toolbarview)
 
             self.ui.toolbarshell = QtWidgets.QToolBar('Shell Toolbar')
             self.ui.toolbarshell.setObjectName('Shell_TB')
             self.ui.configure_toolbar(self.ui.toolbarshell)
-            self.ui.addToolBar(self.ui.toolbarshell)
+            self.ui.add_centered_toolbar(self.ui.toolbarshell)
 
             self.ui.toolbarplugins = QtWidgets.QToolBar('Plugin Toolbar')
             self.ui.toolbarplugins.setObjectName('Plugins_TB')
             self.ui.configure_toolbar(self.ui.toolbarplugins)
-            self.ui.addToolBar(self.ui.toolbarplugins)
+            self.ui.add_centered_toolbar(self.ui.toolbarplugins)
 
             self.ui.exc_edit_toolbar = QtWidgets.QToolBar('Excellon Editor Toolbar')
             # self.ui.exc_edit_toolbar.setVisible(False)
             self.ui.exc_edit_toolbar.setObjectName('ExcEditor_TB')
             self.ui.configure_toolbar(self.ui.exc_edit_toolbar)
-            self.ui.addToolBar(self.ui.exc_edit_toolbar)
-
-            self.ui.addToolBarBreak()
+            self.ui.add_centered_toolbar(self.ui.exc_edit_toolbar)
 
             self.ui.geo_edit_toolbar = QtWidgets.QToolBar('Geometry Editor Toolbar')
             # self.ui.geo_edit_toolbar.setVisible(False)
             self.ui.geo_edit_toolbar.setObjectName('GeoEditor_TB')
             self.ui.configure_toolbar(self.ui.geo_edit_toolbar)
-            self.ui.addToolBar(self.ui.geo_edit_toolbar)
+            self.ui.add_centered_toolbar(self.ui.geo_edit_toolbar)
 
             self.ui.grb_edit_toolbar = QtWidgets.QToolBar('Gerber Editor Toolbar')
             # self.ui.grb_edit_toolbar.setVisible(False)
             self.ui.grb_edit_toolbar.setObjectName('GrbEditor_TB')
             self.ui.configure_toolbar(self.ui.grb_edit_toolbar)
-            self.ui.addToolBar(self.ui.grb_edit_toolbar)
+            self.ui.add_centered_toolbar(self.ui.grb_edit_toolbar)
 
         if current_layout == 'minimal':
             self.ui.toolbarview.setVisible(False)
@@ -2284,7 +2293,8 @@ class App(QtCore.QObject):
             self.ui.menuobjects.setDisabled(False)
             return
 
-        self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
+        title = edited_object.obj_options['name'] if edited_object else None
+        self.ui.ensure_properties_tab_visible(title=title)
 
         if edited_object.kind == 'geometry':
             if self.geo_editor is None:
@@ -2339,7 +2349,7 @@ class App(QtCore.QObject):
             self.exc_editor.toolbar_old_state = True if self.ui.exc_edit_toolbar.isVisible() else False
 
             if self.ui.splitter.sizes()[0] == 0:
-                self.ui.splitter.setSizes([1, 1])
+                self.ui.ensure_notebook_visible()
 
             self.exc_editor.edit_fcexcellon(edited_object)
 
@@ -2355,7 +2365,7 @@ class App(QtCore.QObject):
             self.grb_editor.toolbar_old_state = True if self.ui.grb_edit_toolbar.isVisible() else False
 
             if self.ui.splitter.sizes()[0] == 0:
-                self.ui.splitter.setSizes([1, 1])
+                self.ui.ensure_notebook_visible()
 
             self.grb_editor.edit_fcgerber(edited_object)
 
@@ -2371,7 +2381,7 @@ class App(QtCore.QObject):
                 return
 
             if self.ui.splitter.sizes()[0] == 0:
-                self.ui.splitter.setSizes([1, 1])
+                self.ui.ensure_notebook_visible()
 
             # set call source to the Editor we go into
             self.call_source = 'gcode_editor'
@@ -2474,7 +2484,7 @@ class App(QtCore.QObject):
                         found_idx = idx
                         break
                 if found_idx:
-                    self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
+                    self.ui.ensure_properties_tab_visible()
                     self.ui.notebook.removeTab(found_idx)
 
                 if edited_obj.kind == 'geometry':
@@ -2592,7 +2602,7 @@ class App(QtCore.QObject):
                         found_idx = idx
                         break
                 if found_idx:
-                    self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
+                    self.ui.ensure_properties_tab_visible()
                     self.ui.notebook.removeTab(2)
 
                 self.inform.emit('[WARNING_NOTCL] %s' % _("Editor exited. Editor content was not saved."))
@@ -2656,7 +2666,7 @@ class App(QtCore.QObject):
 
         # if notebook is hidden we show it
         if self.ui.splitter.sizes()[0] == 0:
-            self.ui.splitter.setSizes([1, 1])
+            self.ui.ensure_notebook_visible()
 
         # change back the tab name
         for idx in range(self.ui.notebook.count()):
@@ -2896,6 +2906,13 @@ class App(QtCore.QObject):
 
         # Re-build the recent items menu
         self.setup_recent_items()
+
+    def on_project_file_opened(self, kind, filename):
+        if str(kind).lower() != "project":
+            return
+
+        project_name = os.path.splitext(os.path.basename(str(filename)))[0]
+        self.ui.activate_project_workspace(project_name=project_name)
 
     def on_about(self):
         """
@@ -3787,11 +3804,24 @@ class App(QtCore.QObject):
         else:
             self.app_cursor.enabled = True
 
+    def active_side_panel_name(self):
+        sidebar = getattr(self.ui, "properties_sidebar", None)
+        stack = getattr(self.ui, "right_sidebar_stack", None)
+        if sidebar is not None and stack is not None and not sidebar.isHidden():
+            current = stack.currentWidget()
+            if current is not None:
+                return current.objectName()
+
+        try:
+            return self.ui.notebook.currentWidget().objectName()
+        except AttributeError:
+            return ""
+
     def on_tool_add_keypress(self):
         # ## Current application units in Upper Case
         self.units = self.app_units.upper()
 
-        notebook_widget_name = self.ui.notebook.currentWidget().objectName()
+        notebook_widget_name = self.active_side_panel_name()
 
         # work only if the notebook tab on focus is the properties_tab and only if the object is Geometry
         if notebook_widget_name == 'properties_tab':
@@ -3858,7 +3888,7 @@ class App(QtCore.QObject):
     # It's meant to delete tools in tool tables via a 'Delete' shortcut key but only if certain conditions are met
     # See description below.
     def on_delete_keypress(self):
-        notebook_widget_name = self.ui.notebook.currentWidget().objectName()
+        notebook_widget_name = self.active_side_panel_name()
 
         # work only if the notebook tab on focus is the properties_tab and only if the object is Geometry
         if notebook_widget_name == 'properties_tab':
@@ -5061,7 +5091,7 @@ class App(QtCore.QObject):
                     # not all plugins have this implemented
                     # print("This does not have it", self.ui.notebook.tabText(tab_idx))
                     pass
-            self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
+            self.ui.ensure_properties_tab_visible()
             self.ui.notebook.removeTab(found_idx)
 
         # HACK: the content was removed but let's create it again
@@ -5516,6 +5546,9 @@ class App(QtCore.QObject):
             was clicked, the pixel coordinates and the axes coordinates.
         :return: None
         """
+        if self.use_3d_engine and getattr(self.plotcanvas, 'is_ruler_event', lambda e: False)(event):
+            return
+
         event_pos = event.pos if self.use_3d_engine else (event.xdata, event.ydata)
         pos_canvas = self.plotcanvas.translate_coords(event_pos)
 
@@ -5554,6 +5587,8 @@ class App(QtCore.QObject):
         :param origin_click:
         :return:                None
         """
+        if self.use_3d_engine and getattr(self.plotcanvas, 'is_ruler_event', lambda e: False)(event):
+            return
 
         if self.use_3d_engine:
             event_pos = event.pos
@@ -5682,6 +5717,8 @@ class App(QtCore.QObject):
         :param event: contains information about the event.
         :return:
         """
+        if self.use_3d_engine and getattr(self.plotcanvas, 'is_ruler_event', lambda e: False)(event):
+            return
 
         if self.use_3d_engine:
             event_pos = event.pos
@@ -5732,9 +5769,7 @@ class App(QtCore.QObject):
             if self.doubleclick is True:
                 self.doubleclick = False
                 if self.collection.get_selected():
-                    self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
-                    if self.ui.splitter.sizes()[0] == 0:
-                        self.ui.splitter.setSizes([1, 1])
+                    self.ui.ensure_properties_tab_visible()
                     try:
                         # delete the selection shape(S) as it may be in the way
                         self.delete_selection_shape()
@@ -6056,8 +6091,8 @@ class App(QtCore.QObject):
                 # only when working on App
                 if self.call_source == 'app':
                     if self.click_noproject is False:
-                        # if the Tool Tab is in focus don't change focus to Project Tab
-                        if not self.ui.notebook.currentWidget() is self.ui.plugin_tab:
+                        # if the Tool panel is in focus don't change focus to Project Tab
+                        if self.active_side_panel_name() != "plugin_tab":
                             self.ui.notebook.setCurrentWidget(self.ui.project_tab)
                     else:
                         # restore auto open the Project Tab
@@ -6114,14 +6149,14 @@ class App(QtCore.QObject):
         :return:
         """
 
-        if self.ui.notebook.currentWidget().objectName() != "plugin_tab":
+        if self.active_side_panel_name() != "plugin_tab":
             return
 
-        tab_idx = self.ui.notebook.currentIndex()
+        current_plugin_name = getattr(self.ui.plugin_scroll_area.widget(), "objectName", lambda: "")()
         for plugin in self.app_plugins:
             try:
                 # execute this only for the current active plugin
-                if self.ui.notebook.tabText(tab_idx) != plugin.pluginName:
+                if current_plugin_name != plugin.pluginName:
                     continue
                 try:
                     plugin.on_plugin_mouse_click_release(pos)
@@ -6141,14 +6176,14 @@ class App(QtCore.QObject):
         :rtype:
         """
 
-        if self.ui.notebook.currentWidget().objectName() != "plugin_tab":
+        if self.active_side_panel_name() != "plugin_tab":
             return
 
-        tab_idx = self.ui.notebook.currentIndex()
+        current_plugin_name = getattr(self.ui.plugin_scroll_area.widget(), "objectName", lambda: "")()
         for plugin in self.app_plugins:
             # execute this only for the current active plugin
             try:
-                if self.ui.notebook.tabText(tab_idx) != plugin.pluginName:
+                if current_plugin_name != plugin.pluginName:
                     continue
                 try:
                     plugin.on_plugin_mouse_move(pos)
@@ -6321,11 +6356,16 @@ class App(QtCore.QObject):
 
         :return:
         """
-        # if the splitter is hidden, display it
-        if self.ui.splitter.sizes()[0] == 0:
-            self.ui.splitter.setSizes([1, 1])
-        self.ui.notebook.setCurrentWidget(self.ui.properties_tab)
-        self.on_notebook_tab_changed()
+        active_obj = self.collection.get_active()
+        if active_obj:
+            try:
+                active_obj.build_ui()
+            except RuntimeError:
+                active_obj.set_ui(active_obj.ui_type(app=self))
+                active_obj.build_ui()
+
+        title = active_obj.obj_options['name'] if active_obj else None
+        self.ui.ensure_properties_tab_visible(title=title)
 
     def on_project_context_save(self):
         """
@@ -6798,6 +6838,9 @@ class App(QtCore.QObject):
         """
 
         # Tree Widget
+        if hasattr(self.ui, "set_properties_sidebar_title"):
+            self.ui.set_properties_sidebar_title(_("Properties"))
+
         d_properties_tw = FCTree(columns=2)
         d_properties_tw.setObjectName("default_properties")
         d_properties_tw.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
@@ -6835,6 +6878,9 @@ class App(QtCore.QObject):
         canvas_cat = d_properties_tw.addParent(root, _('Canvas'), expanded=True, color=p_color, font=font)
         d_properties_tw.addChild(parent=canvas_cat,
                                  title=['%s:' % _("Axis"), '%s' % str(self.options['global_axis'])],
+                                 column1=True)
+        d_properties_tw.addChild(parent=canvas_cat,
+                                 title=['%s:' % _("Rulers"), '%s' % str(self.options.get('global_rulers', True))],
                                  column1=True)
         d_properties_tw.addChild(parent=canvas_cat,
                                  title=['%s:' % _("Workspace active"),
@@ -7354,7 +7400,7 @@ class App(QtCore.QObject):
 
             if ok_button:
                 group = self.collection.group_items["gerber"]
-                group_index = self.collection.index(group.row(), 0, QtCore.QModelIndex())
+                group_index = self.collection.item_index(group)
 
                 alpha_str = str(hex(alpha_level)[2:]) if alpha_level != 0 else '00'
 
@@ -7410,7 +7456,7 @@ class App(QtCore.QObject):
 
         # make sure to set the color in the Gerber colors storage self.options["gerber_color_list"]
         group_gerber = self.collection.group_items["gerber"]
-        group_gerber_index = self.collection.index(group_gerber.row(), 0, QtCore.QModelIndex())
+        group_gerber_index = self.collection.item_index(group_gerber)
         all_gerber_list = [x for x in self.collection.get_list() if x.kind == 'gerber']
 
         for sel_obj in list_of_obj:

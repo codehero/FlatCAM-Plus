@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -1166,8 +1166,8 @@ class RulesCheck(AppTool):
         self.app.app_obj.new_object('document', name='Rules_check_results', initialize=init, plot=False)
 
     def reset_fields(self):
-        # self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        # self.box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        # self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        # self.box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         pass
 
 
@@ -1255,7 +1255,7 @@ class RulesUI:
         # Copper Top object
         self.copper_t_object = FCComboBox()
         self.copper_t_object.setModel(self.app.collection)
-        self.copper_t_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.copper_t_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.copper_t_object.is_last = True
         self.copper_t_object.obj_type = "Gerber"
 
@@ -1273,7 +1273,7 @@ class RulesUI:
         # SolderMask Top object
         self.sm_t_object = FCComboBox()
         self.sm_t_object.setModel(self.app.collection)
-        self.sm_t_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.sm_t_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.sm_t_object.is_last = True
         self.sm_t_object.obj_type = "Gerber"
 
@@ -1291,7 +1291,7 @@ class RulesUI:
         # SilkScreen Top object
         self.ss_t_object = FCComboBox()
         self.ss_t_object.setModel(self.app.collection)
-        self.ss_t_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ss_t_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.ss_t_object.is_last = True
         self.ss_t_object.obj_type = "Gerber"
 
@@ -1321,7 +1321,7 @@ class RulesUI:
         # Copper Bottom object
         self.copper_b_object = FCComboBox()
         self.copper_b_object.setModel(self.app.collection)
-        self.copper_b_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.copper_b_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.copper_b_object.is_last = True
         self.copper_b_object.obj_type = "Gerber"
 
@@ -1339,7 +1339,7 @@ class RulesUI:
         # SolderMask Bottom object
         self.sm_b_object = FCComboBox()
         self.sm_b_object.setModel(self.app.collection)
-        self.sm_b_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.sm_b_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.sm_b_object.is_last = True
         self.sm_b_object.obj_type = "Gerber"
 
@@ -1357,7 +1357,7 @@ class RulesUI:
         # SilkScreen Bottom object
         self.ss_b_object = FCComboBox()
         self.ss_b_object.setModel(self.app.collection)
-        self.ss_b_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ss_b_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.ss_b_object.is_last = True
         self.ss_b_object.obj_type = "Gerber"
 
@@ -1386,7 +1386,7 @@ class RulesUI:
 
         self.outline_object = FCComboBox()
         self.outline_object.setModel(self.app.collection)
-        self.outline_object.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.outline_object.setRootModelIndex(self.app.collection.get_group_index(0))
         self.outline_object.is_last = True
         self.outline_object.obj_type = "Gerber"
 
@@ -1419,7 +1419,7 @@ class RulesUI:
         # Excellon PTH object
         self.e1_object = FCComboBox()
         self.e1_object.setModel(self.app.collection)
-        self.e1_object.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.e1_object.setRootModelIndex(self.app.collection.get_group_index(1))
         self.e1_object.is_last = True
         self.e1_object.obj_type = "Excellon"
 
@@ -1438,7 +1438,7 @@ class RulesUI:
         # Excellon NPTH object
         self.e2_object = FCComboBox()
         self.e2_object.setModel(self.app.collection)
-        self.e2_object.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.e2_object.setRootModelIndex(self.app.collection.get_group_index(1))
         self.e2_object.is_last = True
         self.e2_object.obj_type = "Excellon"
 

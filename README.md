@@ -2,7 +2,7 @@
 
 **FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
 
-**Current version:** `1.0.0` beta, released `2026/05/03`, updated `2026/05/08`.
+**Current version:** `1.0.0` beta, released `2026/05/03`, updated `2026/05/10`.
 
 Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
 Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
@@ -25,6 +25,8 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **AI Assistant plugin:** A project-aware assistant panel can connect to OpenAI-compatible, local, Gemini, and Claude providers to analyze Gerber, Excellon, Geometry, and CNCJob context from inside FlatCAM Plus.
 - **Coordinate-preserving imports:** Imported Gerber and Excellon files keep their source coordinates so copper, outline, and drill layers from the same CAM export stack remain aligned exactly as generated.
 - **CNCJob compatibility hardening:** Older projects that do not carry Auto Levelling option keys now receive safe fallback defaults instead of failing during CNCJob creation.
+- **Modern project startup:** FlatCAM Plus now opens into a project splash workspace with **Create New Project** and **Open Project** actions instead of immediately showing an empty canvas.
+- **Saved layout migration:** The modern workspace layout version resets stale Qt window/dock state when needed, preventing older saved layouts from compressing the main canvas or splash area.
 
 ### CAM and Tool Data
 
@@ -35,6 +37,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **CNCJob generation hardening:** Missing Milling defaults in older projects or database tools are completed automatically before G-code generation.
 - **V-tool accuracy:** Shape, tip diameter, and related V-bit settings persist more reliably for isolation workflows.
 - **Copper-aware isolation:** The Isolation plugin now includes **Generate With Copper**, a second generation path that uses the selected isolation tool while preserving large copper pours and filtering frame-like outer paths.
+- **Project-tree aware plugin object selectors:** Plugin object combo boxes now target the real Gerber, Excellon, Geometry, and CNCJob groups under the project root, so tools see actual files instead of group labels.
 - **Excellon DB loading:** Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing.
 - **Reference-aware rotation:** Toolbar and plot-area Rotate actions use the Transform Plugin reference setting, so late-loaded Excellon drill files can be rotated around the Gerber board center instead of only their own selection bounds.
 
@@ -54,6 +57,22 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Machine-aware G-code metadata:** Exported G-code now records the active machine profile, travel limits, safe Z, and max spindle RPM as header comments, while Verify checks X/Y/Z motion bounds against the active profile.
 - **Modular CNC architecture:** CNC controller features are split into focused modules under `appPlugins/cnc_control/` for easier maintenance and future plugin-style extensions.
 - **Centralized manufacturing preferences:** Core machine setup starts from a dedicated Manufacturing Settings group before deeper plugin-specific defaults.
+- **FlatCAM CNC Android app (beta):** A native Android CNC control app is included under `flatcam-cnc-android/` as a beta companion for mobile controller sessions.
+
+### Workspace and Project UI
+
+- **Project-first startup:** On application launch, the canvas area is replaced by a modern splash panel until a project is created or opened.
+- **Project creation modal:** New projects request a project name and save location, then populate the left project tree with the project root and object groups.
+- **Full-height project sidebar:** The left sidebar is a dedicated project tree with rounded container styling and a midpoint toggle handle.
+- **Right properties/tool sidebar:** Gerber, Excellon, Geometry, CNCJob properties and plugin/tool panels open in a right sidebar, keeping the canvas area focused on plotting and large work surfaces.
+- **Canvas tab workspace:** Plot tabs remain in the main canvas container, while object and plugin settings are routed to the right sidebar unless a tool explicitly needs a large canvas-area workspace.
+- **Toolbar container refresh:** The top toolbar uses a rounded white outer container with a recessed inner toolbar surface, left-aligned tool actions, and a CNC connection status control on the right.
+- **Status container refresh:** Status, coordinates, units, grid, and activity indicators are hosted in a rounded workspace status container below the canvas area.
+- **Sidebar toggles:** Left project and right settings sidebars can be collapsed and restored from overlay toggle buttons positioned on the workspace edges.
+- **Light themed main menu:** The main toolbar menu now follows the active light theme instead of using a dark detached menu style.
+- **Tree-based project organization:** The project tree uses the project name as the root, with Gerber, Excellon, Geometry, CNC Job, Script, and Document groups below it.
+- **Double-click properties:** Double-clicking objects in the project tree opens their properties in the right sidebar.
+- **Plugin compatibility with project tree:** All plugin object selectors were updated for the project-root tree structure so actions such as Isolation, NCC, Milling, Paint, Panelize, Film, Punch, Rules Check, and others resolve the selected file correctly.
 
 ---
 
@@ -70,6 +89,20 @@ FlatCAM Plus includes a built-in CNC control workflow for managing machine sessi
 - **Live machine status:** Controller reports update the toolbar, DRO, machine state, position, and controller details.
 - **Limit input indicators:** Active GRBL `Pn:` limit inputs are shown beside X/Y/Z DRO rows and logged only when they change.
 - **Safe disconnect:** Active transports, receiver threads, streaming state, and UI indicators are reset cleanly.
+
+### FlatCAM CNC Android App (Beta)
+
+The repository includes `flatcam-cnc-android/`, a native Android companion app for mobile CNC control. This app is currently **beta** and intended for testing alongside the desktop CNC workflow.
+
+- **Native Android interface:** Built with Kotlin, Jetpack Compose, and Material 3.
+- **Controller transports:** Supports FluidNC HTTP, TCP/Telnet GRBL-style connections, and Android USB Serial.
+- **Controller profiles:** Reuses the same controller families as the desktop CNC workflow: GRBL, FluidNC, Marlin, Smoothieware, and generic G-code.
+- **Live machine status:** Displays WPos/MPos DRO, feed, spindle, overrides, controller state, and TX/RX terminal messages.
+- **Machine controls:** Includes home, unlock, reset, hold, resume, zero, jog, feed/spindle overrides, spindle RPM, spindle stop, and laser toggle controls.
+- **G-code sender:** Opens local G-code files, loads sample programs, streams line by line, and supports pause/stop.
+- **FluidNC/SD helpers:** Includes SD listing and selected SD file start support where the controller transport supports it.
+- **USB permission flow:** Requests Android USB host permission on first serial connection.
+- **Beta build output:** Debug builds produce `flatcam-cnc-android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### CNC Dashboard
 
@@ -207,6 +240,23 @@ pip install -r requirements.txt
 python flatcam.py
 ```
 
+### 3. Building the Android CNC App (Beta)
+
+The Android companion app lives in `flatcam-cnc-android/` and is currently beta.
+
+```powershell
+cd flatcam-cnc-android
+.\gradlew.bat assembleDebug
+```
+
+The debug APK is generated at:
+
+```text
+flatcam-cnc-android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Android USB Serial requires a device with USB host support and user approval in the Android USB permission dialog.
+
 ---
 
 ## Support and Contact
@@ -220,7 +270,7 @@ python flatcam.py
 
 FlatCAM base code and MIT-licensed project components are covered by the root `LICENSE` file.
 
-The CNC Control, CNC 3D Preview, and AI Assistant modules are licensed separately and are not covered by the root MIT license:
+The CNC Control, CNC 3D Preview, AI Assistant, and Android CNC companion app modules are licensed separately and are not covered by the root MIT license:
 
 - `appPlugins/ToolCNCControl.py`
 - `appPlugins/cnc_control/`
@@ -228,5 +278,6 @@ The CNC Control, CNC 3D Preview, and AI Assistant modules are licensed separatel
 - `appPlugins/cnc_preview_3d/`
 - `appPlugins/ToolAIAssistant.py`
 - `appPlugins/ai_assistant/`
+- `flatcam-cnc-android/`
 
-See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, and `appPlugins/ai_assistant/LICENSE` for the separate module license terms. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.
+See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, `appPlugins/ai_assistant/LICENSE`, and the module notes in `flatcam-cnc-android/README.md` for the separate module license terms. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.

@@ -792,13 +792,34 @@ class appIO(QtCore.QObject):
             response = msgbox.clickedButton()
 
             if response == bt_yes:
-                self.on_file_save_project_as(use_thread=True)
+                self.on_file_save_project_as(use_thread=False)
             elif response == bt_cancel:
                 return
-            elif response == bt_no:
-                self.on_file_new_project(use_thread=True)
-        else:
-            self.on_file_new_project(use_thread=True)
+
+        project_details = self.app.ui.request_new_project_details()
+        if project_details is None:
+            self.inform.emit('[WARNING_NOTCL] %s' % _("Cancelled."))
+            return
+
+        project_name, project_filename = project_details
+        self.create_named_project(project_name, project_filename)
+
+    def create_named_project(self, project_name, project_filename):
+        project_folder = os.path.dirname(project_filename)
+        if project_folder and not os.path.exists(project_folder):
+            os.makedirs(project_folder)
+
+        self.on_file_new_project(use_thread=False, keep_scripts=False)
+
+        self.app.project_filename = project_filename
+        self.app.ui.activate_project_workspace(project_name=project_name)
+        self.app.ui.set_ui_title(name=project_filename)
+
+        self.save_project(project_filename, silent=True)
+        self.app.file_opened.emit("project", project_filename)
+        self.app.file_saved.emit("project", project_filename)
+        self.app.should_we_save = False
+        self.inform.emit('[success] %s: %s' % (_("New Project created"), project_name))
 
     def on_file_new_project(self, cli=None, reset_tcl=True, use_thread=None, keep_scripts=True):
         """

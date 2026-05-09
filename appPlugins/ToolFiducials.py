@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -951,7 +951,7 @@ class FidoUI:
 
         self.grb_object_combo = FCComboBox()
         self.grb_object_combo.setModel(self.app.collection)
-        self.grb_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.grb_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.grb_object_combo.is_last = True
         self.grb_object_combo.obj_type = "Gerber"
 

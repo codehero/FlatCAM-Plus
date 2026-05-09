@@ -3906,6 +3906,19 @@ class FCDetachableTab(QtWidgets.QTabWidget):
             # set this to False and the tab will no longer be displayed as detached
             self.can_be_dragged = True
 
+        def tabSizeHint(self, index):
+            size = QtWidgets.QTabBar.tabSizeHint(self, index)
+
+            if self.property("expand_to_widget_width") is True:
+                parent = self.parentWidget()
+                tab_count = self.count()
+                if parent is not None and tab_count > 0:
+                    available_width = parent.width()
+                    if available_width > 0 and (size.width() * tab_count) < available_width:
+                        size.setWidth(int(available_width / tab_count))
+
+            return size
+
         def mouseDoubleClickEvent(self, event):
             """
             Send the onDetachTabSignal when a tab is double clicked
@@ -4086,8 +4099,93 @@ class FCDetachableTab2(FCDetachableTab):
             pass
 
         self._auto_remove_closed_tab = True
+        self.redirect_plot_area_widgets = False
 
         self.tabBar.onCloseTabSignal.connect(self.on_closetab_middle_button)
+
+    def _redirect_target_name(self, widget):
+        if self.redirect_plot_area_widgets is not True or widget is None:
+            return None
+
+        object_name = widget.objectName()
+        if object_name in ["plugin_tab", "properties_tab"]:
+            return object_name
+        return None
+
+    def _redirect_to_plot_area(self, widget, title=None, make_current=True):
+        target_name = self._redirect_target_name(widget)
+        if target_name is None:
+            return None
+
+        parent = self.parentWidget()
+        if target_name == "plugin_tab" and hasattr(parent, "ensure_plugin_tab_visible"):
+            return parent.ensure_plugin_tab_visible(title=title)
+        if target_name == "properties_tab" and hasattr(parent, "ensure_properties_tab_visible"):
+            return parent.ensure_properties_tab_visible(title=title)
+        return None
+
+    def addTab(self, *args):
+        widget = args[0] if args else None
+        if len(args) == 2:
+            title = args[1]
+        elif len(args) == 3:
+            title = args[2]
+        else:
+            title = None
+
+        redirected_idx = self._redirect_to_plot_area(widget, title=title)
+        if redirected_idx is not None:
+            return redirected_idx
+
+        return super().addTab(*args)
+
+    def insertTab(self, index, *args):
+        widget = args[0] if args else None
+        if len(args) == 2:
+            title = args[1]
+        elif len(args) == 3:
+            title = args[2]
+        else:
+            title = None
+
+        redirected_idx = self._redirect_to_plot_area(widget, title=title)
+        if redirected_idx is not None:
+            return redirected_idx
+
+        return super().insertTab(index, *args)
+
+    def setCurrentWidget(self, widget):
+        redirected_idx = self._redirect_to_plot_area(widget)
+        if redirected_idx is not None:
+            return
+
+        super().setCurrentWidget(widget)
+
+    def setTabText(self, index, text):
+        if self.redirect_plot_area_widgets is True and index >= self.count():
+            parent = self.parentWidget()
+            plot_tab_area = getattr(parent, "plot_tab_area", None)
+            if plot_tab_area is not None:
+                current_index = plot_tab_area.currentIndex()
+                current_widget = plot_tab_area.currentWidget()
+                if current_widget is not None and current_widget.objectName() in ["plugin_tab", "properties_tab"]:
+                    plot_tab_area.setTabText(current_index, text)
+                    return
+
+        super().setTabText(index, text)
+
+    def removeTab(self, index):
+        if self.redirect_plot_area_widgets is True and index >= self.count():
+            parent = self.parentWidget()
+            plot_tab_area = getattr(parent, "plot_tab_area", None)
+            if plot_tab_area is not None:
+                current_index = plot_tab_area.currentIndex()
+                current_widget = plot_tab_area.currentWidget()
+                if current_widget is not None and current_widget.objectName() in ["plugin_tab", "properties_tab"]:
+                    plot_tab_area.removeTab(current_index)
+                    return
+
+        super().removeTab(index)
 
     @property
     def auto_remove_closed_tab(self):

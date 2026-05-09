@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -769,7 +769,7 @@ class FollowUI:
 
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.object_combo.is_last = True
 
         self.tools_box.addWidget(self.object_combo)

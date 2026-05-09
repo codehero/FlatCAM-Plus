@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -1291,7 +1291,7 @@ class ToolMilling(Excellon, AppTool):
         self.plot_cb_handler()
 
         obj_type = 1 if val == 'exc' else 2
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.object_combo.setCurrentIndex(0)
         self.ui.object_combo.obj_type = {
             "exc": "Excellon", "geo": "Geometry"
@@ -4030,7 +4030,7 @@ class ToolMilling(Excellon, AppTool):
         self.build_ui_sig.emit()
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class MillingUI:
@@ -4116,7 +4116,7 @@ class MillingUI:
         # ################################################
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         # self.object_combo.setCurrentIndex(1)
         self.object_combo.is_last = True
 

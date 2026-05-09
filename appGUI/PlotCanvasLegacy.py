@@ -340,6 +340,8 @@ class PlotCanvasLegacy(QtCore.QObject):
 
         # enable Grid lines
         self.grid_lines_enabled = True
+        self.rulers_enabled = self.app.options.get('global_rulers', True)
+        self.on_toggle_rulers(state=self.rulers_enabled, silent=True)
 
         # draw a rectangle made out of 4 lines on the canvas to serve as a hint for the work area
         # all CNC have a limited workspace
@@ -416,6 +418,32 @@ class PlotCanvasLegacy(QtCore.QObject):
                 self.app.ui.axis_status_label.setStyleSheet("")
                 if silent is None:
                     self.app.inform[str, bool].emit(_("Axis disabled."), False)
+
+        self.canvas.draw()
+
+    def on_toggle_rulers(self, signal=None, state=None, silent=None):
+        if state is None:
+            state = not self.rulers_enabled
+
+        self.rulers_enabled = bool(state)
+        self.app.options['global_rulers'] = self.rulers_enabled
+        self.axes.tick_params(
+            axis='x',
+            top=self.rulers_enabled,
+            labeltop=self.rulers_enabled,
+            bottom=not self.rulers_enabled,
+            labelbottom=not self.rulers_enabled
+        )
+        self.axes.tick_params(axis='y', left=self.rulers_enabled, labelleft=self.rulers_enabled)
+
+        if hasattr(self.app.ui, 'ruler_btn'):
+            self.app.ui.ruler_btn.setChecked(self.rulers_enabled)
+        if hasattr(self.app.ui, 'menuview_toggle_rulers'):
+            self.app.ui.menuview_toggle_rulers.setChecked(self.rulers_enabled)
+
+        if silent is None:
+            msg = _("Rulers enabled.") if self.rulers_enabled else _("Rulers disabled.")
+            self.app.inform[str, bool].emit(msg, False)
 
         self.canvas.draw()
 

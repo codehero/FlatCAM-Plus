@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -2391,7 +2391,7 @@ class ToolDrilling(Excellon, AppTool):
         self.app.worker_task.emit({'fcn': job_thread, 'params': [self.app]})
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class DrillingUI:
@@ -2452,7 +2452,7 @@ class DrillingUI:
         # ################################################
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(1))
         # self.object_combo.setCurrentIndex(1)
         self.object_combo.is_last = True
 

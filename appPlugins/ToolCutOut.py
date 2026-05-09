@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -104,7 +104,7 @@ class CutOut(AppTool):
 
     def on_type_obj_changed(self, val):
         obj_type = {'grb': 0, 'geo': 2}[val]
-        self.ui.obj_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.obj_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.obj_combo.setCurrentIndex(0)
         self.ui.obj_combo.obj_type = {"grb": "Gerber", "geo": "Geometry"}[val]
 
@@ -2283,7 +2283,7 @@ class CutOut(AppTool):
         return CutOut.flatten(results)
 
     def reset_fields(self):
-        self.ui.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class CutoutUI:
@@ -2375,7 +2375,7 @@ class CutoutUI:
         # Object to be cutout
         self.obj_combo = FCComboBox()
         self.obj_combo.setModel(self.app.collection)
-        self.obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.obj_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.obj_combo.is_last = False
 
         obj_grid.addWidget(self.obj_combo, 6, 0, 1, 2)
@@ -2698,7 +2698,7 @@ class CutoutUI:
         # Manual Geo Object
         self.man_object_combo = FCComboBox()
         self.man_object_combo.setModel(self.app.collection)
-        self.man_object_combo.setRootModelIndex(self.app.collection.index(2, 0, QtCore.QModelIndex()))
+        self.man_object_combo.setRootModelIndex(self.app.collection.get_group_index(2))
         self.man_object_combo.is_last = True
         self.man_object_combo.obj_type = "Geometry"
 
@@ -2784,7 +2784,7 @@ class CutoutUI:
         # Drilling Geo Object
         self.drillcut_object_combo = FCComboBox()
         self.drillcut_object_combo.setModel(self.app.collection)
-        self.drillcut_object_combo.setRootModelIndex(self.app.collection.index(2, 0, QtCore.QModelIndex()))
+        self.drillcut_object_combo.setRootModelIndex(self.app.collection.get_group_index(2))
         self.drillcut_object_combo.is_last = False
         self.drillcut_object_combo.obj_type = "Geometry"
 

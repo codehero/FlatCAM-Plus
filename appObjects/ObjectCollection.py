@@ -312,12 +312,15 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         # Create root tree view item
         self.root_item = TreeItem(["root"])
 
+        self.project_item = TreeItem([_("New Project")], QtGui.QPixmap(self.app.resource_location + '/project16.png'))
+        self.root_item.append_child(self.project_item)
+
         # Create group items
         self.group_items = {}
         for kind, title in ObjectCollection.groups:
             item = TreeItem([title], self.icons[kind])
             self.group_items[kind] = item
-            self.root_item.append_child(item)
+            self.project_item.append_child(item)
 
         # Create test sub-items
         # for i in self.root_item.child_items:
@@ -340,6 +343,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         # ## View
         self.view = EventSensitiveListView(self.app)
         self.view.setModel(self)
+        self.view.setExpanded(self.item_index(self.project_item), True)
 
         self.view.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -378,6 +382,48 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         self.update_list_signal.connect(self.on_update_list_signal)
         self.view.activated.connect(self.on_row_activated)
         self.item_selected.connect(self.on_row_selected)
+
+    def item_index(self, item):
+        if item is None or item == self.root_item:
+            return QtCore.QModelIndex()
+        return self.createIndex(item.row(), 0, item)
+
+    def get_group_index(self, kind_or_row):
+        """
+        Return the model index for an object type group under the project root.
+
+        Older tool combo boxes used collection.index(row, 0, QModelIndex()) while
+        groups lived directly under the root. The project root is now the top
+        level item, so tool combo boxes need this helper to target real groups.
+        """
+        kind = kind_or_row
+        if isinstance(kind_or_row, int):
+            try:
+                kind = ObjectCollection.groups[kind_or_row][0]
+            except IndexError:
+                return QtCore.QModelIndex()
+
+        kind = str(kind).lower()
+        if kind in ["gerber", _("Gerber").lower()]:
+            kind = "gerber"
+        elif kind in ["excellon", _("Excellon").lower()]:
+            kind = "excellon"
+        elif kind in ["geometry", _("Geometry").lower()]:
+            kind = "geometry"
+        elif kind in ["cncjob", "cnc job"]:
+            kind = "cncjob"
+        elif kind in ["script", _("Script").lower()]:
+            kind = "script"
+        elif kind in ["document", _("Document").lower()]:
+            kind = "document"
+
+        return self.item_index(self.group_items.get(kind))
+
+    def set_project_name(self, project_name):
+        self.project_item.item_data[0] = project_name or _("New Project")
+        idx = self.item_index(self.project_item)
+        self.dataChanged.emit(idx, idx)
+        self.view.setExpanded(idx, True)
 
     def promise(self, obj_name):
         self.app.log.debug("Object %s has been promised." % obj_name)
@@ -636,7 +682,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
 
         # Required before appending (Qt MVC)
         group = self.group_items[obj.kind]
-        group_index = self.index(group.row(), 0, QtCore.QModelIndex())
+        group_index = self.item_index(group)
 
         if to_index is None:
             self.beginInsertRows(group_index, group.child_count(), group.child_count())
@@ -662,7 +708,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         # decide if to show or hide the Notebook side of the screen
         if self.app.options["global_project_autohide"] is True:
             # always open the notebook on object added to collection
-            self.app.ui.splitter.setSizes([1, 1])
+            self.app.ui.ensure_notebook_visible()
 
     def get_names(self):
         """
@@ -758,7 +804,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         self.app.object_status_changed.emit(active.obj, 'delete', name)
 
         # ############ OBJECT DELETION FROM MODEL STARTS HERE ####################
-        self.beginRemoveRows(self.index(group.row(), 0, QtCore.QModelIndex()), active.row(), active.row())
+        self.beginRemoveRows(self.item_index(group), active.row(), active.row())
         group.remove_child(active)
         # after deletion of object store the current list of objects into the self.app.all_objects_list
         self.app.all_objects_list = self.get_list()
@@ -778,14 +824,14 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         if self.app.options["global_project_autohide"] is True:
             # hide the notebook if there are no objects in the collection
             if not self.get_list():
-                self.app.ui.splitter.setSizes([0, 1])
+                self.app.ui.set_left_sidebar_visible(False)
 
     def delete_by_name(self, name, select_project=True):
         obj = self.get_by_name(name=name)
         item = obj.item
         group = self.group_items[obj.kind]
 
-        group_index = self.index(group.row(), 0, QtCore.QModelIndex())
+        group_index = self.item_index(group)
         item_index = self.index(item.row(), 0, group_index)
 
         deleted = item_index.internalPointer()
@@ -812,7 +858,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         self.app.object_status_changed.emit(deleted.obj, 'delete', name)
 
         # ############ OBJECT DELETION FROM MODEL STARTS HERE ####################
-        self.beginRemoveRows(self.index(group.row(), 0, QtCore.QModelIndex()), deleted.row(), deleted.row())
+        self.beginRemoveRows(self.item_index(group), deleted.row(), deleted.row())
         group.remove_child(deleted)
         # after deletion of object store the current list of objects into the self.app.all_objects_list
         self.update_list_signal.emit()
@@ -832,7 +878,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         if self.app.options["global_project_autohide"] is True:
             # hide the notebook if there are no objects in the collection
             if not self.get_list():
-                self.app.ui.splitter.setSizes([0, 1])
+                self.app.ui.set_left_sidebar_visible(False)
 
     def on_update_list_signal(self):
         self.app.all_objects_list = self.get_list()
@@ -858,7 +904,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         self.beginResetModel()
         self.checked_indexes = []
 
-        for group in self.root_item.child_items:
+        for group in self.group_items.values():
             try:
                 group.remove_children()
             except Exception as e:
@@ -915,7 +961,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
             item = obj.item
             group = self.group_items[obj.kind]
 
-            group_index = self.index(group.row(), 0, QtCore.QModelIndex())
+            group_index = self.item_index(group)
             item_index = self.index(item.row(), 0, group_index)
 
             self.view.selectionModel().select(item_index, QtCore.QItemSelectionModel.SelectionFlag.Select)
@@ -957,7 +1003,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         item = obj.item
         group = self.group_items[obj.kind]
 
-        group_index = self.index(group.row(), 0, QtCore.QModelIndex())
+        group_index = self.item_index(group)
         item_index = self.index(item.row(), 0, group_index)
 
         self.view.selectionModel().select(item_index, QtCore.QItemSelectionModel.SelectionFlag.Deselect)
@@ -1079,7 +1125,7 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         :return:
         """
         obj_list = []
-        for group in self.root_item.child_items:
+        for group in self.group_items.values():
             for item in group.child_items:
                 obj_list.append(item.obj)
 
@@ -1090,8 +1136,12 @@ class ObjectCollection(QtCore.QAbstractItemModel):
 
     def on_row_activated(self, index):
         if index.isValid():
-            if index.internalPointer().parent_item != self.root_item:
-                self.app.ui.notebook.setCurrentWidget(self.app.ui.properties_tab)
+            obj = index.internalPointer().obj
+            if obj is not None:
+                if hasattr(self.app.ui, "open_object_properties_tab"):
+                    self.app.ui.open_object_properties_tab(obj)
+                else:
+                    self.app.ui.notebook.setCurrentWidget(self.app.ui.properties_tab)
         self.on_item_activated(index)
 
     def on_row_selected(self, obj_name):

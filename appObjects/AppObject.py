@@ -343,7 +343,9 @@ class AppObject(QtCore.QObject):
             except Exception as e:
                 self.app.log.error("AppObject.new_object() -> setting colors error. %s" % str(e))
 
-        if auto_select or self.app.ui.notebook.currentWidget() is self.app.ui.properties_tab:
+        properties_sidebar = getattr(self.app.ui, "properties_sidebar", None)
+        properties_visible = properties_sidebar is not None and not properties_sidebar.isHidden()
+        if auto_select or properties_visible:
             # select the just opened object but deselect the previous ones
             self.app.collection.set_all_inactive()
             self.app.collection.set_active(obj.obj_options["name"])

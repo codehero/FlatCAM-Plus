@@ -272,7 +272,7 @@ class ToolIsolation(Gerber, AppTool):
 
     def on_type_excobj_index_changed(self, val):
         obj_type = 0 if val == 'gerber' else 2
-        self.ui.exc_obj_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.exc_obj_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.exc_obj_combo.setCurrentIndex(0)
         self.ui.exc_obj_combo.obj_type = {
             "gerber": "Gerber", "geometry": "Geometry"
@@ -1063,7 +1063,7 @@ class ToolIsolation(Gerber, AppTool):
 
     def on_reference_combo_changed(self):
         obj_type = self.ui.reference_combo_type.currentIndex()
-        self.ui.reference_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.reference_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.reference_combo.setCurrentIndex(0)
         self.ui.reference_combo.obj_type = {0: "Gerber", 1: "Excellon", 2: "Geometry"}[obj_type]
 
@@ -1195,20 +1195,32 @@ class ToolIsolation(Gerber, AppTool):
 
         return msg, min_dist
 
+    def _resolve_current_gerber_object(self):
+        obj_name = self.ui.object_combo.get_value()
+        gerber_obj = self.app.collection.get_by_name(obj_name)
+        if gerber_obj is not None and gerber_obj.kind == 'gerber':
+            return obj_name, gerber_obj
+
+        active_obj = self.app.collection.get_active()
+        if active_obj is not None and active_obj.kind == 'gerber':
+            active_name = active_obj.obj_options['name']
+            return active_name, active_obj
+
+        for candidate in self.app.collection.get_list():
+            if candidate.kind == 'gerber':
+                candidate_name = candidate.obj_options['name']
+                return candidate_name, candidate
+
+        return obj_name, None
+
     # multiprocessing variant
     def find_safe_tooldia_multiprocessing(self):
         self.app.inform.emit(_("Checking tools for validity."))
         self.units = self.app.app_units.upper()
 
-        obj_name = self.ui.object_combo.currentText()
+        obj_name, fcobj = self._resolve_current_gerber_object()
 
         # Get source object.
-        try:
-            fcobj = self.app.collection.get_by_name(obj_name)
-        except Exception:
-            self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Could not retrieve object"), str(obj_name)))
-            return
-
         if fcobj is None:
             self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Object not found"), str(obj_name)))
             return
@@ -1264,15 +1276,9 @@ class ToolIsolation(Gerber, AppTool):
         self.app.inform.emit(_("Checking tools for validity."))
         self.units = self.app.app_units.upper()
 
-        obj_name = self.ui.object_combo.currentText()
+        obj_name, fcobj = self._resolve_current_gerber_object()
 
         # Get source object.
-        try:
-            fcobj = self.app.collection.get_by_name(obj_name)
-        except Exception:
-            self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Could not retrieve object"), str(obj_name)))
-            return
-
         if fcobj is None:
             self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Object not found"), str(obj_name)))
             return
@@ -1633,15 +1639,9 @@ class ToolIsolation(Gerber, AppTool):
     def on_generate_buffer(self):
         self.app.inform.emit('[WARNING_NOTCL] %s...' % _("Buffering solid geometry"))
 
-        self.obj_name = self.ui.object_combo.currentText()
+        self.obj_name, self.grb_obj = self._resolve_current_gerber_object()
 
         # Get source object.
-        try:
-            self.grb_obj = self.app.collection.get_by_name(self.obj_name)
-        except Exception as e:
-            self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Could not retrieve object"), str(self.obj_name)))
-            return "Could not retrieve object: %s with error: %s" % (self.obj_name, str(e))
-
         if self.grb_obj is None:
             self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Object not found"), str(self.obj_name)))
             return
@@ -1667,14 +1667,8 @@ class ToolIsolation(Gerber, AppTool):
         # assume that the validation is OK
         self.validation_status = True
 
-        self.obj_name = self.ui.object_combo.currentText()
+        self.obj_name, self.grb_obj = self._resolve_current_gerber_object()
         # Get source object.
-        try:
-            self.grb_obj = self.app.collection.get_by_name(self.obj_name)
-        except Exception:
-            self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Could not retrieve object"), str(self.obj_name)))
-            return
-
         if self.grb_obj is None:
             self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Object not found"), str(self.obj_name)))
             return
@@ -2877,15 +2871,9 @@ class ToolIsolation(Gerber, AppTool):
     def on_select_all_polygons(self):
         self.app.log.debug("ToolIsolation.on_select_all_polygons()")
 
-        self.obj_name = self.ui.object_combo.currentText()
+        self.obj_name, self.grb_obj = self._resolve_current_gerber_object()
 
         # Get source object.
-        try:
-            self.grb_obj = self.app.collection.get_by_name(self.obj_name)
-        except Exception:
-            self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Could not retrieve object"), str(self.obj_name)))
-            return
-
         if self.grb_obj is None:
             self.app.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Object not found"), str(self.obj_name)))
             return
@@ -3365,7 +3353,7 @@ class ToolIsolation(Gerber, AppTool):
         self.app.tools_db_tab.ui.cancel_tool_from_db.show()
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index("gerber"))
 
     @staticmethod
     def poly2rings(poly):
@@ -3675,7 +3663,7 @@ class IsoUI:
         # #############################################################################################################
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index("gerber"))
         # self.object_combo.setCurrentIndex(1)
         self.object_combo.is_last = True
 
@@ -4136,7 +4124,7 @@ class IsoUI:
 
         # set the model for the Area Exception comboboxes
         self.exc_obj_combo.setModel(self.app.collection)
-        self.exc_obj_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.exc_obj_combo.setRootModelIndex(self.app.collection.get_group_index("gerber"))
         self.exc_obj_combo.is_last = True
         self.exc_obj_combo.obj_type = "gerber"
 
@@ -4177,7 +4165,7 @@ class IsoUI:
 
         self.reference_combo = FCComboBox()
         self.reference_combo.setModel(self.app.collection)
-        self.reference_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.reference_combo.setRootModelIndex(self.app.collection.get_group_index("gerber"))
         self.reference_combo.is_last = True
 
         gen_grid.addWidget(self.reference_combo, 16, 0, 1, 2)

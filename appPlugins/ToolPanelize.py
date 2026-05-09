@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -202,7 +202,7 @@ class Panelize(AppTool):
 
     def on_type_obj_index_changed(self):
         obj_type = self.ui.type_obj_combo.currentIndex()
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.object_combo.setCurrentIndex(0)
 
         self.ui.object_combo.obj_type = {0: "Gerber", 1: "Excellon", 2: "Geometry"}[obj_type]
@@ -226,7 +226,7 @@ class Panelize(AppTool):
     def on_type_box_index_changed(self):
         obj_type = self.ui.type_box_combo.currentIndex()
         obj_type = 2 if obj_type == 1 else obj_type
-        self.ui.box_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.box_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.box_combo.setCurrentIndex(0)
 
         self.ui.box_combo.obj_type = {0: "Gerber", 2: "Geometry"}[obj_type]
@@ -1127,8 +1127,8 @@ class Panelize(AppTool):
         self.app.worker_task.emit({'fcn': job_thread, 'params': [self.app]})
 
     def reset_fields(self):
-        self.ui.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class PanelizeUI:
@@ -1200,7 +1200,7 @@ class PanelizeUI:
         # Object to be panelized
         self.object_combo = FCComboBox()
         self.object_combo.setModel(self.app.collection)
-        self.object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.object_combo.is_last = False
 
         self.object_combo.setToolTip(
@@ -1260,7 +1260,7 @@ class PanelizeUI:
         # Box
         self.box_combo = FCComboBox()
         self.box_combo.setModel(self.app.collection)
-        self.box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         # self.box_combo.is_last = True
 
         self.box_combo.setToolTip(

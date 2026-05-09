@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -68,7 +68,7 @@ class Film(AppTool):
 
     def on_type_obj_index_changed(self, val):
         obj_type = 2 if val == 'geo' else 0
-        self.ui.tf_object_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.tf_object_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.tf_object_combo.setCurrentIndex(0)
         self.ui.tf_object_combo.obj_type = {
             "grb": "gerber", "geo": "geometry"
@@ -76,7 +76,7 @@ class Film(AppTool):
 
     def on_type_box_index_changed(self, val):
         obj_type = 2 if val == 'geo' else 0
-        self.ui.tf_box_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.tf_box_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.tf_box_combo.setCurrentIndex(0)
         self.ui.tf_box_combo.obj_type = {
             "grb": "gerber", "geo": "geometry"
@@ -1264,8 +1264,8 @@ class Film(AppTool):
         return svg_elem
 
     def reset_fields(self):
-        self.ui.tf_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
-        self.ui.tf_box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ui.tf_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
+        self.ui.tf_box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
 
 
 class FilmUI:
@@ -1340,7 +1340,7 @@ class FilmUI:
         # List of objects for which we can create the film
         self.tf_object_combo = FCComboBox()
         self.tf_object_combo.setModel(self.app.collection)
-        self.tf_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.tf_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.tf_object_combo.is_last = True
 
         obj_grid.addWidget(self.tf_object_combo, 2, 0, 1, 2)
@@ -1363,7 +1363,7 @@ class FilmUI:
         # Box
         self.tf_box_combo = FCComboBox()
         self.tf_box_combo.setModel(self.app.collection)
-        self.tf_box_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.tf_box_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.tf_box_combo.is_last = True
 
         obj_grid.addWidget(self.tf_box_combo, 6, 0, 1, 2)
@@ -1674,7 +1674,7 @@ class FilmUI:
             _("Remove the geometry of Excellon from the Film to create the holes in pads.")
         )
         self.exc_combo.setModel(self.app.collection)
-        self.exc_combo.setRootModelIndex(self.app.collection.index(1, 0, QtCore.QModelIndex()))
+        self.exc_combo.setRootModelIndex(self.app.collection.get_group_index(1))
         self.exc_combo.is_last = True
         self.exc_combo.obj_type = "Excellon"
 

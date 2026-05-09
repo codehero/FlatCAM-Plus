@@ -19,6 +19,7 @@ def modern_panel_colors(app=None):
     theme = _theme_name(app)
     if theme in ["default", "light"]:
         return {
+            "app_bg": "#eef0f3",
             "surface": "#ffffff",
             "subtle": "#f8fafc",
             "text": "#263244",
@@ -36,6 +37,7 @@ def modern_panel_colors(app=None):
         }
 
     return {
+        "app_bg": "#171717",
         "surface": "#262626",
         "subtle": "#171717",
         "text": "#f0f0f0",
@@ -500,35 +502,108 @@ def modern_preferences_tabbar_stylesheet(app=None):
 
 def modern_workspace_tab_area_stylesheet(app=None, object_name="workspace_tab_area"):
     c = modern_panel_colors(app)
+    if object_name == "left_sidebar":
+        return f"""
+            QTabWidget#{object_name} {{
+                background: {c["surface"]};
+                border: 1px solid {c["border"]};
+                border-radius: 12px;
+            }}
+            QTabWidget#{object_name}::pane {{
+                background: {c["surface"]};
+                border: 0px;
+                border-radius: 12px;
+                margin: 0px;
+                top: 0px;
+            }}
+            QTabWidget#{object_name}::tab-bar {{
+                left: 0px;
+                top: 0px;
+            }}
+            QTabWidget#{object_name} > QWidget {{
+                background: {c["surface"]};
+                border-radius: 12px;
+            }}
+        """
+
+    if object_name == "plot_tab_area":
+        return f"""
+            QTabWidget#{object_name} {{
+                background: {c["surface"]};
+                border: 1px solid {c["border"]};
+                border-radius: 12px;
+            }}
+            QTabWidget#{object_name}::pane {{
+                background: {c["surface"]};
+                border: 0px;
+                border-radius: 12px;
+                margin: 0px;
+                top: 0px;
+            }}
+            QTabWidget#{object_name}::tab-bar {{
+                left: 10px;
+                top: 0px;
+            }}
+            QTabWidget#{object_name} > QWidget {{
+                background: {c["surface"]};
+                border-radius: 12px;
+            }}
+        """
+
     return f"""
+        QTabWidget#{object_name} {{
+            background: {c["surface"]};
+            border-radius: 10px;
+        }}
         QTabWidget#{object_name}::pane {{
             background: {c["surface"]};
             border: 1px solid {c["border"]};
-            border-radius: 8px;
+            border-radius: 10px;
             top: -1px;
+        }}
+        QTabWidget#{object_name}::tab-bar {{
+            left: 0px;
         }}
         QTabWidget#{object_name} > QWidget {{
             background: {c["surface"]};
-            border-radius: 8px;
+            border-radius: 10px;
         }}
     """
 
 
-def modern_workspace_tabbar_stylesheet(app=None, min_width=90):
+def modern_workspace_tabbar_stylesheet(app=None, min_width=90, expanding=True):
     c = modern_panel_colors(app)
+    expanding_value = "true" if expanding else "false"
+    bar_background = c["subtle"] if expanding else "transparent"
+    bar_border = f"1px solid {c['border']}" if expanding else "0px"
+    tab_border_right = f"1px solid {c['border']}"
+    tab_margin = "0px" if expanding else "5px 5px 0px 0px"
+    tab_radius_styles = "border-radius: 0px;" if expanding else """
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            border-bottom-left-radius: 0px;
+            border-bottom-right-radius: 0px;
+    """
+
     return f"""
         QTabBar {{
             qproperty-drawBase: 0;
+            qproperty-expanding: {expanding_value};
+            background: {bar_background};
+            border: {bar_border};
+            border-bottom: 0px;
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
         }}
         QTabBar::tab {{
             background: {c["subtle"]};
             color: {c["hint"]};
             border: 1px solid {c["border"]};
+            border-right: {tab_border_right};
             border-bottom: 0px;
-            border-top-left-radius: 6px;
-            border-top-right-radius: 6px;
-            padding: 7px 20px 7px 12px;
-            margin-right: 4px;
+            {tab_radius_styles}
+            padding: 8px 20px 8px 12px;
+            margin: {tab_margin};
             min-width: {min_width}px;
             font-weight: 600;
         }}
@@ -540,8 +615,8 @@ def modern_workspace_tabbar_stylesheet(app=None, min_width=90):
         QTabBar::tab:selected {{
             background: {c["surface"]};
             color: {c["text"]};
-            border-color: {c["border"]};
-            border-bottom: 1px solid {c["surface"]};
+            border-right: 1px solid {c["border"]};
+            border-bottom: 0px;
         }}
         QTabBar::tab:disabled {{
             color: {c["disabled"]};
@@ -556,9 +631,9 @@ def modern_project_view_stylesheet(app=None):
         QTreeView {{
             background: {c["surface"]};
             color: {c["text"]};
-            border: 1px solid {c["border"]};
+            border: 0px;
             border-radius: 8px;
-            padding: 5px;
+            padding: 2px;
             outline: 0px;
             selection-background-color: {c["hover"]};
             selection-color: {c["selected_text"]};
@@ -670,24 +745,79 @@ def apply_modern_panel_style(widget, app=None):
 def apply_modern_main_workspace_style(ui, app=None):
     c = modern_panel_colors(app)
 
-    for name in ["splitter", "splitter_left", "right_widget", "plot_tab", "project_tab", "properties_tab", "plugin_tab"]:
+    ui.setObjectName("main_window")
+    ui.setContentsMargins(14, 14, 14, 12)
+    ui.setStyleSheet(f"""
+        QMainWindow#main_window {{
+            background: {c['app_bg']};
+        }}
+    """)
+
+    for name in ["splitter", "splitter_left", "right_widget", "properties_sidebar", "plot_tab", "project_tab",
+                 "project_frame", "properties_tab", "plugin_tab"]:
         widget = getattr(ui, name, None)
         if widget is None:
             continue
         object_name = widget.objectName() or name
         widget.setObjectName(object_name)
         if isinstance(widget, QtWidgets.QSplitter):
+            if object_name == "splitter":
+                widget.setHandleWidth(12)
+                widget.setContentsMargins(0, 8, 0, 0)
+                widget.setCollapsible(0, False)
             widget.setStyleSheet(f"""
                 QSplitter#{object_name} {{
-                    background: {c['subtle']};
+                    background: {c['app_bg']};
+                    border: 0px;
                 }}
                 QSplitter#{object_name}::handle {{
-                    background: {c['separator']};
-                    margin: 8px 2px;
+                    background: {c['app_bg']};
+                    margin: 0px;
+                }}
+            """)
+        elif object_name == "project_frame":
+            widget.setStyleSheet(f"""
+                QFrame#project_frame {{
+                    background: {c['surface']};
+                    border: 0px;
+                    border-radius: 10px;
+                }}
+            """)
+        elif object_name == "right_properties_sidebar":
+            widget.setStyleSheet(f"""
+                QFrame#right_properties_sidebar {{
+                    background: {c['surface']};
+                    border: 1px solid {c['border']};
+                    border-radius: 12px;
+                }}
+                QFrame#right_properties_header {{
+                    background: {c['subtle']};
+                    border: 0px;
+                    border-radius: 8px;
+                }}
+                QLabel#right_properties_title {{
+                    color: {c['text']};
+                    font-weight: 600;
+                }}
+                QToolButton#right_properties_close_btn {{
+                    background: transparent;
+                    color: {c['hint']};
+                    border: 1px solid transparent;
+                    border-radius: 6px;
+                    min-width: 24px;
+                    min-height: 24px;
+                }}
+                QToolButton#right_properties_close_btn:hover {{
+                    background: {c['hover']};
+                    color: {c['selected_text']};
+                    border-color: {c['hover_border']};
                 }}
             """)
         else:
-            widget.setStyleSheet(f"QWidget#{object_name} {{ background: {c['subtle']}; color: {c['text']}; }}")
+            background = c['app_bg'] if object_name == "right_widget" else c['surface']
+            widget.setStyleSheet(
+                f"QWidget#{object_name} {{ background: {background}; color: {c['text']}; border-radius: 10px; }}"
+            )
 
     right_widget = getattr(ui, "right_widget", None)
     if right_widget is not None:
@@ -698,26 +828,44 @@ def apply_modern_main_workspace_style(ui, app=None):
         layout = getattr(ui, name, None)
         if layout is None:
             continue
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        if name in ["right_lay", "right_layout"]:
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(10 if name == "right_lay" else 0)
+        elif name == "project_frame_lay":
+            layout.setContentsMargins(6, 6, 6, 6)
+            layout.setSpacing(0)
+        elif name == "project_tab_layout":
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+        else:
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(10)
 
     notebook = getattr(ui, "notebook", None)
     if notebook is not None:
         notebook.setObjectName("left_sidebar")
+        notebook.setMinimumWidth(320)
         notebook.setStyleSheet(modern_workspace_tab_area_stylesheet(app, "left_sidebar"))
         tab_bar = _resolve_tab_bar(notebook)
         if tab_bar is not None:
             tab_bar.setObjectName("left_sidebar_tab_bar")
-            tab_bar.setStyleSheet(modern_workspace_tabbar_stylesheet(app, min_width=82))
+            tab_bar.setProperty("expand_to_widget_width", True)
+            tab_bar.setExpanding(True)
+            tab_bar.setStyleSheet(modern_workspace_tabbar_stylesheet(app, min_width=82, expanding=True))
+            tab_bar.updateGeometry()
 
     plot_tab_area = getattr(ui, "plot_tab_area", None)
     if plot_tab_area is not None:
         plot_tab_area.setObjectName("plot_tab_area")
+        plot_tab_area.setContentsMargins(0, 0, 0, 0)
         plot_tab_area.setStyleSheet(modern_workspace_tab_area_stylesheet(app, "plot_tab_area"))
         tab_bar = _resolve_tab_bar(plot_tab_area)
         if tab_bar is not None:
             tab_bar.setObjectName("plot_tab_bar")
-            tab_bar.setStyleSheet(modern_workspace_tabbar_stylesheet(app, min_width=98))
+            tab_bar.setProperty("expand_to_widget_width", False)
+            tab_bar.setExpanding(False)
+            tab_bar.setStyleSheet(modern_workspace_tabbar_stylesheet(app, min_width=98, expanding=False))
+            tab_bar.updateGeometry()
 
     for name in ["properties_scroll_area", "plugin_scroll_area"]:
         apply_modern_sidebar_style(getattr(ui, name, None), app)

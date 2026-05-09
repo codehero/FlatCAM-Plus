@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File Author: Marius Adrian Stanciu (c)                   #
@@ -207,7 +207,7 @@ class ToolCopperThieving(AppTool):
 
     def on_ref_combo_type_change(self):
         obj_type = self.ui.ref_combo_type.currentIndex()
-        self.ui.ref_combo.setRootModelIndex(self.app.collection.index(obj_type, 0, QtCore.QModelIndex()))
+        self.ui.ref_combo.setRootModelIndex(self.app.collection.get_group_index(obj_type))
         self.ui.ref_combo.setCurrentIndex(0)
         self.ui.ref_combo.obj_type = {
             _("Gerber"): "Gerber", _("Excellon"): "Excellon", _("Geometry"): "Geometry"
@@ -1264,7 +1264,7 @@ class ThievingUI:
 
         self.grb_object_combo = FCComboBox()
         self.grb_object_combo.setModel(self.app.collection)
-        self.grb_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.grb_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.grb_object_combo.is_last = False
         self.grb_object_combo.obj_type = 'Gerber'
 
@@ -1362,7 +1362,7 @@ class ThievingUI:
         # Object Reference
         self.ref_combo = FCComboBox()
         self.ref_combo.setModel(self.app.collection)
-        self.ref_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.ref_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.ref_combo.is_last = True
         self.ref_combo.obj_type = {
             _("Gerber"): "Gerber", _("Excellon"): "Excellon", _("Geometry"): "Geometry"
@@ -1637,7 +1637,7 @@ class ThievingUI:
 
         self.sm_object_combo = FCComboBox()
         self.sm_object_combo.setModel(self.app.collection)
-        self.sm_object_combo.setRootModelIndex(self.app.collection.index(0, 0, QtCore.QModelIndex()))
+        self.sm_object_combo.setRootModelIndex(self.app.collection.get_group_index(0))
         self.sm_object_combo.is_last = True
         self.sm_object_combo.obj_type = 'Gerber'
 
