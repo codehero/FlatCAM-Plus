@@ -284,7 +284,7 @@ class App(QtCore.QObject):
     custom_signal = pyqtSignal(object)
 
     # noinspection PyUnresolvedReferences
-    def __init__(self, qapp, user_defaults=True):
+    def __init__(self, qapp, user_defaults=True, startup_project_request=None):
         """
         Starts the application.
 
@@ -308,6 +308,7 @@ class App(QtCore.QObject):
         self.log.info("Starting the application...")
 
         self.qapp = qapp
+        self.startup_project_request = startup_project_request
 
         # App Editors will be instantiated further below
         self.exc_editor = None
@@ -610,7 +611,7 @@ class App(QtCore.QObject):
 
         # self.preferencesUiManager.show_preferences_gui()
 
-        # GUI theme/layout policy: Light theme, light canvas and standard layout only.
+        # GUI theme/layout policy: light UI, dark PCB-style canvas and standard layout only.
         theme = 'light'
         for opt_key, opt_val in FIXED_LIGHT_UI_DEFAULTS.items():
             self.options[opt_key] = deepcopy(opt_val)
@@ -1291,6 +1292,8 @@ class App(QtCore.QObject):
         self.log.debug("... Resistance is futile. You will be assimilated ...")
         self.log.debug("... I disagree. While we live and breath, we can be free!\n")
 
+        self.apply_startup_project_request()
+
         # ###########################################################################################################
         # ########################################## SHOW GUI #######################################################
         # ###########################################################################################################
@@ -1388,6 +1391,33 @@ class App(QtCore.QObject):
     # #################################################################################################################
     # #################################################################################################################
     # #################################################################################################################
+
+    def apply_startup_project_request(self):
+        request = getattr(self, "startup_project_request", None)
+        if not request:
+            return
+
+        action = request.get("action")
+        filename = request.get("filename")
+        if not filename:
+            return
+
+        if action == "new":
+            project_name = request.get("project_name")
+            if not project_name:
+                project_name = os.path.splitext(os.path.basename(filename))[0]
+            self.f_handlers.create_named_project(project_name, filename)
+            return
+
+        if action == "open":
+            if not os.path.exists(filename):
+                self.inform.emit('[ERROR_NOTCL] %s' % _("File no longer available."))
+                return
+
+            project_name = os.path.splitext(os.path.basename(str(filename)))[0]
+            self.ui.activate_project_workspace(project_name=project_name)
+            self.ui.set_ui_title(name=_("Loading Project ... Please Wait ..."))
+            self.f_handlers.open_project(filename=filename, run_from_arg=True)
 
     @staticmethod
     def copy_and_overwrite(from_path, to_path):
@@ -3797,7 +3827,7 @@ class App(QtCore.QObject):
             self.app_cursor = self.plotcanvas.new_cursor(big=True)
 
         if control_cursor is True:
-            if self.ui.grid_snap_btn.isChecked():
+            if self.ui.grid_snap_btn.isChecked() and self.options.get("global_snap_cursor_marker", False):
                 self.app_cursor.enabled = True
             else:
                 self.app_cursor.enabled = False
@@ -4341,7 +4371,7 @@ class App(QtCore.QObject):
             else:
                 self.plotcanvas.draw_cursor(x_pos=location[0], y_pos=location[1])
 
-        if self.grid_status():
+        if self.grid_status() and self.options.get("global_snap_cursor_marker", False):
             # Update cursor
             self.app_cursor.set_data(np.asarray([(location[0], location[1])]),
                                      symbol='++', edge_color=self.plotcanvas.cursor_color,
@@ -4457,7 +4487,7 @@ class App(QtCore.QObject):
             else:
                 self.plotcanvas.draw_cursor(x_pos=location[0], y_pos=location[1])
 
-        if self.grid_status():
+        if self.grid_status() and self.options.get("global_snap_cursor_marker", False):
             # Update cursor
             self.app_cursor.set_data(np.asarray([(location[0], location[1])]),
                                      symbol='++', edge_color=self.plotcanvas.cursor_color,
@@ -5631,11 +5661,12 @@ class App(QtCore.QObject):
                 if self.grid_status():
                     pos = self.geo_editor.snap(pos_canvas[0], pos_canvas[1])
 
-                    # Update cursor
-                    self.app_cursor.set_data(np.asarray([(pos[0], pos[1])]),
-                                             symbol='++', edge_color=self.plotcanvas.cursor_color,
-                                             edge_width=self.options["global_cursor_width"],
-                                             size=self.options["global_cursor_size"])
+                    if self.options.get("global_snap_cursor_marker", False):
+                        # Update cursor
+                        self.app_cursor.set_data(np.asarray([(pos[0], pos[1])]),
+                                                 symbol='++', edge_color=self.plotcanvas.cursor_color,
+                                                 edge_width=self.options["global_cursor_width"],
+                                                 size=self.options["global_cursor_size"])
                 else:
                     pos = (pos_canvas[0], pos_canvas[1])
 
@@ -7039,7 +7070,7 @@ class App(QtCore.QObject):
         else:
             self.app_cursor = plotcanvas.new_cursor(big=True)
 
-        if self.ui.grid_snap_btn.isChecked():
+        if self.ui.grid_snap_btn.isChecked() and self.options.get("global_snap_cursor_marker", False):
             self.app_cursor.enabled = True
         else:
             self.app_cursor.enabled = False

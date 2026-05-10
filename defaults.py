@@ -6,7 +6,7 @@ from copy import deepcopy
 
 FIXED_LIGHT_UI_DEFAULTS = {
     "global_appearance": 'light',
-    "global_dark_canvas": False,
+    "global_dark_canvas": True,
     "global_theme": 'light',
     "global_gui_layout": 0,
     "global_layout": "standard",
@@ -128,7 +128,7 @@ class AppDefaults:
 
         # General GUI Preferences
         "global_appearance": 'light',
-        "global_dark_canvas": False,
+        "global_dark_canvas": True,
         "global_theme": 'light',
 
         "global_layout": "standard",
@@ -172,6 +172,7 @@ class AppDefaults:
         "global_cursor_width": 2,
         "global_cursor_color": '#FF0000',
         "global_cursor_color_enabled": True,
+        "global_snap_cursor_marker": False,
 
         "global_pan_button": '2',
         "global_mselect_key": 'Control',
@@ -200,6 +201,13 @@ class AppDefaults:
         "gerber_plot_fill": '#BBF268BF',
         "gerber_plot_line_enable": True,
         "gerber_plot_line": '#006E20BF',
+        "gerber_pcb_preview": True,
+        "gerber_pcb_preview_canvas": True,
+        "gerber_pcb_preview_panel": '#10251FCC',
+        "gerber_pcb_preview_panel_line": '#60736FAA',
+        "gerber_pcb_preview_board": '#E3C05FFF',
+        "gerber_pcb_preview_board_line": '#DAC278FF',
+        "gerber_pcb_preview_trace": '#06120FFF',
 
         "gerber_def_units": 'IN',
         "gerber_def_zeros": 'L',

@@ -27816,3 +27816,59 @@ msgstr "Değişkenlerde Şekil ismi yok. Lütfen bir isim girin ve tekrar deneyi
 
 #~ msgid "%s/Project_%s"
 #~ msgstr "%s/Project_%s"
+
+#: flatcam.py:73 appGUI/MainGUI.py:850
+msgid "Create New Project"
+msgstr "Yeni Proje Oluştur"
+
+#: flatcam.py:92
+msgid "Recent Projects"
+msgstr "Son Projeler"
+
+#: flatcam.py:105
+msgid "No recent projects yet."
+msgstr "Henüz kayıtlı proje yok."
+
+#: flatcam.py:259 appGUI/MainGUI.py:919
+msgid "Choose"
+msgstr "Seç"
+
+#: flatcam.py:265 appGUI/MainGUI.py:925
+msgid "Choose Save Location"
+msgstr "Kayıt Yeri Seç"
+
+#: flatcam.py:275
+msgid "Project Name"
+msgstr "Proje İsmi"
+
+#: flatcam.py:276
+msgid "Save Location"
+msgstr "Kayıt Yeri"
+
+#: flatcam.py:282 appGUI/MainGUI.py:942
+msgid "Create"
+msgstr "Oluştur"
+
+#: flatcam.py:301
+msgid "Missing Information"
+msgstr "Eksik Bilgi"
+
+#: flatcam.py:302
+msgid "Project name and save location are required."
+msgstr "Proje ismi ve kayıt yeri gereklidir."
+
+#: appGUI/MainGUI.py:828
+msgid "Project Start"
+msgstr "Proje Başlangıcı"
+
+#: appGUI/MainGUI.py:836
+msgid "Create a new workspace or continue with a saved project."
+msgstr "Yeni bir çalışma alanı oluşturun veya kayıtlı projenize devam edin."
+
+#: appGUI/MainGUI.py:935
+msgid "Project name:"
+msgstr "Proje adı:"
+
+#: appGUI/MainGUI.py:936
+msgid "Save location:"
+msgstr "Kayıt yeri:"

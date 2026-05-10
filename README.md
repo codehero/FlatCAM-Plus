@@ -257,6 +257,18 @@ flatcam-cnc-android/app/build/outputs/apk/debug/app-debug.apk
 
 Android USB Serial requires a device with USB host support and user approval in the Android USB permission dialog.
 
+### 4. Desktop Packaging
+
+FlatCAM Plus does not currently ship with official Windows, macOS, or Linux installer artifacts in this repository. Users who clone the repository can still create local desktop packages from source.
+
+Packaging should be done on the target operating system because PyQt, OpenGL/VisPy, GDAL, Rasterio, and other native dependencies are platform-specific.
+
+- macOS users can build a `.app` bundle and optional `.dmg`.
+- Linux users can build a folder distribution or archive and use the existing `assets/linux/` launcher files for source-based installs.
+- Windows packaging can be added with the same approach later using PyInstaller plus an installer tool such as Inno Setup or NSIS.
+
+See [`PACKAGING.md`](PACKAGING.md) for macOS and Linux packaging commands.
+
 ---
 
 ## Support and Contact

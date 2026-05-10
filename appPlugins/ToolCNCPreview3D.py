@@ -165,7 +165,8 @@ class ToolCNCPreview3D(AppTool):
         result = self.ui.canvas.render_job(
             obj.obj_options.get("name", _("CNCJob")),
             gcode,
-            tool_dia=self.cncjob_tool_diameter(obj)
+            tool_dia=self.cncjob_tool_diameter(obj),
+            job_type=obj.obj_options.get("type")
         )
         self.ui.update_stats(result)
         try:

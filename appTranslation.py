@@ -35,7 +35,11 @@ languages_dict = {
     'pt_BR': 'Portugues do Brasil',
     'ro': 'Română',
     'ru': 'Pусский',
-    'tr': 'Türk',
+    'tr': 'T\u00fcrk\u00e7e',
+}
+
+language_aliases = {
+    'T\u00fcrk': 'T\u00fcrk\u00e7e',
 }
 
 translations = {}
@@ -106,6 +110,7 @@ def on_language_apply_click(app, restart=False):
     settings = QSettings("Open Source", "FlatCAM_Plus")
     if settings.contains("language"):
         current_language = settings.value('language', type=str)
+        current_language = language_aliases.get(current_language, current_language)
         if current_language == name:
             return
 
@@ -145,6 +150,10 @@ def apply_language(domain, lang=None):
         settings = QSettings("Open Source", "FlatCAM_Plus")
         if settings.contains("language"):
             name = settings.value('language')
+            migrated_name = language_aliases.get(str(name), name)
+            if migrated_name != name:
+                name = migrated_name
+                settings.setValue('language', name)
         else:
             name = 'English'
             # in case the 'language' parameter is not in QSettings add it to QSettings and it's value is
@@ -155,6 +164,7 @@ def apply_language(domain, lang=None):
             del settings
     else:
         name = str(lang)    # we make it a string: "None"
+        name = language_aliases.get(name, name)
 
     for lang_code, lang_usable in load_languages().items():
         if lang_usable == name:

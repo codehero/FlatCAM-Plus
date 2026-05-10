@@ -642,6 +642,7 @@ class MainGUI(QtWidgets.QMainWindow):
         self.right_sidebar_toggle_btn.raise_()
 
     def workspace_panel_style_sheet(self):
+        splash_image = (self.app.resource_location + '/splash.png').replace("\\", "/")
         if self.app.options['global_theme'] in ['default', 'light']:
             workspace_bg = "#eef2f6"
             surface = "#ffffff"
@@ -654,6 +655,10 @@ class MainGUI(QtWidgets.QMainWindow):
             chip_bg = "#eef4ff"
             chip_border = "#d8e6ff"
             chip_text = "#31527a"
+            start_panel = "rgba(255, 255, 255, 228)"
+            start_panel_soft = "rgba(246, 248, 251, 232)"
+            start_logo_bg = "rgba(255, 255, 255, 242)"
+            secondary_bg = "rgba(255, 255, 255, 226)"
         else:
             workspace_bg = "#181818"
             surface = "#262626"
@@ -666,6 +671,10 @@ class MainGUI(QtWidgets.QMainWindow):
             chip_bg = "#202a35"
             chip_border = "#344354"
             chip_text = "#b8d7ff"
+            start_panel = "rgba(32, 32, 32, 224)"
+            start_panel_soft = "rgba(24, 24, 24, 232)"
+            start_logo_bg = "rgba(38, 38, 38, 242)"
+            secondary_bg = "rgba(32, 42, 53, 218)"
 
         return f"""
             QFrame#project_start_widget {{
@@ -678,50 +687,58 @@ class MainGUI(QtWidgets.QMainWindow):
                 border-radius: 10px;
             }}
             QFrame#project_start_shell {{
-                background: {surface};
+                background-color: {surface};
+                background-image: url("{splash_image}");
+                background-position: center;
+                background-repeat: no-repeat;
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 22px;
             }}
             QFrame#project_start_brand_panel {{
-                background: {soft_surface};
+                background: {start_panel};
                 border: 1px solid {border};
-                border-radius: 14px;
+                border-radius: 16px;
+            }}
+            QFrame#project_start_action_panel {{
+                background: {start_panel_soft};
+                border: 1px solid {border};
+                border-radius: 16px;
             }}
             QFrame#project_start_logo_badge {{
-                background: {surface};
+                background: {start_logo_bg};
                 border: 1px solid {border};
-                border-radius: 14px;
+                border-radius: 16px;
             }}
             QLabel#project_start_eyebrow {{
                 color: {accent};
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: 700;
             }}
             QLabel#project_start_title {{
                 color: {text};
-                font-size: 26px;
+                font-size: 34px;
                 font-weight: 700;
             }}
             QLabel#project_start_subtitle {{
                 color: {muted_text};
-                font-size: 13px;
+                font-size: 14px;
             }}
             QLabel#project_start_chip {{
                 color: {chip_text};
-                background: {chip_bg};
+                background: {secondary_bg};
                 border: 1px solid {chip_border};
                 border-radius: 12px;
-                padding: 4px 10px;
+                padding: 8px 14px;
                 font-size: 12px;
                 font-weight: 600;
             }}
             QPushButton#project_start_primary,
             QPushButton#project_start_secondary {{
-                min-width: 250px;
-                min-height: 58px;
-                border-radius: 12px;
-                padding: 10px 18px;
-                font-size: 14px;
+                min-width: 310px;
+                min-height: 72px;
+                border-radius: 14px;
+                padding: 12px 22px;
+                font-size: 15px;
                 font-weight: 700;
                 text-align: left;
             }}
@@ -736,7 +753,7 @@ class MainGUI(QtWidgets.QMainWindow):
             }}
             QPushButton#project_start_secondary {{
                 color: {text};
-                background: {soft_surface};
+                background: {secondary_bg};
                 border: 1px solid {border};
             }}
             QPushButton#project_start_secondary:hover {{
@@ -753,44 +770,51 @@ class MainGUI(QtWidgets.QMainWindow):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding
         )
-        start_widget.setMinimumHeight(460)
+        start_widget.setMinimumHeight(620)
 
         layout = QtWidgets.QVBoxLayout(start_widget)
-        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setContentsMargins(42, 42, 42, 42)
         layout.setSpacing(0)
-        layout.addStretch(1)
+        layout.addStretch(2)
 
         splash_shell = QtWidgets.QFrame(start_widget)
         splash_shell.setObjectName("project_start_shell")
-        splash_shell.setMaximumWidth(860)
-        splash_shell.setMinimumHeight(360)
+        splash_shell.setMinimumWidth(900)
+        splash_shell.setMaximumWidth(1080)
+        splash_shell.setMinimumHeight(520)
         splash_shell.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Preferred
         )
+        shell_shadow = QtWidgets.QGraphicsDropShadowEffect(splash_shell)
+        shell_shadow.setBlurRadius(34)
+        shell_shadow.setOffset(0, 12)
+        shell_shadow.setColor(QtGui.QColor(15, 23, 42, 36))
+        splash_shell.setGraphicsEffect(shell_shadow)
 
         shell_layout = QtWidgets.QVBoxLayout(splash_shell)
-        shell_layout.setContentsMargins(28, 28, 28, 28)
-        shell_layout.setSpacing(22)
+        shell_layout.setContentsMargins(36, 36, 36, 32)
+        shell_layout.setSpacing(24)
 
         brand_panel = QtWidgets.QFrame(splash_shell)
         brand_panel.setObjectName("project_start_brand_panel")
+        brand_panel.setMinimumHeight(150)
         brand_layout = QtWidgets.QHBoxLayout(brand_panel)
-        brand_layout.setContentsMargins(18, 16, 18, 16)
-        brand_layout.setSpacing(16)
+        brand_layout.setContentsMargins(24, 22, 24, 22)
+        brand_layout.setSpacing(22)
 
         logo_badge = QtWidgets.QFrame(brand_panel)
         logo_badge.setObjectName("project_start_logo_badge")
-        logo_badge.setFixedSize(64, 64)
+        logo_badge.setFixedSize(82, 82)
         logo_layout = QtWidgets.QVBoxLayout(logo_badge)
-        logo_layout.setContentsMargins(8, 8, 8, 8)
+        logo_layout.setContentsMargins(10, 10, 10, 10)
 
         logo_label = QtWidgets.QLabel(logo_badge)
         logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         logo_pixmap = QtGui.QPixmap(self.app.resource_location + '/app64.png')
         if not logo_pixmap.isNull():
             logo_label.setPixmap(logo_pixmap.scaled(
-                42, 42,
+                56, 56,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation
             ))
@@ -801,7 +825,7 @@ class MainGUI(QtWidgets.QMainWindow):
         title_box.setContentsMargins(0, 0, 0, 0)
         title_box.setSpacing(4)
 
-        eyebrow_label = FCLabel(_("Proje Başlangıcı"))
+        eyebrow_label = FCLabel(_("Project Start"))
         eyebrow_label.setObjectName("project_start_eyebrow")
         title_box.addWidget(eyebrow_label)
 
@@ -809,7 +833,7 @@ class MainGUI(QtWidgets.QMainWindow):
         title_label.setObjectName("project_start_title")
         title_box.addWidget(title_label)
 
-        subtitle_label = FCLabel(_("Yeni bir çalışma alanı oluşturun veya kayıtlı projenize devam edin."))
+        subtitle_label = FCLabel(_("Create a new workspace or continue with a saved project."))
         subtitle_label.setObjectName("project_start_subtitle")
         subtitle_label.setWordWrap(True)
         title_box.addWidget(subtitle_label)
@@ -817,52 +841,65 @@ class MainGUI(QtWidgets.QMainWindow):
         brand_layout.addLayout(title_box, 1)
         shell_layout.addWidget(brand_panel)
 
-        self.start_new_project_btn = QtWidgets.QPushButton(_("Yeni Proje Oluştur"))
+        action_panel = QtWidgets.QFrame(splash_shell)
+        action_panel.setObjectName("project_start_action_panel")
+        action_layout = QtWidgets.QVBoxLayout(action_panel)
+        action_layout.setContentsMargins(20, 20, 20, 20)
+        action_layout.setSpacing(22)
+
+        self.start_new_project_btn = QtWidgets.QPushButton(_("Create New Project"))
         self.start_new_project_btn.setObjectName("project_start_primary")
         self.start_new_project_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/new_file32.png'))
-        self.start_new_project_btn.setIconSize(QtCore.QSize(24, 24))
+        self.start_new_project_btn.setIconSize(QtCore.QSize(28, 28))
         self.start_new_project_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.start_new_project_btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed
+        )
         self.start_new_project_btn.clicked.connect(lambda: self.app.f_handlers.on_file_new_click())
 
-        self.start_open_project_btn = QtWidgets.QPushButton(_("Proje Aç"))
+        self.start_open_project_btn = QtWidgets.QPushButton(_("Open Project"))
         self.start_open_project_btn.setObjectName("project_start_secondary")
         self.start_open_project_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/folder32.png'))
-        self.start_open_project_btn.setIconSize(QtCore.QSize(24, 24))
+        self.start_open_project_btn.setIconSize(QtCore.QSize(28, 28))
         self.start_open_project_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.start_open_project_btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed
+        )
         self.start_open_project_btn.clicked.connect(lambda: self.app.f_handlers.on_file_open_project())
 
         button_row = QtWidgets.QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
-        button_row.setSpacing(14)
-        button_row.addStretch(1)
-        button_row.addWidget(self.start_new_project_btn)
-        button_row.addWidget(self.start_open_project_btn)
-        button_row.addStretch(1)
+        button_row.setSpacing(18)
+        button_row.addWidget(self.start_new_project_btn, 1)
+        button_row.addWidget(self.start_open_project_btn, 1)
 
-        shell_layout.addLayout(button_row)
+        action_layout.addLayout(button_row)
 
         chip_row = QtWidgets.QHBoxLayout()
         chip_row.setContentsMargins(0, 0, 0, 0)
-        chip_row.setSpacing(8)
+        chip_row.setSpacing(10)
         chip_row.addStretch(1)
         for chip_text in (_("Gerber"), _("Excellon"), _("Geometry"), _("CNC Job")):
             chip_label = FCLabel(chip_text)
             chip_label.setObjectName("project_start_chip")
             chip_row.addWidget(chip_label)
         chip_row.addStretch(1)
-        shell_layout.addLayout(chip_row)
+        action_layout.addLayout(chip_row)
+        shell_layout.addWidget(action_panel)
 
         layout.addWidget(
             splash_shell, 0,
             QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
-        layout.addStretch(2)
+        layout.addStretch(3)
 
         return start_widget
 
     def request_new_project_details(self):
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle(_("Yeni Proje Oluştur"))
+        dialog.setWindowTitle(_("Create New Project"))
         dialog.setWindowIcon(QtGui.QIcon(self.app.resource_location + '/app24.png'))
         dialog.setModal(True)
 
@@ -871,7 +908,7 @@ class MainGUI(QtWidgets.QMainWindow):
         form_layout.setSpacing(10)
 
         name_entry = FCEntry()
-        name_entry.setText(_("Yeni Proje"))
+        name_entry.setText(_("New Project"))
 
         location_row = QtWidgets.QHBoxLayout()
         location_row.setContentsMargins(0, 0, 0, 0)
@@ -879,13 +916,13 @@ class MainGUI(QtWidgets.QMainWindow):
 
         location_entry = FCEntry()
         location_entry.setText(self.app.get_last_save_folder())
-        browse_btn = QtWidgets.QPushButton(_("Seç"))
+        browse_btn = QtWidgets.QPushButton(_("Choose"))
         browse_btn.setMinimumWidth(68)
 
         def browse_location():
             folder = QtWidgets.QFileDialog.getExistingDirectory(
                 self,
-                _("Kayıt yerini seç"),
+                _("Choose Save Location"),
                 location_entry.text()
             )
             if folder:
@@ -895,15 +932,15 @@ class MainGUI(QtWidgets.QMainWindow):
         location_row.addWidget(location_entry, 1)
         location_row.addWidget(browse_btn)
 
-        form_layout.addRow(_("Proje adı:"), name_entry)
-        form_layout.addRow(_("Kayıt yeri:"), location_row)
+        form_layout.addRow(_("Project name:"), name_entry)
+        form_layout.addRow(_("Save location:"), location_row)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok |
             QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(_("Oluştur"))
-        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText(_("İptal"))
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(_("Create"))
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText(_("Cancel"))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
 
@@ -928,6 +965,8 @@ class MainGUI(QtWidgets.QMainWindow):
         return project_name, os.path.join(project_folder, filename)
 
     def show_start_workspace(self):
+        self.project_workspace_active = False
+        self.current_project_name = None
         if hasattr(self, "right_content_stack"):
             self.right_content_stack.setCurrentWidget(self.project_start_widget)
         if hasattr(self, "toolbar_center_host"):
@@ -938,6 +977,7 @@ class MainGUI(QtWidgets.QMainWindow):
             self.set_properties_sidebar_visible(False)
 
     def activate_project_workspace(self, project_name=None):
+        self.project_workspace_active = True
         if project_name:
             self.set_current_project_name(project_name)
         if hasattr(self, "right_content_stack"):
@@ -951,6 +991,14 @@ class MainGUI(QtWidgets.QMainWindow):
         self.current_project_name = project_name
         if hasattr(self.app, "collection"):
             self.app.collection.set_project_name(project_name)
+
+    def has_active_project(self):
+        return bool(getattr(self, "project_workspace_active", False))
+
+    def warn_project_required(self):
+        message = _("Please create a new project or open an existing project first.")
+        self.app.inform.emit('[WARNING_NOTCL] %s' % message)
+        return message
 
     def open_plot_widget_tab(self, widget, title, object_name=None, make_current=True):
         if object_name:
@@ -5104,7 +5152,8 @@ class MainGUI(QtWidgets.QMainWindow):
                     self.app.ui.grid_snap_btn.trigger()
 
                     # make sure that the cursor shape is enabled/disabled, too
-                    if self.app.geo_editor.editor_options['grid_snap'] is True:
+                    if self.app.geo_editor.editor_options['grid_snap'] is True and \
+                            self.app.options.get("global_snap_cursor_marker", False):
                         self.app.app_cursor.enabled = True
                     else:
                         self.app.app_cursor.enabled = False
@@ -5413,10 +5462,11 @@ class MainGUI(QtWidgets.QMainWindow):
                     if key == QtCore.Qt.Key.Key_G or key == 'G':
                         self.app.grb_editor.launched_from_shortcuts = True
                         # make sure that the cursor shape is enabled/disabled, too
-                        if self.app.grb_editor.editor_options['grid_snap'] is True:
-                            self.app.app_cursor.enabled = False
-                        else:
+                        if self.app.grb_editor.editor_options['grid_snap'] is False and \
+                                self.app.options.get("global_snap_cursor_marker", False):
                             self.app.app_cursor.enabled = True
+                        else:
+                            self.app.app_cursor.enabled = False
                         self.app.ui.grid_snap_btn.trigger()
                         return
 
@@ -5618,10 +5668,11 @@ class MainGUI(QtWidgets.QMainWindow):
                 if key == QtCore.Qt.Key.Key_G or key == 'G':
                     self.app.exc_editor.launched_from_shortcuts = True
                     # make sure that the cursor shape is enabled/disabled, too
-                    if self.app.exc_editor.editor_options['grid_snap'] is True:
-                        self.app.app_cursor.enabled = False
-                    else:
+                    if self.app.exc_editor.editor_options['grid_snap'] is False and \
+                            self.app.options.get("global_snap_cursor_marker", False):
                         self.app.app_cursor.enabled = True
+                    else:
+                        self.app.app_cursor.enabled = False
                     self.app.ui.grid_snap_btn.trigger()
                     return
 
@@ -5789,7 +5840,8 @@ class MainGUI(QtWidgets.QMainWindow):
 
                 if key == QtCore.Qt.Key.Key_G or key == 'G':
                     self.app.ui.grid_snap_btn.trigger()
-                    if self.app.distance_tool.ui.big_cursor_cb.get_value():
+                    if self.app.distance_tool.ui.big_cursor_cb.get_value() and \
+                            self.app.options.get("global_snap_cursor_marker", False):
                         self.app.app_cursor.enabled = True
                     return
 

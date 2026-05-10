@@ -19,6 +19,7 @@ from appObjects.AppObjectTemplate import FlatCAMObj, ObjectDeleted, ValidationEr
 from camlib import flatten_shapely_geometry
 
 from shapely import MultiLineString, LinearRing, MultiPolygon, Polygon, LineString, Point
+from shapely.geometry import box
 from shapely.ops import unary_union
 
 import numpy as np
@@ -931,6 +932,15 @@ class GerberObject(FlatCAMObj, Gerber):
         else:
             geometry = self.solid_geometry
 
+        pcb_preview = bool(self.app.options.get("gerber_pcb_preview", True)) and self.app.use_3d_engine and \
+            not self.obj_options['follow']
+        if pcb_preview:
+            if self.app.options.get("gerber_pcb_preview_canvas", True):
+                apply_theme = getattr(self.app.plotcanvas, "apply_pcb_preview_theme", None)
+                if callable(apply_theme):
+                    apply_theme()
+            self._plot_pcb_preview_background(geometry=geometry, visible=visible)
+
         if self.app.use_3d_engine:
             def random_color():
                 r_color = np.random.rand(4)
@@ -956,35 +966,65 @@ class GerberObject(FlatCAMObj, Gerber):
             plot_geometry = geometry.geoms if isinstance(geometry, (MultiPolygon, MultiLineString)) else geometry
             try:
                 for g in plot_geometry:
-                    if self.obj_options["solid"]:
+                    if pcb_preview:
+                        used_color = self.app.options.get("gerber_pcb_preview_trace", '#06120FFF')
+                        used_face_color = None
+                    elif self.obj_options["solid"]:
                         used_color = color
                         used_face_color = random_color() if self.obj_options['multicolored'] else face_color
                     else:
                         used_color = random_color() if self.obj_options['multicolored'] else 'black'
                         used_face_color = None
 
-                    if self.app.options["gerber_plot_line_enable"] is False:
+                    if not pcb_preview and self.app.options["gerber_plot_line_enable"] is False:
                         used_color = None
                     if isinstance(g, (Polygon, LineString)):
-                        self.add_shape(shape=g, color=used_color, face_color=used_face_color, visible=visible)
+                        self.add_shape(
+                            shape=g,
+                            color=used_color,
+                            face_color=used_face_color,
+                            visible=visible,
+                            layer=2 if pcb_preview else 1
+                        )
                     elif isinstance(g, LinearRing):
                         g = LineString(g)
-                        self.add_shape(shape=g, color=used_color, face_color=used_face_color, visible=visible)
+                        self.add_shape(
+                            shape=g,
+                            color=used_color,
+                            face_color=used_face_color,
+                            visible=visible,
+                            layer=2 if pcb_preview else 1
+                        )
             except TypeError:
-                if self.obj_options["solid"]:
+                if pcb_preview:
+                    used_color = self.app.options.get("gerber_pcb_preview_trace", '#06120FFF')
+                    used_face_color = None
+                elif self.obj_options["solid"]:
                     used_color = color
                     used_face_color = random_color() if self.obj_options['multicolored'] else face_color
                 else:
                     used_color = random_color() if self.obj_options['multicolored'] else 'black'
                     used_face_color = None
 
-                if self.app.options["gerber_plot_line_enable"] is False:
+                if not pcb_preview and self.app.options["gerber_plot_line_enable"] is False:
                     used_color = None
                 if isinstance(plot_geometry, (Polygon, LineString)):
-                    self.add_shape(shape=plot_geometry, color=used_color, face_color=used_face_color, visible=visible)
+                    self.add_shape(
+                        shape=plot_geometry,
+                        color=used_color,
+                        face_color=used_face_color,
+                        visible=visible,
+                        layer=2 if pcb_preview else 1
+                    )
                 elif isinstance(plot_geometry, LinearRing):
                     plot_geometry = LineString(plot_geometry)
-                    self.add_shape(shape=plot_geometry, color=used_color, face_color=used_face_color, visible=visible)
+                    self.add_shape(
+                        shape=plot_geometry,
+                        color=used_color,
+                        face_color=used_face_color,
+                        visible=visible,
+                        layer=2 if pcb_preview else 1
+                    )
             self.shapes.redraw(
                 # update_colors=(self.fill_color, self.outline_color),
                 # indexes=self.app.plotcanvas.shape_collection.data.keys()
@@ -993,6 +1033,44 @@ class GerberObject(FlatCAMObj, Gerber):
             self.shapes.clear(update=True)
         except Exception as e:
             self.app.log.error("GerberObject.plot() --> %s" % str(e))
+
+    def _plot_pcb_preview_background(self, geometry, visible=True):
+        try:
+            bounds = geometry.bounds
+        except AttributeError:
+            try:
+                bounds = unary_union(geometry).bounds
+            except Exception:
+                return
+        except Exception:
+            return
+
+        try:
+            xmin, ymin, xmax, ymax = [float(value) for value in bounds]
+        except Exception:
+            return
+
+        width = xmax - xmin
+        height = ymax - ymin
+        if width <= 0 or height <= 0:
+            return
+
+        max_dim = max(width, height)
+        board_margin = max(max_dim * 0.035, 0.35)
+
+        board = box(
+            xmin - board_margin,
+            ymin - board_margin,
+            xmax + board_margin,
+            ymax + board_margin
+        )
+        self.add_shape(
+            shape=board,
+            color=None,
+            face_color=self.app.options.get("gerber_pcb_preview_board", '#E3C05FFF'),
+            visible=visible,
+            layer=1
+        )
 
     def plot_aperture(self, only_flashes=False, run_thread=False, **kwargs):
         """

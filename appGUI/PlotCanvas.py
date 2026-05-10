@@ -646,7 +646,7 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         if (theme == 'default' or theme == 'light') and not dark_canvas:
             color = 'dimgray'
         else:
-            color = '#202124ff'
+            color = '#1A2630CC'
 
         if state:
             self.fcapp.options['global_grid_lines'] = True
@@ -665,11 +665,10 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
 
         # HACK: enabling/disabling the cursor seams to somehow update the shapes on screen
         # - perhaps is a bug in VisPy implementation
-        if self.fcapp.grid_status():
+        if self.fcapp.grid_status() and self.fcapp.options.get("global_snap_cursor_marker", False):
             self.fcapp.app_cursor.enabled = False
             self.fcapp.app_cursor.enabled = True
         else:
-            self.fcapp.app_cursor.enabled = True
             self.fcapp.app_cursor.enabled = False
 
     def draw_workspace(self, workspace_size):
@@ -748,6 +747,25 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         :return: None
         """
         self.view.camera.zoom(factor, center)
+
+    def apply_pcb_preview_theme(self):
+        """
+        Apply a darker, presentation-oriented canvas palette for PCB previews.
+        The actual CAM geometry remains unchanged; this only changes the view
+        background and grid color.
+        """
+        try:
+            canvas_bg = Color('#071017')
+            grid_color = Color('#1A2630CC').rgba
+
+            self.central_widget.bgcolor = canvas_bg
+            self.central_widget.border_color = canvas_bg
+            self.view.bgcolor = canvas_bg
+
+            self.grid._grid_color_fn['color'] = grid_color
+            self.view.scene.update()
+        except Exception as e:
+            self.fcapp.log.debug("PlotCanvas.apply_pcb_preview_theme() --> %s" % str(e))
 
     def new_shape_group(self, shape_collection=None):
         if shape_collection:
@@ -851,7 +869,7 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
             p2 = np.array(curr_pos)[:2]
             self.view.camera.pan(p2 - p1)
 
-        if self.fcapp.grid_status():
+        if self.fcapp.grid_status() and self.fcapp.options.get("global_snap_cursor_marker", False):
             pos_canvas = self.translate_coords(curr_pos)
             pos = self.fcapp.geo_editor.snap(pos_canvas[0], pos_canvas[1])
 

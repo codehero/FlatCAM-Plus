@@ -77,6 +77,23 @@ class appIO(QtCore.QObject):
 
         self.app.new_project_signal.connect(self.on_new_project_house_keeping)
 
+    def _ensure_project_workspace(self):
+        ui = getattr(self.app, "ui", None)
+        if ui is None or not hasattr(ui, "has_active_project"):
+            return True
+
+        if ui.has_active_project():
+            return True
+
+        warn_project_required = getattr(ui, "warn_project_required", None)
+        if warn_project_required is not None:
+            warn_project_required()
+        else:
+            self.inform.emit(
+                '[WARNING_NOTCL] %s' % _("Please create a new project or open an existing project first.")
+            )
+        return False
+
     def on_file_open_gerber(self, name=None):
         """
         File menu callback for opening a Gerber.
@@ -86,6 +103,9 @@ class appIO(QtCore.QObject):
         """
 
         self.log.debug("on_file_open_gerber()")
+
+        if not self._ensure_project_workspace():
+            return
 
         _filter_ = "Gerber Files (*.gbr *.ger *.gtl *.gbl *.gts *.gbs *.gtp *.gbp *.gto *.gbo *.gm1 *.gml *.gm3 " \
                    "*.gko *.cmp *.sol *.stc *.sts *.plc *.pls *.crc *.crs *.tsm *.bsm *.ly2 *.ly15 *.dim *.mil *.grb " \
@@ -136,6 +156,9 @@ class appIO(QtCore.QObject):
 
         self.log.debug("on_file_open_excellon()")
 
+        if not self._ensure_project_workspace():
+            return
+
         _filter_ = "Excellon Files (*.drl *.txt *.xln *.drd *.tap *.exc *.ncd);;" \
                    "All Files (*.*)"
         if name is None:
@@ -174,6 +197,9 @@ class appIO(QtCore.QObject):
         """
 
         self.log.debug("on_file_open_gcode()")
+
+        if not self._ensure_project_workspace():
+            return
 
         # https://bobcadsupport.com/helpdesk/index.php?/Knowledgebase/Article/View/13/5/known-g-code-file-extensions
         _filter_ = "G-Code Files (*.txt *.nc *.ncc *.tap *.gcode *.cnc *.ecs *.fnc *.dnc *.ncg *.gc *.fan *.fgc" \
@@ -242,6 +268,9 @@ class appIO(QtCore.QObject):
         :return:        None
         """
         self.log.debug("on_file_open_hpgl2()")
+
+        if not self._ensure_project_workspace():
+            return
 
         _filter_ = "HPGL2 Files (*.plt);;" \
                    "All Files (*.*)"
@@ -711,6 +740,9 @@ class appIO(QtCore.QObject):
         """
         self.log.debug("on_file_import_svg()")
 
+        if not self._ensure_project_workspace():
+            return
+
         _filter_ = "SVG File .svg (*.svg);;All Files (*.*)"
         try:
             filenames, _f = QtWidgets.QFileDialog.getOpenFileNames(caption=_("Import SVG"),
@@ -740,6 +772,9 @@ class appIO(QtCore.QObject):
         :return: None
         """
         self.log.debug("on_file_import_dxf()")
+
+        if not self._ensure_project_workspace():
+            return
 
         _filter_ = "DXF File .dxf (*.DXF);;All Files (*.*)"
         try:
@@ -1933,6 +1968,9 @@ class appIO(QtCore.QObject):
         :return:
         """
         self.log.debug("App.import_svg()")
+        if not self._ensure_project_workspace():
+            return
+
         if not os.path.exists(filename):
             self.inform.emit('[ERROR_NOTCL] %s' % _("File no longer available."))
             return
@@ -1989,6 +2027,9 @@ class appIO(QtCore.QObject):
         :return:
         """
         self.log.debug(" ********* Importing DXF as: %s ********* " % geo_type.capitalize())
+        if not self._ensure_project_workspace():
+            return
+
         if not os.path.exists(filename):
             self.inform.emit('[ERROR_NOTCL] %s' % _("File no longer available."))
             return
@@ -2080,6 +2121,9 @@ class appIO(QtCore.QObject):
                 return parse_ret_val
 
         self.log.debug("open_gerber()")
+        if not self._ensure_project_workspace():
+            return
+
         if not os.path.exists(filename):
             self.inform.emit('[ERROR_NOTCL] %s. %s' % (filename, _("File no longer available.")))
             return
@@ -2126,6 +2170,8 @@ class appIO(QtCore.QObject):
         """
 
         self.log.debug("open_excellon()")
+        if not self._ensure_project_workspace():
+            return
 
         if not os.path.exists(filename):
             self.inform.emit('[ERROR_NOTCL] %s. %s' % (filename, _("File no longer available.")))
@@ -2197,6 +2243,8 @@ class appIO(QtCore.QObject):
         :return:                None
         """
         self.log.debug("open_gcode()")
+        if not self._ensure_project_workspace():
+            return
 
         if not os.path.exists(filename):
             self.inform.emit('[ERROR_NOTCL] %s' % _("File no longer available."))
@@ -2362,6 +2410,8 @@ class appIO(QtCore.QObject):
                 return "fail"
 
         self.log.debug("open_hpgl2()")
+        if not self._ensure_project_workspace():
+            return
 
         with self.app.proc_container.new('%s...' % _("Opening")):
             # Object name
@@ -2527,41 +2577,43 @@ class appIO(QtCore.QObject):
 
         def parse_worker(prj_filename):
             with self.app.proc_container.new('%s' % _("Parsing...")):
-                # Open and parse an uncompressed Project file
                 try:
-                    f = open(prj_filename, 'r')
+                    with open(prj_filename, 'rb') as f:
+                        raw_content = f.read()
                 except IOError:
-                    if from_tcl:
-                        name = prj_filename.split('/')[-1].split('\\')[-1]
-                        prj_filename = os.path.join(self.options['global_tcl_path'], name)
-                        try:
-                            f = open(prj_filename, 'r')
-                        except IOError:
-                            self.log.error("Failed to open project file: %s" % prj_filename)
-                            self.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Failed to open project file"), prj_filename))
-                            return
-                    else:
+                    if not from_tcl:
+                        self.log.error("Failed to open project file: %s" % prj_filename)
+                        self.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Failed to open project file"), prj_filename))
+                        return
+
+                    name = prj_filename.split('/')[-1].split('\\')[-1]
+                    prj_filename = os.path.join(self.options['global_tcl_path'], name)
+                    try:
+                        with open(prj_filename, 'rb') as f:
+                            raw_content = f.read()
+                    except IOError:
                         self.log.error("Failed to open project file: %s" % prj_filename)
                         self.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Failed to open project file"), prj_filename))
                         return
 
                 try:
-                    d = json.load(f, object_hook=dict2obj)
-                except Exception as e:
-                    self.log.debug(
-                        "Failed to parse project file, trying to see if it loads as an LZMA archive: %s because %s" %
-                        (prj_filename, str(e)))
-                    f.close()
-
-                    # Open and parse a compressed Project file
+                    if raw_content.startswith(b'\xfd7zXZ\x00'):
+                        file_content = lzma.decompress(raw_content).decode('utf-8')
+                    else:
+                        file_content = raw_content.decode('utf-8-sig')
+                    d = json.loads(file_content, object_hook=dict2obj)
+                except UnicodeDecodeError:
                     try:
-                        with lzma.open(prj_filename) as f:
-                            file_content = f.read().decode('utf-8')
-                            d = json.loads(file_content, object_hook=dict2obj)
+                        file_content = lzma.decompress(raw_content).decode('utf-8')
+                        d = json.loads(file_content, object_hook=dict2obj)
                     except Exception as e:
                         self.log.error("Failed to open project file: %s with error: %s" % (prj_filename, str(e)))
                         self.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Failed to open project file"), prj_filename))
                         return
+                except Exception as e:
+                    self.log.error("Failed to parse project file: %s with error: %s" % (prj_filename, str(e)))
+                    self.inform.emit('[ERROR_NOTCL] %s: %s' % (_("Failed to open project file"), prj_filename))
+                    return
 
                 # Check for older projects
                 found_older_project = False
@@ -2613,34 +2665,10 @@ class appIO(QtCore.QObject):
         else:
             self.on_file_new_project()
 
-        if not run_from_arg or not cli or from_tcl is False:
-            msgbox = FCMessageBox(parent=self.app.ui)
-            title = _("Import Settings")
-            txt = _("Do you want to import the loaded project settings?")
-            msgbox.setWindowTitle(title)  # taskbar still shows it
-            msgbox.setWindowIcon(QtGui.QIcon(self.app.resource_location + '/app128.png'))
-            msgbox.setText('<b>%s</b>' % title)
-            msgbox.setInformativeText(txt)
-            msgbox.setIconPixmap(QtGui.QPixmap(self.app.resource_location + '/import.png'))
-
-            bt_yes = msgbox.addButton(_('Yes'), QtWidgets.QMessageBox.ButtonRole.YesRole)
-            bt_no = msgbox.addButton(_('No'), QtWidgets.QMessageBox.ButtonRole.NoRole)
-            # bt_cancel = msgbox.addButton(_('Cancel'), QtWidgets.QMessageBox.ButtonRole.RejectRole)
-
-            msgbox.setDefaultButton(bt_yes)
-            msgbox.exec()
-            response = msgbox.clickedButton()
-
-            if response == bt_yes:
-                # self.app.defaults.update(self.app.options)
-                # self.app.preferencesUiManager.save_defaults()
-                # Project options
-                self.app.options.update(proj_dict['options'])
-            if response == bt_no:
-                pass
-        else:
-            # Load by default new options when not using GUI
-            # Project options
+        # Always load project settings directly. The old confirmation dialog
+        # interrupted normal project opening and the expected default action was
+        # the "Yes" path.
+        if 'options' in proj_dict:
             self.app.options.update(proj_dict['options'])
 
         self.app.project_filename = filename

@@ -24,7 +24,7 @@ white = Color("#ffffff")
 black = Color("#000000")
 
 
-_DOTTED_GRID_COLOR = """
+_PCB_GRID_COLOR = """
 uniform vec4 u_gridlines_bounds;
 uniform float u_border_width;
 
@@ -56,9 +56,9 @@ vec4 grid_color(vec2 pos) {
 
     vec2 grid_step = vec2(step_x, step_y);
     vec2 cell_pos = mod(local_pos.xy + 0.5 * grid_step, grid_step) - 0.5 * grid_step;
-    vec2 dot_pos_px = vec2(cell_pos.x / px.x, cell_pos.y / px.y);
-    float dot_distance = length(dot_pos_px);
-    float alpha = 1.0 - smoothstep(1.15, 1.95, dot_distance);
+    vec2 line_pos_px = abs(vec2(cell_pos.x / px.x, cell_pos.y / px.y));
+    float line_distance = min(line_pos_px.x, line_pos_px.y);
+    float alpha = 1.0 - smoothstep(0.72, 1.28, line_distance);
 
     if (alpha <= 0.0) {
         discard;
@@ -69,13 +69,13 @@ vec4 grid_color(vec2 pos) {
         discard;
     }
 
-    return vec4($color.rgb, $color.a * alpha * 0.42);
+    return vec4($color.rgb, $color.a * alpha * 0.62);
 }
 """
 
 
-def apply_dotted_grid_shader(grid, color, scale=(1, 1)):
-    grid._grid_color_fn = Function(_DOTTED_GRID_COLOR)
+def apply_pcb_grid_shader(grid, color, scale=(1, 1)):
+    grid._grid_color_fn = Function(_PCB_GRID_COLOR)
     grid._grid_color_fn['color'] = Color(color).rgba
     grid._grid_color_fn['scale'] = scale
     grid.shared_program.frag['get_data'] = grid._grid_color_fn
@@ -110,13 +110,9 @@ class VisPyCanvas(scene.SceneCanvas):
             tick_color = Color('#000000')
             back_color = str(QPalette().color(QPalette.ColorRole.Window).name())
         else:
-            if theme not in ['default', 'light']:
-                theme_color = Color('#202124')
-                back_color = Color('#202124')
-            else:
-                theme_color = Color('#000000')
-                back_color = Color('#000000')
-            tick_color = Color('gray')
+            theme_color = Color('#071017')
+            back_color = Color('#071017')
+            tick_color = Color('#5f6f78')
             # back_color = Color('#272822') # darker
             # back_color = Color('#3c3f41') # lighter
 
@@ -197,10 +193,10 @@ class VisPyCanvas(scene.SceneCanvas):
         self.view = view
         if (theme == 'default' or theme == 'light') and not dark_canvas:
             self.grid = scene.GridLines(parent=self.view.scene, color='dimgray')
-            apply_dotted_grid_shader(self.grid, 'dimgray')
+            apply_pcb_grid_shader(self.grid, '#d1d5db66')
         else:
-            self.grid = scene.GridLines(parent=self.view.scene, color='#dededeff')
-            apply_dotted_grid_shader(self.grid, '#dededeff')
+            self.grid = scene.GridLines(parent=self.view.scene, color='#1A2630CC')
+            apply_pcb_grid_shader(self.grid, '#1A2630CC')
 
         self.grid.set_gl_state(depth_test=False)
 

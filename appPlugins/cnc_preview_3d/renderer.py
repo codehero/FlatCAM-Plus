@@ -9,7 +9,7 @@ import re
 
 import numpy as np
 import vispy.scene as scene
-from vispy.scene.visuals import Mesh
+from vispy.scene.visuals import Line, Mesh
 from vispy.util.quaternion import Quaternion
 
 import appTranslation as fcTranslate
@@ -73,6 +73,8 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
     BOARD_BOTTOM = -1.6
     MIN_VISIBLE_DEPTH = -0.04
     MIN_VISIBLE_WIDTH_RATIO = 0.003
+    TRACE_Z_OFFSET = 0.035
+    HOLE_Z_OFFSET = 0.006
 
     def __init__(self, app):
         super().__init__(keys=None, bgcolor="#f3f5f1", show=False)
@@ -106,7 +108,7 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
             for key, value in re.findall(r"([A-Za-z])\s*([+-]?\d+(?:\.\d+)?)", line)
         }
 
-    def parse_gcode(self, gcode_text):
+    def parse_gcode(self, gcode_text, detect_drills=False):
         position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
         absolute = True
         unit_scale = 1.0
@@ -114,6 +116,8 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
         travel_segments = []
         cut_segments = []
         drill_hits = []
+        active_drill_cycle = False
+        drill_cycle_depth = None
 
         for raw_line in gcode_text.splitlines():
             clean = self.clean_line(raw_line)
@@ -132,6 +136,28 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
                 absolute = True
             if 91 in g_codes:
                 absolute = False
+
+            if 80 in g_codes:
+                active_drill_cycle = False
+
+            if any(g_code in [81, 82, 83] for g_code in g_codes):
+                active_drill_cycle = True
+                if "Z" in words:
+                    drill_cycle_depth = words["Z"] * unit_scale
+
+            if active_drill_cycle and any(axis in words for axis in "XY"):
+                next_position = dict(position)
+                for axis in "XY":
+                    if axis in words:
+                        value = words[axis] * unit_scale
+                        next_position[axis] = position[axis] + value if not absolute else value
+                depth = words["Z"] * unit_scale if "Z" in words else drill_cycle_depth
+                if depth is None:
+                    depth = self.MIN_VISIBLE_DEPTH
+                drill_hits.append((next_position["X"], next_position["Y"], min(depth, self.MIN_VISIBLE_DEPTH)))
+                position["X"] = next_position["X"]
+                position["Y"] = next_position["Y"]
+                continue
 
             motion = None
             for g_code in g_codes:
@@ -153,6 +179,7 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
             start = (position["X"], position["Y"], position["Z"])
             end = (next_position["X"], next_position["Y"], next_position["Z"])
             xy_changed = abs(start[0] - end[0]) > 1e-9 or abs(start[1] - end[1]) > 1e-9
+            z_plunged = start[2] >= -1e-9 and end[2] < -1e-9
             below_surface = min(start[2], end[2]) < 0
 
             if motion == 0 or not below_surface:
@@ -160,6 +187,8 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
                     travel_segments.append((start, end))
             elif xy_changed:
                 cut_segments.append((start, end))
+            elif detect_drills and z_plunged:
+                drill_hits.append((end[0], end[1], min(end[2], self.MIN_VISIBLE_DEPTH)))
 
             position = next_position
 
@@ -167,8 +196,17 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
             "line_count": line_count,
             "travel_segments": travel_segments,
             "cut_segments": cut_segments,
-            "drill_hits": drill_hits,
+            "drill_hits": self.dedupe_drill_hits(drill_hits),
         }
+
+    @staticmethod
+    def dedupe_drill_hits(drill_hits):
+        deduped = {}
+        for x_pos, y_pos, z_pos in drill_hits:
+            key = (round(x_pos, 4), round(y_pos, 4))
+            if key not in deduped or z_pos < deduped[key][2]:
+                deduped[key] = (x_pos, y_pos, z_pos)
+        return list(deduped.values())
 
     @staticmethod
     def box_mesh(minx, miny, maxx, maxy, zmin, zmax):
@@ -243,18 +281,114 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
 
     @staticmethod
     def resolved_trace_width(span, tool_dia=None):
-        min_visible_width = max(span * CNCPreview3DCanvas.MIN_VISIBLE_WIDTH_RATIO, 0.05)
+        min_visible_width = max(span * 0.009, 0.18)
         if tool_dia not in [None, ""]:
             try:
                 width = float(str(tool_dia).replace(",", "."))
-                return max(min(width, span * 0.12), min_visible_width)
+                return max(min(width, span * 0.08), min_visible_width)
             except (TypeError, ValueError):
                 pass
-        return max(min(span * 0.006, 0.45), min_visible_width)
+        return max(min(span * 0.012, 1.2), min_visible_width)
 
-    def render_job(self, name, gcode_text, tool_dia=None):
+    @staticmethod
+    def line_positions(segments, z_pos):
+        points = []
+        for start, end in segments:
+            points.append([start[0], start[1], z_pos])
+            points.append([end[0], end[1], z_pos])
+        if not points:
+            return None
+        return np.asarray(points, dtype=np.float32)
+
+    @staticmethod
+    def surface_trace_mesh(segments, width, z_pos):
+        vertices = []
+        faces = []
+        half_width = width / 2.0
+        for start, end in segments:
+            x1, y1 = start[0], start[1]
+            x2, y2 = end[0], end[1]
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.hypot(dx, dy)
+            if length <= 1e-9:
+                continue
+
+            nx = -dy / length * half_width
+            ny = dx / length * half_width
+            idx = len(vertices)
+            vertices.extend([
+                [x1 + nx, y1 + ny, z_pos],
+                [x1 - nx, y1 - ny, z_pos],
+                [x2 - nx, y2 - ny, z_pos],
+                [x2 + nx, y2 + ny, z_pos],
+            ])
+            faces.extend([
+                [idx + 0, idx + 1, idx + 2],
+                [idx + 0, idx + 2, idx + 3],
+            ])
+
+        if not vertices:
+            return None, None
+        return np.asarray(vertices, dtype=np.float32), np.asarray(faces, dtype=np.uint32)
+
+    @staticmethod
+    def resolved_hole_radius(span, tool_dia=None):
+        min_visible_radius = max(span * 0.004, 0.12)
+        if tool_dia not in [None, ""]:
+            try:
+                radius = float(str(tool_dia).replace(",", ".")) / 2.0
+                return max(min(radius, span * 0.035), min_visible_radius)
+            except (TypeError, ValueError):
+                pass
+        return max(min(span * 0.007, 0.75), min_visible_radius)
+
+    @staticmethod
+    def hole_mesh(drill_hits, radius, board_bottom, board_top, steps=36):
+        vertices = []
+        faces = []
+        for x_pos, y_pos, _z_pos in drill_hits:
+            idx = len(vertices)
+            top_z = board_top + CNCPreview3DCanvas.HOLE_Z_OFFSET
+            bottom_z = board_bottom + 0.01
+            vertices.append([x_pos, y_pos, top_z])
+            for step in range(steps):
+                angle = 2.0 * math.pi * step / steps
+                x_val = x_pos + math.cos(angle) * radius
+                y_val = y_pos + math.sin(angle) * radius
+                vertices.append([x_val, y_val, top_z])
+                vertices.append([x_val, y_val, bottom_z])
+
+            for step in range(steps):
+                next_step = (step + 1) % steps
+                top_a = idx + 1 + step * 2
+                bottom_a = top_a + 1
+                top_b = idx + 1 + next_step * 2
+                bottom_b = top_b + 1
+                faces.append([idx, top_b, top_a])
+                faces.append([top_a, top_b, bottom_b])
+                faces.append([top_a, bottom_b, bottom_a])
+
+        if not vertices:
+            return None, None
+        return np.asarray(vertices, dtype=np.float32), np.asarray(faces, dtype=np.uint32)
+
+    @staticmethod
+    def is_drill_job(gcode_text, job_type=None):
+        if job_type and "excellon" in str(job_type).lower():
+            return True
+        lower_gcode = str(gcode_text).lower()
+        return any(token in lower_gcode for token in [
+            "total drills",
+            "drilling with tool",
+            "drills for this tool",
+            "type: excellon",
+        ])
+
+    def render_job(self, name, gcode_text, tool_dia=None, job_type=None):
         self.clear_preview()
-        parsed = self.parse_gcode(gcode_text)
+        detect_drills = self.is_drill_job(gcode_text, job_type=job_type)
+        parsed = self.parse_gcode(gcode_text, detect_drills=detect_drills)
         cut_segments = parsed["cut_segments"]
         travel_segments = parsed["travel_segments"]
         drill_hits = parsed["drill_hits"]
@@ -295,17 +429,56 @@ class CNCPreview3DCanvas(scene.SceneCanvas):
         self.visuals.append(board)
 
         trace_width = self.resolved_trace_width(span, tool_dia=tool_dia)
-        vertices, faces = self.engraved_channel_mesh(cut_segments, trace_width, board_top)
-        if vertices is not None:
-            channels = Mesh(
-                vertices=vertices,
-                faces=faces,
-                color=(0.66, 0.30, 0.060, 1.0),
-                shading="smooth",
+        trace_z = board_top + self.TRACE_Z_OFFSET
+        outline_vertices, outline_faces = self.surface_trace_mesh(cut_segments, trace_width * 1.28, trace_z)
+        if outline_vertices is not None:
+            trace_outline = Mesh(
+                vertices=outline_vertices,
+                faces=outline_faces,
+                color=(0.13, 0.060, 0.015, 1.0),
+                shading=None,
                 parent=self.view.scene
             )
-            self.set_visual_state(channels, "opaque", depth_test=False, cull_face=False)
-            self.visuals.append(channels)
+            self.set_visual_state(trace_outline, "opaque", depth_test=False, cull_face=False)
+            self.visuals.append(trace_outline)
+
+        trace_vertices, trace_faces = self.surface_trace_mesh(cut_segments, trace_width, trace_z + 0.004)
+        if trace_vertices is not None:
+            trace_body = Mesh(
+                vertices=trace_vertices,
+                faces=trace_faces,
+                color=(0.95, 0.48, 0.12, 1.0),
+                shading=None,
+                parent=self.view.scene
+            )
+            self.set_visual_state(trace_body, "opaque", depth_test=False, cull_face=False)
+            self.visuals.append(trace_body)
+
+        line_pos = self.line_positions(cut_segments, trace_z + 0.008)
+        if line_pos is not None:
+            trace_highlight = Line(
+                pos=line_pos,
+                color=(1.0, 0.78, 0.36, 1.0),
+                width=1.4,
+                connect="segments",
+                method="gl",
+                parent=self.view.scene
+            )
+            self.set_visual_state(trace_highlight, "opaque", depth_test=False)
+            self.visuals.append(trace_highlight)
+
+        hole_radius = self.resolved_hole_radius(span, tool_dia=tool_dia)
+        hole_vertices, hole_faces = self.hole_mesh(drill_hits, hole_radius, board_bottom, board_top)
+        if hole_vertices is not None:
+            holes = Mesh(
+                vertices=hole_vertices,
+                faces=hole_faces,
+                color=(0.008, 0.010, 0.008, 1.0),
+                shading=None,
+                parent=self.view.scene
+            )
+            self.set_visual_state(holes, "opaque", depth_test=False, cull_face=False)
+            self.visuals.append(holes)
 
         center = ((minx + maxx) / 2.0, (miny + maxy) / 2.0, board_bottom / 2.0)
         self.scene_center = center
