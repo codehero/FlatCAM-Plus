@@ -196,13 +196,13 @@ class App(QtCore.QObject):
     app_url = "http://flatcam.org"
 
     # Manual URL
-    manual_url = "https://github.com/thebestgoodguy/flatcam"
-    video_url = "https://github.com/thebestgoodguy/flatcam"
+    manual_url = "https://github.com/thebestgoodguy/FlatCAM-Plus"
+    video_url = "https://github.com/thebestgoodguy/FlatCAM-Plus"
     gerber_spec_url = "https://www.ucamco.com/files/downloads/file/81/The_Gerber_File_Format_specification." \
                       "pdf?7ac957791daba2cdf4c2c913f67a43da"
     excellon_spec_url = "https://www.ucamco.com/files/downloads/file/305/the_xnc_file_format_specification.pdf"
-    bug_report_url = "https://github.com/thebestgoodguy/flatcam"
-    donate_url = "https://github.com/thebestgoodguy/flatcam"
+    bug_report_url = "https://github.com/thebestgoodguy/FlatCAM-Plus"
+    donate_url = "https://github.com/thebestgoodguy/FlatCAM-Plus"
     # this variable will hold the project status
     # if True it will mean that the project was modified and not saved
     should_we_save = False
@@ -2988,8 +2988,8 @@ class App(QtCore.QObject):
                     "{title}<BR>"
                     "<BR>"
                     "<BR>"
-                    "<a href = \"https://github.com/thebestgoodguy/flatcam\"><B>{devel}</B></a><BR>"
-                    "<a href = \"https://github.com/thebestgoodguy/flatcam/issues\">"
+                    "<a href = \"https://github.com/thebestgoodguy/FlatCAM-Plus\"><B>{devel}</B></a><BR>"
+                    "<a href = \"https://github.com/thebestgoodguy/FlatCAM-Plus/issues\">"
                     "<B>{issue}</B></a><BR>".format(
                         title=_("PCB Manufacturing files Viewer/Editor with Plugins"),
                         devel=_("GitHub Repository"),

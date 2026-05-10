@@ -214,8 +214,8 @@ The AI assistant feature is organized under `appPlugins/ai_assistant/`:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/thebestgoodguy/flatcam.git
-   cd flatcam
+   git clone https://github.com/thebestgoodguy/FlatCAM-Plus.git
+   cd FlatCAM-Plus
    ```
 
 2. **Create the environment:**

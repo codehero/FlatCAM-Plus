@@ -15,8 +15,8 @@ Cross-compiling GUI Python applications is fragile because PyQt, OpenGL/VisPy, G
 Start from a clean clone:
 
 ```bash
-git clone https://github.com/thebestgoodguy/flatcam.git
-cd flatcam
+git clone https://github.com/thebestgoodguy/FlatCAM-Plus.git
+cd FlatCAM-Plus
 ```
 
 Create the runtime environment:
