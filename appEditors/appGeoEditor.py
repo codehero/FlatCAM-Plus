@@ -224,11 +224,6 @@ class AppGeoEditor(QtCore.QObject):
         self.app.ui.geo_cutpath_menuitem.triggered.connect(self.cutpath)
         self.app.ui.geo_copy_menuitem.triggered.connect(lambda: self.select_tool('copy'))
 
-        self.app.ui.geo_union_btn.triggered.connect(self.union)
-        self.app.ui.geo_intersection_btn.triggered.connect(self.intersection)
-        self.app.ui.geo_subtract_btn.triggered.connect(self.subtract)
-        self.app.ui.geo_alt_subtract_btn.triggered.connect(self.subtract_2)
-
         self.app.ui.geo_cutpath_btn.triggered.connect(self.cutpath)
         self.app.ui.geo_delete_btn.triggered.connect(self.on_delete_btn)
 
@@ -276,8 +271,34 @@ class AppGeoEditor(QtCore.QObject):
         })
 
         for tool in self.tools:
-            self.tools[tool]["button"].triggered.connect(self.make_callback(tool))  # Events
-            self.tools[tool]["button"].setCheckable(True)  # Checkable
+            try:
+                self.tools[tool]["button"].triggered.connect(self.make_callback(tool))  # Events
+                self.tools[tool]["button"].setCheckable(True)  # Checkable
+            except RuntimeError:
+                continue
+
+        self.connect_geo_boolean_signals()
+
+    def connect_geo_boolean_signals(self):
+        boolean_signals = (
+            (self.app.ui.geo_union_btn, self.union),
+            (self.app.ui.geo_intersection_btn, self.intersection),
+            (self.app.ui.geo_subtract_btn, self.subtract),
+            (self.app.ui.geo_alt_subtract_btn, self.subtract_2),
+        )
+
+        for action, slot in boolean_signals:
+            try:
+                action.triggered.disconnect(slot)
+            except TypeError:
+                pass
+            except RuntimeError:
+                continue
+
+            try:
+                action.triggered.connect(slot)
+            except RuntimeError:
+                continue
 
     def pool_recreated(self, pool):
         self.shapes.pool = pool
@@ -681,7 +702,7 @@ class AppGeoEditor(QtCore.QObject):
         self.app.ui.popmenu_move2origin.setVisible(False)
 
         self.app.ui.popmenu_disable.setVisible(False)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(False)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(False)
         self.app.ui.popmenu_properties.setVisible(False)
         self.app.ui.g_editor_cmenu.menuAction().setVisible(True)
 
@@ -754,7 +775,7 @@ class AppGeoEditor(QtCore.QObject):
         self.app.ui.popmenu_move2origin.setVisible(True)
 
         self.app.ui.popmenu_disable.setVisible(True)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(True)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(True)
         self.app.ui.popmenu_properties.setVisible(True)
         self.app.ui.grb_editor_cmenu.menuAction().setVisible(False)
         self.app.ui.e_editor_cmenu.menuAction().setVisible(False)
@@ -1099,20 +1120,35 @@ class AppGeoEditor(QtCore.QObject):
 
         # This is to make the group behave as radio group
         if tool in self.tools:
-            if self.tools[tool]["button"].isChecked():
+            if self._action_is_checked(self.tools[tool]["button"]):
                 self.app.log.debug("%s is checked." % tool)
                 for t in self.tools:
                     if t != tool:
-                        self.tools[t]["button"].setChecked(False)
+                        self._action_set_checked(self.tools[t]["button"], False)
 
                 self.active_tool = self.tools[tool]["constructor"](self)
             else:
                 self.app.log.debug("%s is NOT checked." % tool)
                 for t in self.tools:
-                    self.tools[t]["button"].setChecked(False)
+                    self._action_set_checked(self.tools[t]["button"], False)
 
                 self.select_tool('select')
                 self.active_tool = FCSelect(self)
+
+    @staticmethod
+    def _action_is_checked(action):
+        try:
+            return action.isChecked()
+        except RuntimeError:
+            return False
+
+    @staticmethod
+    def _action_set_checked(action, checked):
+        try:
+            action.setChecked(checked)
+            return True
+        except RuntimeError:
+            return False
 
     def draw_tool_path(self):
         self.select_tool('path')
@@ -1739,7 +1775,12 @@ class AppGeoEditor(QtCore.QObject):
         :param pluginName: Name of the tool.
         :return: None
         """
-        self.tools[pluginName]["button"].setChecked(True)
+        if pluginName not in self.tools:
+            return
+
+        if not self._action_set_checked(self.tools[pluginName]["button"], True):
+            return
+
         self.on_tool_select(pluginName)
 
     def set_selected(self, shape):

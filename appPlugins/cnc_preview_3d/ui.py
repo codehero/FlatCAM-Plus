@@ -204,8 +204,8 @@ class CNCPreview3DUI:
         self.layout.addWidget(self.container)
 
         self.main_lay = QtWidgets.QVBoxLayout(self.container)
-        self.main_lay.setContentsMargins(8, 8, 8, 8)
-        self.main_lay.setSpacing(8)
+        self.main_lay.setContentsMargins(0, 0, 0, 0)
+        self.main_lay.setSpacing(0)
 
         self.build_controls()
         self.build_layout()
@@ -240,8 +240,8 @@ class CNCPreview3DUI:
             }}
             QFrame#preview_canvas_frame {{
                 background: #f3f5f1;
-                border: 1px solid {mid};
-                border-radius: 6px;
+                border: 0px;
+                border-radius: 0px;
             }}
             QFrame#preview_view_overlay {{
                 background: transparent;
@@ -306,11 +306,22 @@ class CNCPreview3DUI:
     def build_layout(self):
         splitter = QtWidgets.QSplitter()
         splitter.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet("""
+            QSplitter {
+                background: transparent;
+                border: 0px;
+            }
+            QSplitter::handle {
+                background: transparent;
+                border: 0px;
+            }
+        """)
         self.main_lay.addWidget(splitter, 1)
 
         side = QtWidgets.QWidget()
         side_lay = QtWidgets.QVBoxLayout(side)
-        side_lay.setContentsMargins(0, 0, 0, 0)
+        side_lay.setContentsMargins(8, 8, 8, 8)
         side_lay.setSpacing(8)
         side_lay.addWidget(self.section_plugins["job_selector"].build_panel(self))
         side_lay.addWidget(self.section_plugins["render_info"].build_panel(self))
@@ -319,10 +330,13 @@ class CNCPreview3DUI:
 
         self.canvas_frame = QtWidgets.QFrame()
         self.canvas_frame.setObjectName("preview_canvas_frame")
+        self.canvas_frame.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.canvas_frame.setLineWidth(0)
         canvas_lay = QtWidgets.QGridLayout(self.canvas_frame)
         canvas_lay.setContentsMargins(0, 0, 0, 0)
         canvas_lay.setSpacing(0)
         self.canvas = CNCPreview3DCanvas(self.app)
+        self.canvas.native.setStyleSheet("background: #f3f5f1; border: 0px;")
         self.orbit_btn.set_canvas(self.canvas)
         canvas_lay.addWidget(self.canvas.native, 0, 0)
         self.view_overlay = self.build_view_overlay()

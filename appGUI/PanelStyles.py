@@ -94,16 +94,18 @@ def _resource_icon_url(app=None, filename=""):
 
 def _modern_tab_close_button_stylesheet(app=None):
     c = modern_panel_colors(app)
-    close_icon = _resource_icon_url(app, "close_edit_file32.png")
+    close_icon = _resource_icon_url(app, "cancel_edit32.png")
     icon_rule = f"image: url({close_icon});" if close_icon else ""
     return f"""
         QTabBar::close-button {{
             {icon_rule}
-            width: 18px;
-            height: 18px;
-            margin-left: 4px;
-            margin-right: 5px;
-            border-radius: 4px;
+            subcontrol-position: right center;
+            width: 24px;
+            height: 24px;
+            margin-left: 6px;
+            margin-right: 7px;
+            border: 1px solid transparent;
+            border-radius: 7px;
         }}
         QTabBar::close-button:hover {{
             background: {c["hover"]};
@@ -182,7 +184,7 @@ def modern_panel_stylesheet(app=None):
             border-bottom: 0px;
             border-top-left-radius: 6px;
             border-top-right-radius: 6px;
-            padding: 7px 20px 7px 12px;
+            padding: 7px 34px 7px 12px;
             margin-right: 4px;
             min-width: 82px;
             font-weight: 600;
@@ -475,7 +477,7 @@ def modern_preferences_tabbar_stylesheet(app=None):
             border-bottom: 0px;
             border-top-left-radius: 6px;
             border-top-right-radius: 6px;
-            padding: 7px 20px 7px 12px;
+            padding: 7px 34px 7px 12px;
             margin-right: 4px;
             min-width: 90px;
             font-weight: 600;
@@ -602,7 +604,7 @@ def modern_workspace_tabbar_stylesheet(app=None, min_width=90, expanding=True):
             border-right: {tab_border_right};
             border-bottom: 0px;
             {tab_radius_styles}
-            padding: 8px 20px 8px 12px;
+            padding: 8px 34px 8px 12px;
             margin: {tab_margin};
             min-width: {min_width}px;
             font-weight: 600;

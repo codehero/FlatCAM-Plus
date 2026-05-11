@@ -3798,7 +3798,7 @@ class AppExcEditor(QtCore.QObject):
             self.app.ui.grid_snap_btn.trigger()
 
         self.app.ui.popmenu_disable.setVisible(False)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(False)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(False)
         self.app.ui.popmenu_properties.setVisible(False)
         self.app.ui.e_editor_cmenu.menuAction().setVisible(True)
         self.app.ui.g_editor_cmenu.menuAction().setVisible(False)
@@ -3847,7 +3847,7 @@ class AppExcEditor(QtCore.QObject):
         self.app.ui.editor_start_btn.setVisible(True)
 
         self.app.ui.popmenu_disable.setVisible(True)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(True)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(True)
         self.app.ui.popmenu_properties.setVisible(True)
         self.app.ui.g_editor_cmenu.menuAction().setVisible(False)
         self.app.ui.e_editor_cmenu.menuAction().setVisible(False)

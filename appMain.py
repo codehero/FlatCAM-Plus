@@ -17,10 +17,6 @@ import sys
 
 from appVersion import APP_BETA, APP_VERSION, APP_VERSION_DATE
 
-import urllib.request
-import urllib.parse
-import urllib.error
-
 from datetime import datetime as dt
 from copy import deepcopy, copy
 import numpy as np
@@ -73,6 +69,7 @@ from appGUI.themes import dark_style_sheet, light_style_sheet
 from appCommon.Common import color_variant
 from appCommon.Common import ExclusionAreas
 from appCommon.Common import AppLogging
+from appCommon.AutoUpdater import AutoUpdater
 from appCommon.RegisterFileKeywords import RegisterFK, Extensions, KeyWords
 
 from appHandlers.appIO import appIO
@@ -980,6 +977,7 @@ class App(QtCore.QObject):
 
         self.worker_task.connect(self.workers.add_task)
         self.log.debug("Finished creating Workers crew.")
+        self.auto_updater = AutoUpdater(self)
 
         # ###########################################################################################################
         # ############################################# Activity Monitor ############################################
@@ -1057,14 +1055,7 @@ class App(QtCore.QObject):
         # ######################################### Check for updates ###############################################
         # ###########################################################################################################
 
-        # Separate thread (Not worker)
-        # Check for updates on startup but only if the user consent and the app is not in Beta version
-        if (self.beta is False or self.beta is None) and self.options["global_version_check"] is True:
-            self.log.info("Checking for updates in background (this is version %s)." % str(self.version))
-
-            # self.thr2 = QtCore.QThread()
-            self.worker_task.emit({'fcn': self.version_check, 'params': []})
-            # self.thr2.start(QtCore.QThread.Priority.LowPriority)
+        # Startup update checks are scheduled after the GUI is visible.
 
         # ###########################################################################################################
         # ################################## ADDING FlatCAM EDITORS section #########################################
@@ -1304,15 +1295,7 @@ class App(QtCore.QObject):
                 # finish the splash
                 self.splash.finish(self.ui)
 
-            mgui_settings = QSettings("Open Source", "FlatCAM_Plus")
-            if mgui_settings.contains("maximized_gui"):
-                maximized_ui = mgui_settings.value('maximized_gui', type=bool)
-                if maximized_ui is True:
-                    self.ui.showMaximized()
-                else:
-                    self.ui.show()
-            else:
-                self.ui.show()
+            self.ui.showMaximized()
 
             if self.options["global_systray_icon"]:
                 self.trayIcon.show()
@@ -1322,6 +1305,8 @@ class App(QtCore.QObject):
             except Exception as t_err:
                 self.log.error("App.__init__() Running headless and trying to show the systray got: %s" % str(t_err))
             self.log.warning("*******************  RUNNING HEADLESS  *******************")
+
+        self.schedule_startup_update_check()
 
         # ###########################################################################################################
         # ######################################## START-UP ARGUMENTS ###############################################
@@ -1391,6 +1376,17 @@ class App(QtCore.QObject):
     # #################################################################################################################
     # #################################################################################################################
     # #################################################################################################################
+
+    def schedule_startup_update_check(self):
+        if self.cmd_line_headless == 1:
+            return
+        if self.options.get("global_version_check", True) is not True:
+            return
+        if getattr(self, "auto_updater", None) is None:
+            return
+
+        self.log.info("Checking for updates in background (this is version %s)." % str(self.version))
+        QtCore.QTimer.singleShot(1800, lambda: self.auto_updater.check_for_updates(silent=True))
 
     def apply_startup_project_request(self):
         request = getattr(self, "startup_project_request", None)
@@ -1700,7 +1696,7 @@ class App(QtCore.QObject):
                                  separator=True)
 
         self.drilling_tool = ToolDrilling(self)
-        self.drilling_tool.install(icon=QtGui.QIcon(self.resource_location + '/extract_drill32.png'),
+        self.drilling_tool.install(icon=QtGui.QIcon(self.resource_location + '/drilling_tool32.png'),
                                    pos=self.ui.menu_plugins, separator=True)
         self.milling_tool = ToolMilling(self)
         self.milling_tool.install(icon=QtGui.QIcon(self.resource_location + '/milling_tool32.png'),
@@ -1997,11 +1993,9 @@ class App(QtCore.QObject):
         self.ui.popmenu_disable.triggered.connect(lambda: self.toggle_plots(self.collection.get_selected()))
         self.ui.popmenu_panel_toggle.triggered.connect(self.ui.on_toggle_notebook)
 
-        # New
-        self.ui.popmenu_new_geo.triggered.connect(lambda: self.app_obj.new_geometry_object())
-        self.ui.popmenu_new_grb.triggered.connect(lambda: self.app_obj.new_gerber_object())
-        self.ui.popmenu_new_exc.triggered.connect(lambda: self.app_obj.new_excellon_object())
-        self.ui.popmenu_new_prj.triggered.connect(lambda: self.f_handlers.on_file_new_project())
+        # Import
+        self.ui.popmenu_import_gerber.triggered.connect(lambda: self.f_handlers.on_file_open_gerber())
+        self.ui.popmenu_import_excellon.triggered.connect(lambda: self.f_handlers.on_file_open_excellon())
 
         # View
         self.ui.zoomfit.triggered.connect(self.on_zoom_fit)
@@ -6957,61 +6951,8 @@ class App(QtCore.QObject):
 
         :return: None
         """
-
         self.log.debug("version_check()")
-
-        if self.ui.general_pref_form.general_app_group.send_stats_cb.get_value() is True:
-            full_url = "%s?s=%s&v=%s&os=%s&%s" % (
-                App.version_url,
-                str(self.options['global_serial']),
-                str(self.version),
-                str(self.os),
-                urllib.parse.urlencode(self.options["global_stats"])
-            )
-            # full_url = App.version_url + "?s=" + str(self.options['global_serial']) + \
-            #            "&v=" + str(self.version) + "&os=" + str(self.os) + "&" + \
-            #            urllib.parse.urlencode(self.options["global_stats"])
-        else:
-            # no_stats dict; just so it won't break things on website
-            no_ststs_dict = {"global_ststs": {}}
-            full_url = App.version_url + "?s=" + str(self.options['global_serial']) + "&v=" + str(self.version)
-            full_url += "&os=" + str(self.os) + "&" + urllib.parse.urlencode(no_ststs_dict["global_ststs"])
-
-        self.log.debug("Checking for updates @ %s" % full_url)
-        # ## Get the data
-        try:
-            f = urllib.request.urlopen(full_url)
-        except Exception:
-            # self.log.warning("Failed checking for latest version. Could not connect.")
-            self.log.warning("Failed checking for latest version. Could not connect.")
-            self.inform.emit('[WARNING_NOTCL] %s' % _("Failed checking for latest version. Could not connect."))
-            return
-
-        try:
-            data = json.load(f)
-        except Exception as e:
-            self.log.error("Could not parse information about latest version.")
-            self.inform.emit('[ERROR_NOTCL] %s' % _("Could not parse information about latest version."))
-            self.log.error("json.load(): %s" % str(e))
-            f.close()
-            return
-
-        f.close()
-
-        # ## Latest version?
-        if str(self.version) >= str(data["version"]):
-            self.log.debug("THe application is up to date!")
-            self.inform.emit('[success] %s' % _("The application is up to date!"))
-            return
-
-        self.log.debug("Newer version available.")
-        title = _("Newer Version Available")
-        msg = '%s<br><br>><b>%s</b><br>%s' % (
-            _("There is a newer version available for download:"),
-            str(data["name"]),
-            str(data["message"])
-        )
-        # self.message.emit(title, msg, "info")
+        self.auto_updater.check_for_updates(silent=False)
 
     def on_plotcanvas_setup(self):
         """

@@ -259,9 +259,9 @@ class GeneralAppPrefGroupUI(OptionsGroupUI):
         grid4.addWidget(self.project_startup_cb, 6, 0, 1, 2)
 
         # Version Check CB
-        self.version_check_cb = FCCheckBox(label='%s' % _('Version Check'))
+        self.version_check_cb = FCCheckBox(label='%s' % _('Check for Updates'))
         self.version_check_cb.setToolTip(
-            _("Check this box if you want to check\n"
+            _("Check this box if you want FlatCAM Plus to check\n"
               "for a new version automatically at startup.")
         )
 
@@ -420,7 +420,6 @@ class GeneralAppPrefGroupUI(OptionsGroupUI):
         self.splash_cb.hide()
         self.systray_cb.hide()
         self.shell_startup_cb.hide()
-        self.version_check_cb.hide()
         self.send_stats_cb.hide()
         self.save_type_cb.hide()
         self.compress_label.hide()

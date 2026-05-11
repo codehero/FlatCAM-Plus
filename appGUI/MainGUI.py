@@ -397,20 +397,22 @@ class MainGUI(QtWidgets.QMainWindow):
         if self.app.options['global_theme'] in ['default', 'light']:
             return """
                 QToolButton#cnc_connection_status_btn {
-                    background: #ffffff;
-                    color: #991b1b;
-                    border: 1px solid #f1c3c3;
-                    border-radius: 8px;
-                    padding: 6px 10px;
+                    background: #f8fafc;
+                    color: #334155;
+                    border: 1px solid #d7dee8;
+                    border-radius: 10px;
+                    padding: 7px 12px;
                     font-weight: 600;
+                    min-height: 28px;
                 }
                 QToolButton#cnc_connection_status_btn:hover {
-                    background: #fff5f5;
-                    border-color: #efaaaa;
+                    background: #eef4ff;
+                    color: #1e3a5f;
+                    border-color: #b8c9e3;
                 }
                 QToolButton#cnc_connection_status_btn[connected="true"] {
-                    color: #166534;
                     background: #eefbf2;
+                    color: #166534;
                     border-color: #b7e3c2;
                 }
                 QToolButton#cnc_connection_status_btn::menu-indicator {
@@ -421,20 +423,22 @@ class MainGUI(QtWidgets.QMainWindow):
 
         return """
             QToolButton#cnc_connection_status_btn {
-                background: #2a1f1f;
-                color: #ffb4b4;
-                border: 1px solid #6b3535;
-                border-radius: 8px;
-                padding: 6px 10px;
+                background: #20242b;
+                color: #d6deeb;
+                border: 1px solid #3c4654;
+                border-radius: 10px;
+                padding: 7px 12px;
                 font-weight: 600;
+                min-height: 28px;
             }
             QToolButton#cnc_connection_status_btn:hover {
-                background: #332424;
-                border-color: #8a4646;
+                background: #273142;
+                color: #ffffff;
+                border-color: #53627a;
             }
             QToolButton#cnc_connection_status_btn[connected="true"] {
-                color: #9ff0b5;
                 background: #1f2d23;
+                color: #9ff0b5;
                 border-color: #356845;
             }
             QToolButton#cnc_connection_status_btn::menu-indicator {
@@ -1268,6 +1272,191 @@ class MainGUI(QtWidgets.QMainWindow):
         toolbar_action = toolbar.addWidget(button)
         return button, toolbar_action, menu
 
+    def plugins_megamenu_style_sheet(self):
+        if self.app.options["global_theme"] in ['default', 'light']:
+            menu_bg = "#ffffff"
+            panel_bg = "#ffffff"
+            border = "#d8dee8"
+            title = "#111827"
+            text = "#1f2937"
+            hint = "#6b7280"
+            hover = "#eef5ff"
+            hover_border = "#b9d7ff"
+            disabled = "#9ca3af"
+        else:
+            menu_bg = "#262626"
+            panel_bg = "#262626"
+            border = "#444444"
+            title = "#f4f4f5"
+            text = "#f4f4f5"
+            hint = "#b6b6b6"
+            hover = "#323232"
+            hover_border = "#5a5a5a"
+            disabled = "#777777"
+
+        return f"""
+            QMenu#plugins_megamenu {{
+                background: {menu_bg};
+                border: 1px solid {border};
+                border-radius: 10px;
+                padding: 6px;
+            }}
+            QWidget#plugins_megamenu_panel,
+            QWidget#plugins_megamenu_grid {{
+                background: {panel_bg};
+            }}
+            QLabel#plugins_megamenu_title {{
+                color: {title};
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QLabel#plugins_megamenu_hint {{
+                color: {hint};
+                font-size: 11px;
+            }}
+            QScrollArea#plugins_megamenu_scroll {{
+                background: {panel_bg};
+                border: 0px;
+            }}
+            QToolButton#plugins_megamenu_item {{
+                color: {text};
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                padding: 7px 10px;
+                text-align: left;
+                min-width: 170px;
+                min-height: 32px;
+            }}
+            QToolButton#plugins_megamenu_item:hover {{
+                background: {hover};
+                border-color: {hover_border};
+            }}
+            QToolButton#plugins_megamenu_item:disabled {{
+                color: {disabled};
+            }}
+        """
+
+    @staticmethod
+    def clean_menu_action_text(action):
+        return action.text().replace('&', '').split('\t')[0].strip()
+
+    def collect_plugin_menu_actions(self, menu=None):
+        menu = menu if menu is not None else getattr(self, "menu_plugins", None)
+        if menu is None:
+            return []
+
+        actions = []
+        for action in menu.actions():
+            if action.isSeparator() or not action.isVisible():
+                continue
+
+            child_menu = action.menu()
+            if child_menu is not None:
+                actions.extend(self.collect_plugin_menu_actions(child_menu))
+            else:
+                actions.append(action)
+
+        return actions
+
+    def trigger_plugins_megamenu_action(self, action):
+        if hasattr(self, "plugins_megamenu"):
+            self.plugins_megamenu.close()
+        action.trigger()
+
+    def rebuild_plugins_megamenu(self):
+        if not hasattr(self, "plugins_megamenu"):
+            return
+
+        self.plugins_megamenu.clear()
+        self.plugins_megamenu.setStyleSheet(self.plugins_megamenu_style_sheet())
+
+        panel = QtWidgets.QWidget(self.plugins_megamenu)
+        panel.setObjectName("plugins_megamenu_panel")
+        panel_layout = QtWidgets.QVBoxLayout(panel)
+        panel_layout.setContentsMargins(10, 8, 10, 10)
+        panel_layout.setSpacing(8)
+
+        title = QtWidgets.QLabel(_("Plugins"), panel)
+        title.setObjectName("plugins_megamenu_title")
+        panel_layout.addWidget(title)
+
+        plugin_actions = self.collect_plugin_menu_actions()
+        if not plugin_actions:
+            empty_label = QtWidgets.QLabel(_("Plugins"), panel)
+            empty_label.setObjectName("plugins_megamenu_hint")
+            panel_layout.addWidget(empty_label)
+        else:
+            scroll = QtWidgets.QScrollArea(panel)
+            scroll.setObjectName("plugins_megamenu_scroll")
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            scroll.setMaximumHeight(480)
+
+            grid_widget = QtWidgets.QWidget(scroll)
+            grid_widget.setObjectName("plugins_megamenu_grid")
+            grid = QtWidgets.QGridLayout(grid_widget)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(8)
+            grid.setVerticalSpacing(6)
+
+            columns = 3 if len(plugin_actions) > 14 else 2 if len(plugin_actions) > 7 else 1
+            rows = (len(plugin_actions) + columns - 1) // columns
+            for index, source_action in enumerate(plugin_actions):
+                row = index % rows
+                col = index // rows
+                button = QtWidgets.QToolButton(grid_widget)
+                button.setObjectName("plugins_megamenu_item")
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+                button.setIcon(source_action.icon())
+                button.setIconSize(QtCore.QSize(18, 18))
+                button.setText(self.clean_menu_action_text(source_action))
+                button.setToolTip(source_action.toolTip() or button.text())
+                button.setEnabled(source_action.isEnabled())
+                button.setAutoRaise(False)
+                button.clicked.connect(
+                    lambda checked=False, action=source_action: self.trigger_plugins_megamenu_action(action)
+                )
+                grid.addWidget(button, row, col)
+
+            scroll.setWidget(grid_widget)
+            scroll.setMinimumWidth(columns * 196)
+            panel_layout.addWidget(scroll)
+
+        widget_action = QtWidgets.QWidgetAction(self.plugins_megamenu)
+        widget_action.setDefaultWidget(panel)
+        self.plugins_megamenu.addAction(widget_action)
+
+    def add_plugins_megamenu_toolbar_control(self):
+        current_action = getattr(self, "plugins_megamenu_action", None)
+        if current_action is not None and current_action in self.toolbarplugins.actions():
+            return
+
+        self.plugins_megamenu = QtWidgets.QMenu(self.toolbarplugins)
+        self.plugins_megamenu.setObjectName("plugins_megamenu")
+        self.configure_popup_menu(self.plugins_megamenu)
+        self.plugins_megamenu.setStyleSheet(self.plugins_megamenu_style_sheet())
+        self.plugins_megamenu.aboutToShow.connect(self.rebuild_plugins_megamenu)
+
+        self.plugins_megamenu_button = QtWidgets.QToolButton(self.toolbarplugins)
+        self.plugins_megamenu_button.setIcon(QtGui.QIcon(self.app.resource_location + '/megamenu32.png'))
+        self.plugins_megamenu_button.setText(_("Plugins"))
+        self.plugins_megamenu_button.setToolTip(_("Plugins"))
+        self.plugins_megamenu_button.setMenu(self.plugins_megamenu)
+        self.plugins_megamenu_button.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.plugins_megamenu_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.plugins_megamenu_button.setAutoRaise(True)
+        self.plugins_megamenu_button.setIconSize(self.toolbarplugins.iconSize())
+        self.plugins_megamenu_button.setProperty("popupButton", True)
+        self.plugins_megamenu_button.setMinimumWidth(self.toolbarplugins.iconSize().width() + 18)
+        self.plugins_megamenu_button.style().unpolish(self.plugins_megamenu_button)
+        self.plugins_megamenu_button.style().polish(self.plugins_megamenu_button)
+
+        self.plugins_megamenu_action = self.toolbarplugins.addWidget(self.plugins_megamenu_button)
+        self.plugins_megamenu_separator_action = self.toolbarplugins.addSeparator()
+
     def add_options_toolbar_controls(self):
         current_action = getattr(self, "toolbar_rotate_dropdown_action", None)
         if current_action is not None and current_action in self.toolbarplugins.actions():
@@ -1340,11 +1529,11 @@ class MainGUI(QtWidgets.QMainWindow):
         if current_action is not None and current_action in self.toolbarplugins.actions():
             return
 
-        self.ai_chat_btn = self.toolbar_action('/experiment32.png', _("Chat Panel"), _("Open AI chat panel."))
+        self.ai_chat_btn = self.toolbar_action('/aichat32.png', _("Chat Panel"), _("Open AI chat panel."))
         self.ai_settings_btn = self.toolbar_action('/settings18.png', _("AI Settings"), _("Open AI settings."))
         self.ai_dropdown, self.ai_dropdown_action, self.ai_dropdown_menu = self.add_toolbar_dropdown(
             self.toolbarplugins,
-            '/experiment32.png',
+            '/ai32.png',
             _("AI Assistant"),
             [self.ai_chat_btn, self.ai_settings_btn]
         )
@@ -2422,18 +2611,19 @@ class MainGUI(QtWidgets.QMainWindow):
         # https://www.w3.org/TR/SVG11/types.html#ColorKeywords
         self.editor_exit_btn.setStyleSheet("""
             QToolButton {
-                color: white;
-                background-color: #2563eb;
-                border: 1px solid #3b82f6;
-                border-radius: 5px;
-                padding: 5px 7px;
+                color: #b91c1c;
+                background-color: #fff7f7;
+                border: 1px solid #f1b8b8;
+                border-radius: 8px;
+                padding: 6px 9px;
             }
             QToolButton:hover {
-                background-color: #1d4ed8;
-                border-color: #60a5fa;
+                background-color: #feecec;
+                border-color: #ef8f8f;
             }
             QToolButton:pressed {
-                background-color: #1e40af;
+                background-color: #f9d4d4;
+                border-color: #dc6060;
             }
         """)
         self.editor_exit_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/power16.png'))
@@ -2504,29 +2694,20 @@ class MainGUI(QtWidgets.QMainWindow):
         # ########################################################################
         # ########################## Tools Toolbar# ##############################
         # ########################################################################
+        self.add_plugins_megamenu_toolbar_control()
+
         self.drill_btn = self.toolbar_action('/drill32.png', _("Drilling"))
         self.mill_btn = self.toolbar_action('/milling_tool32.png', _("Milling"))
-        self.manufacturing_dropdown, self.manufacturing_dropdown_action, self.manufacturing_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/drill32.png', _("Drilling and Milling"), [self.drill_btn, self.mill_btn])
 
         self.isolation_btn = self.toolbar_action('/iso32.png', _("Isolation"))
         self.follow_btn = self.toolbar_action('/follow32.png', _("Follow"))
         self.ncc_btn = self.toolbar_action('/ncc32.png', _("NCC"))
         self.paint_btn = self.toolbar_action('/paint32.png', _("Paint"))
-        self.copper_tools_dropdown, self.copper_tools_dropdown_action, self.copper_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/iso32.png', _("Copper Tools"),
-                [self.isolation_btn, self.follow_btn, self.ncc_btn, self.paint_btn])
 
         self.cutout_btn = self.toolbar_action('/cut32.png', _("Cutout"))
         self.panelize_btn = self.toolbar_action('/panelize32.png', _("Panel"))
         self.film_btn = self.toolbar_action('/film32.png', _("Film"))
         self.dblsided_btn = self.toolbar_action('/doubleside32.png', _("2-Sided"))
-        self.board_tools_dropdown, self.board_tools_dropdown_action, self.board_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/panelize32.png', _("Board Tools"),
-                [self.cutout_btn, self.panelize_btn, self.film_btn, self.dblsided_btn])
 
         self.align_btn = self.toolbar_action('/align32.png', _("Align"))
         self.align_dropdown, self.align_dropdown_action, self.align_menu = \
@@ -2539,10 +2720,6 @@ class MainGUI(QtWidgets.QMainWindow):
         self.copperfill_btn = self.toolbar_action('/copperfill32.png', _("Thieving"))
         self.punch_btn = self.toolbar_action('/punch32.png', _("Punch"))
         self.calculators_btn = self.toolbar_action('/calculator32.png', _("Calculators"))
-        self.utility_tools_dropdown, self.utility_tools_dropdown_action, self.utility_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/calculator32.png', _("Utilities"),
-                [self.copperfill_btn, self.punch_btn, self.calculators_btn])
 
         # self.solder_btn = self.toolbarplugins.addAction(
         #     QtGui.QIcon(self.app.resource_location + '/solderpastebis32.png'), _("SolderPaste"))
@@ -2624,25 +2801,30 @@ class MainGUI(QtWidgets.QMainWindow):
             QtGui.QIcon(self.app.resource_location + '/eraser26.png'), _('Eraser'))
 
         self.geo_edit_toolbar.addSeparator()
-        self.geo_union_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/union32.png'), _('Union'))
-        self.geo_explode_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/explode32.png'), _('Explode'))
-
-        self.geo_intersection_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/intersection32.png'), _('Intersection'))
-        self.geo_subtract_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/subtract32.png'), _('Subtraction'))
+        self.geo_union_btn = self.toolbar_action('/union32.png', _('Union'))
+        self.geo_intersection_btn = self.toolbar_action('/intersection32.png', _('Intersection'))
+        self.geo_subtract_btn = self.toolbar_action('/subtract32.png', _('Subtraction'))
         self.geo_subtract_btn.setToolTip(
             _('Polygon Subtraction. First selected is the target.\n'
               'The rest of the selected is subtracted from the first.\n'
               'First selected is replaced by the result.'))
-        self.geo_alt_subtract_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/subtract_alt32.png'), _('Alt Subtraction'))
+        self.geo_alt_subtract_btn = self.toolbar_action('/subtract_alt32.png', _('Alt Subtraction'))
         self.geo_alt_subtract_btn.setToolTip(
             _('Alt Subtraction. First selected is the target.\n'
               'The rest of the selected is subtracted from the first.\n'
               'First selected is kept besides the result.'))
+        self.geo_boolean_dropdown, self.geo_boolean_dropdown_action, self.geo_boolean_menu = \
+            self.add_toolbar_dropdown(
+                self.geo_edit_toolbar, '/union32.png', _('Boolean Operations'),
+                [
+                    self.geo_union_btn,
+                    self.geo_intersection_btn,
+                    self.geo_subtract_btn,
+                    self.geo_alt_subtract_btn
+                ]
+            )
+        self.geo_explode_btn = self.geo_edit_toolbar.addAction(
+            QtGui.QIcon(self.app.resource_location + '/explode32.png'), _('Explode'))
 
         self.geo_edit_toolbar.addSeparator()
         self.geo_cutpath_btn = self.geo_edit_toolbar.addAction(
@@ -2937,7 +3119,7 @@ class MainGUI(QtWidgets.QMainWindow):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding
         )
-        self.right_content_stack.setMinimumHeight(460)
+        self.right_content_stack.setMinimumHeight(420)
         self.right_lay.addWidget(self.right_content_stack, 1)
 
         self.project_start_widget = self.build_project_start_widget()
@@ -3194,17 +3376,12 @@ class MainGUI(QtWidgets.QMainWindow):
             QtGui.QIcon(self.app.resource_location + '/replot32.png'), _("Replot"))
 
         self.popMenu.addSeparator()
-        self.cmenu_newmenu = self.popMenu.addMenu(
-            QtGui.QIcon(self.app.resource_location + '/file32.png'), _("New"))
-        self.popmenu_new_geo = self.cmenu_newmenu.addAction(
-            QtGui.QIcon(self.app.resource_location + '/new_file_geo16.png'), _("Geometry"))
-        self.popmenu_new_grb = self.cmenu_newmenu.addAction(
-            QtGui.QIcon(self.app.resource_location + '/new_file_grb16.png'), "Gerber")
-        self.popmenu_new_exc = self.cmenu_newmenu.addAction(
-            QtGui.QIcon(self.app.resource_location + '/new_file_exc16.png'), _("Excellon"))
-        self.cmenu_newmenu.addSeparator()
-        self.popmenu_new_prj = self.cmenu_newmenu.addAction(
-            QtGui.QIcon(self.app.resource_location + '/file16.png'), _("Project"))
+        self.cmenu_importmenu = self.popMenu.addMenu(
+            QtGui.QIcon(self.app.resource_location + '/import.png'), _("Import"))
+        self.popmenu_import_gerber = self.cmenu_importmenu.addAction(
+            QtGui.QIcon(self.app.resource_location + '/open_gerber32.png'), _("Gerber"))
+        self.popmenu_import_excellon = self.cmenu_importmenu.addAction(
+            QtGui.QIcon(self.app.resource_location + '/open_excellon32.png'), _("Excellon"))
         self.popMenu.addSeparator()
 
         # Grids
@@ -3879,18 +4056,19 @@ class MainGUI(QtWidgets.QMainWindow):
         # https://www.w3.org/TR/SVG11/types.html#ColorKeywords
         self.editor_exit_btn.setStyleSheet("""
             QToolButton {
-                color: white;
-                background-color: #2563eb;
-                border: 1px solid #3b82f6;
-                border-radius: 5px;
-                padding: 5px 7px;
+                color: #b91c1c;
+                background-color: #fff7f7;
+                border: 1px solid #f1b8b8;
+                border-radius: 8px;
+                padding: 6px 9px;
             }
             QToolButton:hover {
-                background-color: #1d4ed8;
-                border-color: #60a5fa;
+                background-color: #feecec;
+                border-color: #ef8f8f;
             }
             QToolButton:pressed {
-                background-color: #1e40af;
+                background-color: #f9d4d4;
+                border-color: #dc6060;
             }
         """)
         self.editor_exit_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/power16.png'))
@@ -3959,29 +4137,20 @@ class MainGUI(QtWidgets.QMainWindow):
         # #########################################################################
         # ######################### Tools Toolbar #################################
         # #########################################################################
+        self.add_plugins_megamenu_toolbar_control()
+
         self.drill_btn = self.toolbar_action('/drill32.png', _("Drilling"))
         self.mill_btn = self.toolbar_action('/milling_tool32.png', _("Milling"))
-        self.manufacturing_dropdown, self.manufacturing_dropdown_action, self.manufacturing_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/drill32.png', _("Drilling and Milling"), [self.drill_btn, self.mill_btn])
 
         self.isolation_btn = self.toolbar_action('/iso32.png', _("Isolation"))
         self.follow_btn = self.toolbar_action('/follow32.png', _("Follow"))
         self.ncc_btn = self.toolbar_action('/ncc32.png', _("NCC"))
         self.paint_btn = self.toolbar_action('/paint32.png', _("Paint"))
-        self.copper_tools_dropdown, self.copper_tools_dropdown_action, self.copper_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/iso32.png', _("Copper Tools"),
-                [self.isolation_btn, self.follow_btn, self.ncc_btn, self.paint_btn])
 
         self.cutout_btn = self.toolbar_action('/cut32.png', _("Cutout"))
         self.panelize_btn = self.toolbar_action('/panelize32.png', _("Panel"))
         self.film_btn = self.toolbar_action('/film32.png', _("Film"))
         self.dblsided_btn = self.toolbar_action('/doubleside32.png', _("2-Sided"))
-        self.board_tools_dropdown, self.board_tools_dropdown_action, self.board_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/panelize32.png', _("Board Tools"),
-                [self.cutout_btn, self.panelize_btn, self.film_btn, self.dblsided_btn])
 
         self.align_btn = self.toolbar_action('/align32.png', _("Align"))
         self.align_dropdown, self.align_dropdown_action, self.align_menu = \
@@ -3994,10 +4163,6 @@ class MainGUI(QtWidgets.QMainWindow):
         self.copperfill_btn = self.toolbar_action('/copperfill32.png', _("Thieving"))
         self.punch_btn = self.toolbar_action('/punch32.png', _("Punch Gerber"))
         self.calculators_btn = self.toolbar_action('/calculator32.png', _("Calculators"))
-        self.utility_tools_dropdown, self.utility_tools_dropdown_action, self.utility_tools_menu = \
-            self.add_toolbar_dropdown(
-                self.toolbarplugins, '/calculator32.png', _("Utilities"),
-                [self.copperfill_btn, self.punch_btn, self.calculators_btn])
 
         # self.solder_btn = self.toolbarplugins.addAction(
         #     QtGui.QIcon(self.app.resource_location + '/solderpastebis32.png'), _("SolderPaste"))
@@ -4069,6 +4234,8 @@ class MainGUI(QtWidgets.QMainWindow):
         self.geo_edit_toolbar.addSeparator()
         self.geo_add_text_btn = self.geo_edit_toolbar.addAction(
             QtGui.QIcon(self.app.resource_location + '/text32.png'), _('Text'))
+        self.geo_add_simplification_btn = self.geo_edit_toolbar.addAction(
+            QtGui.QIcon(self.app.resource_location + '/simplify32.png'), _('Simplify'))
         self.geo_add_buffer_btn = self.geo_edit_toolbar.addAction(
             QtGui.QIcon(self.app.resource_location + '/buffer32.png'), _('Buffer'))
         self.geo_add_paint_btn = self.geo_edit_toolbar.addAction(
@@ -4077,17 +4244,30 @@ class MainGUI(QtWidgets.QMainWindow):
             QtGui.QIcon(self.app.resource_location + '/eraser26.png'), _('Eraser'))
 
         self.geo_edit_toolbar.addSeparator()
-        self.geo_union_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/union32.png'), _('Union'))
+        self.geo_union_btn = self.toolbar_action('/union32.png', _('Union'))
+        self.geo_intersection_btn = self.toolbar_action('/intersection32.png', _('Intersection'))
+        self.geo_subtract_btn = self.toolbar_action('/subtract32.png', _('Subtraction'))
+        self.geo_subtract_btn.setToolTip(
+            _('Polygon Subtraction. First selected is the target.\n'
+              'The rest of the selected is subtracted from the first.\n'
+              'First selected is replaced by the result.'))
+        self.geo_alt_subtract_btn = self.toolbar_action('/subtract_alt32.png', _('Alt Subtraction'))
+        self.geo_alt_subtract_btn.setToolTip(
+            _('Alt Subtraction. First selected is the target.\n'
+              'The rest of the selected is subtracted from the first.\n'
+              'First selected is kept besides the result.'))
+        self.geo_boolean_dropdown, self.geo_boolean_dropdown_action, self.geo_boolean_menu = \
+            self.add_toolbar_dropdown(
+                self.geo_edit_toolbar, '/union32.png', _('Boolean Operations'),
+                [
+                    self.geo_union_btn,
+                    self.geo_intersection_btn,
+                    self.geo_subtract_btn,
+                    self.geo_alt_subtract_btn
+                ]
+            )
         self.geo_explode_btn = self.geo_edit_toolbar.addAction(
             QtGui.QIcon(self.app.resource_location + '/explode32.png'), _('Explode'))
-
-        self.geo_intersection_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/intersection32.png'), _('Intersection'))
-        self.geo_subtract_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/subtract32.png'), _('Subtraction'))
-        self.geo_alt_subtract_btn = self.geo_edit_toolbar.addAction(
-            QtGui.QIcon(self.app.resource_location + '/subtract_alt32.png'), _('Alt Subtraction'))
 
         self.geo_edit_toolbar.addSeparator()
         self.geo_cutpath_btn = self.geo_edit_toolbar.addAction(

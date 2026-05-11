@@ -21,6 +21,7 @@ from copy import copy
 import re
 import logging
 import html
+import os
 import sys
 import inspect
 
@@ -35,6 +36,88 @@ if '_' not in builtins.__dict__:
     _ = gettext.gettext
 
 EDIT_SIZE_HINT = 70
+
+
+def _tab_bar_for(tab_widget):
+    tab_bar = getattr(tab_widget, "tabBar", None)
+    if callable(tab_bar):
+        return tab_bar()
+    return tab_bar
+
+
+def _tab_close_icon(tab_widget):
+    parent = tab_widget.parentWidget()
+    app = getattr(parent, "app", None)
+    resource_location = getattr(app, "resource_location", "")
+    if not resource_location:
+        return QtGui.QIcon()
+
+    icon_path = os.path.abspath(os.path.join(resource_location, "cancel_edit32.png"))
+    return QtGui.QIcon(icon_path)
+
+
+def _close_tab_from_button(tab_widget, button):
+    tab_bar = _tab_bar_for(tab_widget)
+    if tab_bar is None:
+        return
+
+    for index in range(tab_widget.count()):
+        if tab_bar.tabButton(index, QtWidgets.QTabBar.ButtonPosition.RightSide) is button:
+            close_tab = getattr(tab_widget, "closeTab", None)
+            if callable(close_tab):
+                close_tab(index)
+            else:
+                tab_widget.removeTab(index)
+            return
+
+
+def _install_tab_close_button(tab_widget, index):
+    if index < 0 or tab_widget.tabsClosable() is not True:
+        return
+
+    tab_bar = _tab_bar_for(tab_widget)
+    if tab_bar is None:
+        return
+
+    protected_names = getattr(tab_widget, "protect_by_name", None) or []
+    if getattr(tab_widget, "protect_tab", False) is True or str(tab_widget.tabText(index)) in [str(name) for name in protected_names]:
+        tab_bar.setTabButton(index, QtWidgets.QTabBar.ButtonPosition.RightSide, None)
+        return
+
+    button = QtWidgets.QToolButton(tab_bar)
+    button.setObjectName("fc_tab_close_button")
+    button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+    button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+    button.setAutoRaise(True)
+    button.setFixedSize(20, 20)
+    button.setIconSize(QtCore.QSize(12, 12))
+    button.setToolTip(_("Close"))
+    button.setStyleSheet("""
+        QToolButton#fc_tab_close_button {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 5px;
+            padding: 0px;
+            margin: 0px;
+        }
+        QToolButton#fc_tab_close_button:hover {
+            background: rgba(47, 111, 237, 36);
+            border-color: rgba(47, 111, 237, 92);
+        }
+        QToolButton#fc_tab_close_button:pressed {
+            background: rgba(47, 111, 237, 70);
+            border-color: rgba(47, 111, 237, 130);
+        }
+    """)
+
+    icon = _tab_close_icon(tab_widget)
+    if icon.isNull():
+        button.setText("x")
+    else:
+        button.setIcon(icon)
+
+    button.clicked.connect(lambda _checked=False, close_button=button: _close_tab_from_button(tab_widget, close_button))
+    tab_bar.setTabButton(index, QtWidgets.QTabBar.ButtonPosition.RightSide, button)
 
 
 class PlotTabWithDragDrop(QtWidgets.QWidget):
@@ -3261,6 +3344,16 @@ class FCLabel(QtWidgets.QLabel):
     right_clicked = QtCore.pyqtSignal(bool)
     middle_clicked = QtCore.pyqtSignal(bool)
 
+    @staticmethod
+    def _normalize_text_color(text):
+        if not isinstance(text, str):
+            return text
+
+        text = re.sub(r'<font\b[^>]*>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'</font>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s*color\s*:\s*[^;"\']+;?', '', text, flags=re.IGNORECASE)
+        return text
+
     def __init__(self, title=None, color=None, b_color=None, bold=None, size=None, parent=None):
         """
 
@@ -3288,14 +3381,8 @@ class FCLabel(QtWidgets.QLabel):
 
         self.original_color = self.palette().color(QtGui.QPalette.ColorRole.WindowText)
 
-        if color:
-            color = self.patching_text_color(color)
-
         if isinstance(title, str):
-            if color:
-                self.setText('<font color="%s">%s</font>' % (str(color), title))
-            else:
-                self.setText(title)
+            self.setText(title)
 
             font = QtGui.QFont()
             font.setBold(True) if bold else font.setBold(False)
@@ -3317,6 +3404,10 @@ class FCLabel(QtWidgets.QLabel):
     def restore_stylesheet(self):
         self.setStyleSheet(self.default_stylesheet)
 
+    def setText(self, text):
+        self._title = text
+        super().setText(self._normalize_text_color(text))
+
     @property
     def color(self):
         return self._color
@@ -3324,7 +3415,7 @@ class FCLabel(QtWidgets.QLabel):
     @color.setter
     def color(self, color):
         self._color = color
-        self.setText('<font color="%s">%s</font>' % (str(color), self._title))
+        self.setText(self._title if self._title is not None else "")
 
     @property
     def b_color(self):
@@ -3401,6 +3492,16 @@ class FCTab(QtWidgets.QTabWidget):
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(self.closeTab)
 
+    def addTab(self, *args):
+        index = super().addTab(*args)
+        _install_tab_close_button(self, index)
+        return index
+
+    def insertTab(self, index, *args):
+        inserted_index = super().insertTab(index, *args)
+        _install_tab_close_button(self, inserted_index)
+        return inserted_index
+
     def deleteTab(self, currentIndex):
         widget = self.widget(currentIndex)
         if widget is not None:
@@ -3466,6 +3567,16 @@ class FCDetachableTab(QtWidgets.QTabWidget):
 
         # called when one of the tabs is closed
         self.callback_on_close = lambda: None
+
+    def addTab(self, *args):
+        index = super().addTab(*args)
+        _install_tab_close_button(self, index)
+        return index
+
+    def insertTab(self, index, *args):
+        inserted_index = super().insertTab(index, *args)
+        _install_tab_close_button(self, inserted_index)
+        return inserted_index
 
     def set_rmb_callback(self, callback):
         """

@@ -4876,7 +4876,7 @@ class AppGerberEditor(QtCore.QObject):
         self.app.ui.popmenu_move2origin.setVisible(False)
 
         self.app.ui.popmenu_disable.setVisible(False)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(False)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(False)
         self.app.ui.popmenu_properties.setVisible(False)
         self.app.ui.grb_editor_cmenu.menuAction().setVisible(True)
 
@@ -4921,7 +4921,7 @@ class AppGerberEditor(QtCore.QObject):
         self.app.ui.popmenu_save.setVisible(False)
 
         self.app.ui.popmenu_disable.setVisible(True)
-        self.app.ui.cmenu_newmenu.menuAction().setVisible(True)
+        self.app.ui.cmenu_importmenu.menuAction().setVisible(True)
         self.app.ui.popmenu_properties.setVisible(True)
         self.app.ui.g_editor_cmenu.menuAction().setVisible(False)
         self.app.ui.e_editor_cmenu.menuAction().setVisible(False)
