@@ -1,3 +1,6 @@
+<img width="1376" height="768" alt="splash" src="https://github.com/user-attachments/assets/b4707bd9-e9cb-45d9-be65-253b034f5bd6" />
+
+
 # FlatCAM Plus v1.0.0 (BETA) (c) 2026 - by Sadri ERCAN
 
 **FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
@@ -8,6 +11,9 @@ Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
 Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
 ---
+
+<img width="2558" height="1389" alt="Screenshot_6" src="https://github.com/user-attachments/assets/29d278c7-8409-4f16-a74f-815a95d550a5" />
+
 
 ## Key Improvements
 
@@ -43,6 +49,9 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 
 ### CNC Workflow
 
+<img width="2203" height="1231" alt="Screenshot_7" src="https://github.com/user-attachments/assets/ec54d63c-eddd-4fe2-889e-22a3879849f9" />
+
+
 - **Integrated CNC controller:** Connection management, live status, jogging, machine profiles, work zeroing, job streaming, macros, terminal commands, SD jobs, and FluidNC file operations are available inside the CNC workspace.
 - **Operational dashboard layout:** Feed/spindle status, G-code sender, position, jog, overrides, macros, job setup, preview, and terminal sections are arranged for direct machine operation.
 - **Unified CNC-style workspace UI:** Preferences, the canvas tab area, the left sidebar, project trees, and selected Gerber/Excellon/CNCJob property panels now share the CNC Control visual language with clearer buttons and bordered panels.
@@ -60,6 +69,10 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **FlatCAM CNC Android app (beta):** A native Android CNC control app is included under `flatcam-cnc-android/` as a beta companion for mobile controller sessions.
 
 ### Workspace and Project UI
+
+
+<img width="1054" height="599" alt="Screenshot_5" src="https://github.com/user-attachments/assets/cbadd9f6-7d7d-417e-8f86-4a3a49b18de1" />
+
 
 - **Project-first startup:** On application launch, the canvas area is replaced by a modern splash panel until a project is created or opened.
 - **Project creation modal:** New projects request a project name and save location, then populate the left project tree with the project root and object groups.
