@@ -3544,9 +3544,12 @@ class ImportEditorGrb(QtCore.QObject, DrawTool):
             x, y = self.app.geo_editor.snap(x, y)
 
             # Update cursor
-            self.app.app_cursor.set_data(np.asarray([(x, y)]), symbol='++', edge_color=self.app.plotcanvas.cursor_color,
-                                         edge_width=self.app.options["global_cursor_width"],
-                                         size=self.app.options["global_cursor_size"])
+            if self.app.options.get("global_snap_cursor_marker", False):
+                self.app.app_cursor.set_data(
+                    np.asarray([(x, y)]), symbol='++', edge_color=self.app.plotcanvas.cursor_color,
+                    edge_width=self.app.options["global_cursor_width"],
+                    size=self.app.options["global_cursor_size"]
+                )
 
         self.snap_x = x
         self.snap_y = y
@@ -6036,9 +6039,12 @@ class AppGerberEditor(QtCore.QObject):
             x, y = self.app.geo_editor.snap(x, y)
 
             # Update cursor
-            self.app.app_cursor.set_data(np.asarray([(x, y)]), symbol='++', edge_color=self.app.plotcanvas.cursor_color,
-                                         edge_width=self.app.options["global_cursor_width"],
-                                         size=self.app.options["global_cursor_size"])
+            if self.app.options.get("global_snap_cursor_marker", False):
+                self.app.app_cursor.set_data(
+                    np.asarray([(x, y)]), symbol='++', edge_color=self.app.plotcanvas.cursor_color,
+                    edge_width=self.app.options["global_cursor_width"],
+                    size=self.app.options["global_cursor_size"]
+                )
 
         self.snap_x = x
         self.snap_y = y
@@ -6147,6 +6153,65 @@ class AppGerberEditor(QtCore.QObject):
     def get_sel_color(self):
         return self.app.options['global_sel_draw_color']
 
+    def use_pcb_preview_theme(self):
+        return bool(self.app.use_3d_engine and self.app.options.get("gerber_pcb_preview", True))
+
+    def _color_with_alpha(self, color, alpha='FF'):
+        if not color:
+            return color
+        if len(color) == 7:
+            return color + alpha
+        if len(color) == 9:
+            return color[:7] + alpha
+        return color
+
+    def _plot_pcb_preview_background(self):
+        edit_geo = []
+
+        for ap_code in self.storage_dict:
+            storage = self.storage_dict[ap_code]
+            if 'geometry' not in storage:
+                continue
+
+            for geo_el in storage['geometry']:
+                actual_geo = geo_el.geo
+                if 'solid' not in actual_geo:
+                    continue
+
+                solid_geo = actual_geo['solid']
+                if solid_geo is None or solid_geo.is_empty:
+                    continue
+                edit_geo.append(solid_geo)
+
+        if not edit_geo:
+            return
+
+        try:
+            xmin, ymin, xmax, ymax = [float(value) for value in unary_union(edit_geo).bounds]
+        except Exception:
+            return
+
+        width = xmax - xmin
+        height = ymax - ymin
+        if width <= 0 or height <= 0:
+            return
+
+        board_margin = max(max(width, height) * 0.035, 0.35)
+        board = box(
+            xmin - board_margin,
+            ymin - board_margin,
+            xmax + board_margin,
+            ymax + board_margin
+        )
+
+        self.shapes.add(
+            shape=board,
+            color=None,
+            face_color=self.app.options.get("gerber_pcb_preview_board", '#E3C05FFF'),
+            layer=0,
+            tolerance=self.tolerance
+        )
+
     def plot_all(self):
         """
         Plots all shapes in the editor.
@@ -6155,16 +6220,29 @@ class AppGerberEditor(QtCore.QObject):
         """
         with self.app.proc_container.new('%s ...' % _("Plotting")):
             self.shapes.clear(update=True)
+            pcb_preview = self.use_pcb_preview_theme()
 
-            if len(self.get_sel_color()) == 7:
-                sel_draw_color = self.get_sel_color() + 'FF'
-            else:
-                sel_draw_color = self.get_sel_color()[:-2] + 'FF'
+            if pcb_preview:
+                if self.app.options.get("gerber_pcb_preview_canvas", True):
+                    apply_theme = getattr(self.app.plotcanvas, "apply_pcb_preview_theme", None)
+                    if callable(apply_theme):
+                        apply_theme()
 
-            if len(self.get_draw_color()) == 7:
-                draw_color = self.get_draw_color() + 'FF'
+                self._plot_pcb_preview_background()
+                draw_color = self._color_with_alpha(
+                    self.app.options.get("gerber_pcb_preview_trace", '#06120F'),
+                    'FF'
+                )
+                copper_layer = 1
+                copper_face_color = None
+                copper_fill = False
             else:
-                draw_color = self.get_draw_color()[:-2] + 'FF'
+                draw_color = self._color_with_alpha(self.get_draw_color(), 'FF')
+                copper_layer = 0
+                copper_face_color = None
+                copper_fill = True
+
+            sel_draw_color = self._color_with_alpha(self.get_sel_color(), 'FF')
 
             for storage in self.storage_dict:
                 # fix for apertures with no geometry inside
@@ -6176,19 +6254,22 @@ class AppGerberEditor(QtCore.QObject):
                                 continue
 
                             if elem in self.selected:
-                                self.plot_shape(geometry=geometric_data, color=sel_draw_color, linewidth=2)
+                                self.plot_shape(geometry=geometric_data, color=sel_draw_color, linewidth=2,
+                                                layer=copper_layer + 1)
                             else:
-                                self.plot_shape(geometry=geometric_data, color=draw_color)
+                                self.plot_shape(geometry=geometric_data, color=draw_color, face_color=copper_face_color,
+                                                layer=copper_layer, use_color_as_face=copper_fill)
 
             if self.utility:
                 for elem in self.utility:
                     geometric_data = elem.geo['solid']
-                    self.plot_shape(geometry=geometric_data, linewidth=1)
+                    self.plot_shape(geometry=geometric_data, linewidth=1, layer=copper_layer + 1)
                     continue
 
             self.shapes.redraw()
 
-    def plot_shape(self, geometry=None, color='#000000FF', linewidth=1):
+    def plot_shape(self, geometry=None, color='#000000FF', linewidth=1, face_color=None, layer=0,
+                   use_color_as_face=True):
         """
         Plots a geometric object or list of objects without rendering. Plotted objects
         are returned as a list. This allows for efficient/animated rendering.
@@ -6196,6 +6277,9 @@ class AppGerberEditor(QtCore.QObject):
         :param geometry:    Geometry to be plotted (Any "Shapely.geom" kind or list of such)
         :param color:       Shape color
         :param linewidth:   Width of lines in # of pixels.
+        :param face_color:  Shape fill color when ``use_color_as_face`` is disabled.
+        :param layer:       Shape layer.
+        :param use_color_as_face: When True, keep the legacy behavior and use ``color`` as fill too.
         :return:            List of plotted elements.
         """
 
@@ -6203,14 +6287,18 @@ class AppGerberEditor(QtCore.QObject):
             geometry = self.active_tool.geometry
 
         try:
-            self.shapes.add(shape=geometry.geo, color=color, face_color=color, layer=0, tolerance=self.tolerance)
+            draw_face_color = color if use_color_as_face else face_color
+            self.shapes.add(shape=geometry.geo, color=color, face_color=draw_face_color, layer=layer,
+                            tolerance=self.tolerance, linewidth=linewidth)
         except AttributeError:
             if isinstance(geometry, Point):
                 return
-            if len(color) == 9:
+            if color is not None and len(color) == 9 and use_color_as_face:
                 color = color[:7] + 'AF'
 
-            self.shapes.add(shape=geometry, color=color, face_color=color, layer=0, tolerance=self.tolerance)
+            draw_face_color = color if use_color_as_face else face_color
+            self.shapes.add(shape=geometry, color=color, face_color=draw_face_color, layer=layer,
+                            tolerance=self.tolerance, linewidth=linewidth)
 
     def on_shape_complete(self):
         pass
