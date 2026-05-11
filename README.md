@@ -265,9 +265,9 @@ Packaging should be done on the target operating system because PyQt, OpenGL/Vis
 
 - macOS users can build a `.app` bundle and optional `.dmg`.
 - Linux users can build a folder distribution or archive and use the existing `assets/linux/` launcher files for source-based installs.
-- Windows packaging can be added with the same approach later using PyInstaller plus an installer tool such as Inno Setup or NSIS.
+- Windows users can build x32 and x64 Inno Setup installers from the separate `FlatCAMPlus_x32_installer_generator.bat` and `FlatCAMPlus_x64_installer_generator.bat` files.
 
-See [`PACKAGING.md`](PACKAGING.md) for macOS and Linux packaging commands.
+See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging commands.
 
 ---
 

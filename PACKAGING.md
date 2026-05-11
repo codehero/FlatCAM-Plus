@@ -51,6 +51,80 @@ brew install gettext
 export PATH="$(brew --prefix gettext)/bin:$PATH"
 ```
 
+## Windows
+
+Install Inno Setup 6 first. With `winget`:
+
+```powershell
+winget install JRSoftware.InnoSetup
+```
+
+For both GitHub release installers, prepare a 64-bit Python environment and a 32-bit Python environment with the project dependencies installed. PyInstaller must run under the same architecture it is packaging.
+
+If both Python launchers are registered, install PyInstaller in each environment:
+
+```powershell
+py -3.11-64 -m pip install pyinstaller
+py -3.11-32 -m pip install pyinstaller
+```
+
+Then build each installer from its own batch file:
+
+```powershell
+.\FlatCAMPlus_x64_installer_generator.bat
+.\FlatCAMPlus_x32_installer_generator.bat
+```
+
+If a batch file fails, it keeps the window open and writes a timestamped log under:
+
+```text
+build\logs\
+```
+
+If the script cannot auto-detect one of the Python environments, pass the paths explicitly:
+
+```powershell
+.\FlatCAMPlus_x64_installer_generator.bat -PythonX64 "C:\Path\To\Python-64\python.exe"
+.\FlatCAMPlus_x32_installer_generator.bat -PythonX86 "C:\Path\To\Python-32\python.exe"
+```
+
+The PyInstaller outputs are created at:
+
+```text
+dist\windows\x86\FlatCAMPlus\
+dist\windows\x64\FlatCAMPlus\
+```
+
+The installer outputs are created at:
+
+```text
+dist\installer\FlatCAMPlus-Setup-<version>-x32.exe
+dist\installer\FlatCAMPlus-Setup-<version>-x64.exe
+```
+
+The 32-bit build folder still uses the internal `x86` name, but the installer filename uses the user-facing `x32` label.
+
+Upload both files to the GitHub release. The in-app auto updater reads the GitHub release body as the changelog and chooses the installer asset whose filename contains the running architecture (`x32`, `x86`, or `x64`).
+
+The installer installs to:
+
+```text
+%ProgramFiles%\FlatCAMPlus
+```
+
+It also creates a Start Menu entry and a desktop shortcut for `FlatCAM Plus` by default. To build only one architecture:
+
+```powershell
+.\FlatCAMPlus_x64_installer_generator.bat
+.\FlatCAMPlus_x32_installer_generator.bat
+```
+
+To only build the PyInstaller folders without creating installers:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\windows\build_windows_installer.ps1 -SkipInstaller
+```
+
 ## macOS
 
 Install Apple command line tools first:
