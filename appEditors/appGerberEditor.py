@@ -3948,7 +3948,7 @@ class AppGerberEditor(QtCore.QObject):
 
         # VisPy Visuals
         if self.app.use_3d_engine:
-            self.shapes = self.canvas.new_shape_collection(layers=1)
+            self.shapes = self.canvas.new_shape_collection(layers=3)
             self.tool_shape = self.canvas.new_shape_collection(layers=1)
             self.ma_annotation = self.canvas.new_text_group()
         else:

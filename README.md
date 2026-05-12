@@ -1,11 +1,11 @@
 <img width="1376" height="768" alt="splash" src="https://github.com/user-attachments/assets/b4707bd9-e9cb-45d9-be65-253b034f5bd6" />
 
 
-# FlatCAM Plus v1.0.0 (BETA) (c) 2026 - by Sadri ERCAN
+# FlatCAM Plus v1.0.1 (BETA) (c) 2026 - by Sadri ERCAN
 
 **FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
 
-**Current version:** `1.0.0` beta, released `2026/05/03`, updated `2026/05/10`.
+**Current version:** `1.0.1` beta, released `2026/05/12`, updated `2026/05/12`.
 
 Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
 Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
@@ -33,6 +33,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **CNCJob compatibility hardening:** Older projects that do not carry Auto Levelling option keys now receive safe fallback defaults instead of failing during CNCJob creation.
 - **Modern project startup:** FlatCAM Plus now opens into a project splash workspace with **Create New Project** and **Open Project** actions instead of immediately showing an empty canvas.
 - **Saved layout migration:** The modern workspace layout version resets stale Qt window/dock state when needed, preventing older saved layouts from compressing the main canvas or splash area.
+- **Gerber editor preview fix:** Gerber Editor now allocates the required VisPy layers for PCB preview mode, so copper traces render over the board background without repeated shape collection index errors.
 
 ### CAM and Tool Data
 
@@ -46,6 +47,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Project-tree aware plugin object selectors:** Plugin object combo boxes now target the real Gerber, Excellon, Geometry, and CNCJob groups under the project root, so tools see actual files instead of group labels.
 - **Excellon DB loading:** Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing.
 - **Reference-aware rotation:** Toolbar and plot-area Rotate actions use the Transform Plugin reference setting, so late-loaded Excellon drill files can be rotated around the Gerber board center instead of only their own selection bounds.
+- **Gerber object action layout:** Gerber object actions place editor and information controls side by side for quicker access in the object properties panel.
 
 ### CNC Workflow
 

@@ -22,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     if ($versionMatch) {
         $Version = $versionMatch.Matches[0].Groups[1].Value
     } else {
-        $Version = "1.0.0"
+        $Version = "1.0.1"
     }
 }
 

@@ -255,7 +255,7 @@ class GerberObjectUI(ObjectUI):
         object_actions_frame = FCFrame()
         self.custom_box.addWidget(object_actions_frame)
 
-        object_actions_grid = GLay(v_spacing=5, h_spacing=3)
+        object_actions_grid = GLay(v_spacing=5, h_spacing=3, c_stretch=[1, 1])
         object_actions_frame.setLayout(object_actions_grid)
 
         # Editor
@@ -264,13 +264,17 @@ class GerberObjectUI(ObjectUI):
         self.editor_button.setToolTip(
             _("Start the Object Editor")
         )
+        self.editor_button.setSizePolicy(QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+                                         QtWidgets.QSizePolicy.Policy.Preferred)
         object_actions_grid.addWidget(self.editor_button, 0, 0)
 
         # INFO CB
         self.info_button = FCButton('%s' % _("Object Info"), checkable=True, bold=True)
         self.info_button.setIcon(QtGui.QIcon(self.app.resource_location + '/properties32.png'))
         self.info_button.setToolTip(_("Show the Object Attributes."))
-        object_actions_grid.addWidget(self.info_button, 2, 0)
+        self.info_button.setSizePolicy(QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+                                       QtWidgets.QSizePolicy.Policy.Preferred)
+        object_actions_grid.addWidget(self.info_button, 0, 1)
 
         # INFO Frame
         self.info_frame = QtWidgets.QFrame()
