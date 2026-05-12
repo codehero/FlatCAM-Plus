@@ -34,12 +34,12 @@ if "!NEW_VERSION!"=="" (
     goto CONFIRM_STEP
 )
 
-:: Format doğrulama: X.Y.Z şeklinde olmalı
-echo !NEW_VERSION! | findstr /r "^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul 2>&1
-if errorlevel 1 (
-    echo   [UYARI] Gecersiz format! Ornek: 1.2.3
-    goto ASK_VERSION
-)
+    :: Format doğrulama: X.Y.Z (PowerShell ile - findstr regex güvenilmez)
+    powershell -NoProfile -Command "if ('!NEW_VERSION!' -match '^[0-9]+\.[0-9]+\.[0-9]+$') { exit 0 } else { exit 1 }" >nul 2>&1
+    if errorlevel 1 (
+        echo   [UYARI] Gecersiz format! Ornek: 1.2.3
+        goto ASK_VERSION
+    )
 
 :CONFIRM_STEP
 echo.
