@@ -68,7 +68,7 @@ echo  ---------------------------------------------------------
 powershell -NoProfile -ExecutionPolicy Bypass -File ^
     "%~dp0packaging\windows\update_version.ps1" ^
     -Version "!NEW_VERSION!" ^
-    -RootDir "%~dp0"
+    -RootDir "%~dp0."
 
 if errorlevel 1 (
     echo.
