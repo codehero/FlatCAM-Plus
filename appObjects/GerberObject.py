@@ -601,6 +601,11 @@ class GerberObject(FlatCAMObj, Gerber):
                     if opt_key.find('tools_mill' + "_") == 0:
                         default_data[opt_key] = app_obj.options[opt_key]
 
+                default_data["tools_mill_tooldia"] = float(dia)
+                default_data["tools_iso_tooldia"] = float(dia)
+                default_data["tools_mill_offset_type"] = 0
+                default_data["tools_mill_offset_value"] = 0.0
+
                 geo_obj.tools = {
                     1: {
                         'tooldia':          dia,
@@ -699,6 +704,11 @@ class GerberObject(FlatCAMObj, Gerber):
                             default_data[oname] = app_obj.options[opt_key]
                         if opt_key.find('tools_mill' + "_") == 0:
                             default_data[opt_key] = app_obj.options[opt_key]
+
+                    default_data["tools_mill_tooldia"] = float(dia)
+                    default_data["tools_iso_tooldia"] = float(dia)
+                    default_data["tools_mill_offset_type"] = 0
+                    default_data["tools_mill_offset_value"] = 0.0
 
                     geo_obj.tools = {
                         1: {

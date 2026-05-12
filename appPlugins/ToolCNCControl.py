@@ -89,6 +89,11 @@ class ToolCNCControl(AppTool):
         self.probe_result_event = threading.Event()
         self.last_probe_result = None
         self.auto_level_map = None
+        self.work_offsets = {}
+        self.g92_offset = [0.0, 0.0, 0.0]
+        self.tool_length_offset = [0.0, 0.0, 0.0]
+        self.last_wco = None
+        self.probe_coordinate_mode = None
 
         self.ui = CNCControlUI(layout=self.layout, app=self.app)
         self.pluginName = self.ui.pluginName
@@ -195,6 +200,7 @@ class ToolCNCControl(AppTool):
         self.ui.autolevel_probe_btn.clicked.connect(self.on_auto_level_probe_clicked)
         self.ui.autolevel_stop_btn.clicked.connect(self.on_auto_level_stop)
         self.ui.autolevel_clear_btn.clicked.connect(self.on_auto_level_clear)
+        self.ui.autolevel_3d_btn.clicked.connect(self.on_auto_level_3d_clicked)
         self.ui.autolevel_enable_cb.toggled.connect(
             lambda *_args: self.on_preview_refresh(refresh_jobs=False)
         )
@@ -339,6 +345,19 @@ class ToolCNCControl(AppTool):
         })
         self.update_queue_table(select_row=len(self.job_queue) - 1)
 
+    def refresh_queued_gcode(self):
+        for item in self.job_queue:
+            name = str(item.get("name", "")).strip()
+            lines = self.cncjob_lines(name)
+            if not lines:
+                self.append_console_sig.emit(
+                    _("Queued CNCJob is missing or has no G-code: %s") % name,
+                    "error"
+                )
+                return False
+            item["lines"] = lines
+        return True
+
     def selected_queue_row(self):
         if not hasattr(self.ui, "queue_table"):
             return -1
@@ -387,7 +406,12 @@ class ToolCNCControl(AppTool):
         row = self.selected_queue_row()
         if 0 <= row < len(self.job_queue):
             item = self.job_queue[row]
-            return item.get("name", _("Queued Job")), list(item.get("lines", []))
+            name = item.get("name", _("Queued Job"))
+            fresh_lines = self.cncjob_lines(name)
+            if fresh_lines:
+                item["lines"] = fresh_lines
+                return name, fresh_lines
+            return name, list(item.get("lines", []))
 
         name = self.ui.object_combo.currentText().strip()
         if not name:
@@ -1506,20 +1530,14 @@ class ToolCNCControl(AppTool):
             self.append_console_sig.emit(_("No CNCJob object selected."), "error")
             return
 
-        context = self.stream_transform_context(lines)
-        units = self.effective_gcode_units(context.get("units"))
+        transform_context = self.stream_transform_context(lines)
+        units = self.effective_gcode_units(transform_context.get("units"))
         bounds = None
-        target_bounds = context.get("target_bounds")
-        if target_bounds:
-            bounds = [
-                target_bounds["X"][0],
-                target_bounds["X"][1],
-                target_bounds["Y"][0],
-                target_bounds["Y"][1],
-            ]
+        preview_lines = [self.transform_stream_command(line, transform_context) for line in lines]
+        _segments, path_bounds, _start_point = self.gcode_preview_segments(preview_lines)
+        if path_bounds:
+            bounds = path_bounds
         else:
-            transform_context = self.stream_transform_context(lines)
-            preview_lines = [self.transform_stream_command(line, transform_context) for line in lines]
             gcode_bounds, units = self.gcode_bounds(preview_lines, cutting_only=True)
             if gcode_bounds["X"][0] is None or gcode_bounds["Y"][0] is None:
                 gcode_bounds, units = self.gcode_bounds(preview_lines)
@@ -1543,11 +1561,44 @@ class ToolCNCControl(AppTool):
         self.ui.autolevel_y_max.set_value(bounds[3] * factor)
         self.ui.autolevel_status.setText(_("Area fitted from %s") % (name or _("CNCJob")))
         self.append_console_sig.emit(
-            _("Auto level area fitted: X%.3f..%.3f  Y%.3f..%.3f mm") % (
+            _("Auto level area fitted from toolpath: X%.3f..%.3f  Y%.3f..%.3f mm") % (
                 bounds[0] * factor, bounds[1] * factor, bounds[2] * factor, bounds[3] * factor
             ),
             "info"
         )
+
+    def current_auto_level_job_bounds_mm(self):
+        _name, lines = self.selected_preview_job()
+        if not lines:
+            return None
+
+        context = self.stream_transform_context(lines)
+        units = self.effective_gcode_units(context.get("units"))
+        factor = 25.4 if units == "inch" else 1.0
+        material_bounds = context.get("material_bounds")
+        if material_bounds:
+            return [value * factor for value in material_bounds]
+
+        preview_lines = [self.transform_stream_command(line, context) for line in lines]
+        _segments, path_bounds, _start_point = self.gcode_preview_segments(preview_lines)
+        if path_bounds:
+            return [value * factor for value in path_bounds]
+        return None
+
+    def auto_level_area_is_inside_job(self, settings):
+        bounds = self.current_auto_level_job_bounds_mm()
+        if not bounds:
+            return True, None
+
+        tolerance = 0.001
+        area = [settings["x_min"], settings["x_max"], settings["y_min"], settings["y_max"]]
+        inside = (
+            area[0] >= bounds[0] - tolerance and
+            area[1] <= bounds[1] + tolerance and
+            area[2] >= bounds[2] - tolerance and
+            area[3] <= bounds[3] + tolerance
+        )
+        return inside, bounds
 
     def on_auto_level_probe_clicked(self, *_args):
         if not self.is_connected:
@@ -1569,6 +1620,17 @@ class ToolCNCControl(AppTool):
 
         if math.isclose(settings["x_min"], settings["x_max"]) or math.isclose(settings["y_min"], settings["y_max"]):
             self.append_console_sig.emit(_("Auto level area is empty."), "error")
+            return
+
+        inside_job, job_bounds = self.auto_level_area_is_inside_job(settings)
+        if not inside_job:
+            self.append_console_sig.emit(
+                _("Auto level area is outside the current job bounds. Click Fit Area or correct X/Y values. "
+                  "Job bounds: X%.3f..%.3f  Y%.3f..%.3f mm") % (
+                    job_bounds[0], job_bounds[1], job_bounds[2], job_bounds[3]
+                ),
+                "error"
+            )
             return
 
         x_values, y_values, points = self.auto_level_probe_points(settings)
@@ -1609,6 +1671,13 @@ class ToolCNCControl(AppTool):
         })
         self.on_preview_refresh(refresh_jobs=False)
 
+    def on_auto_level_3d_clicked(self, *_args):
+        viewer = getattr(self.app, "cnc_height_map_3d_tool", None)
+        if viewer is None:
+            self.append_console_sig.emit(_("Height Map 3D plugin is not available."), "error")
+            return
+        viewer.run(toggle=True)
+
     def send_command_and_wait(self, command, timeout=5.0):
         self.ok_received.clear()
         self.send_command(command, log=True)
@@ -1634,6 +1703,13 @@ class ToolCNCControl(AppTool):
                     raise RuntimeError(_("Auto level probing was stopped."))
                 if not self.send_command_and_wait(command, timeout=8.0):
                     raise RuntimeError(_("Controller did not acknowledge: %s") % command)
+
+            self.work_offsets = {}
+            self.g92_offset = [0.0, 0.0, 0.0]
+            self.tool_length_offset = [0.0, 0.0, 0.0]
+            self.probe_coordinate_mode = None
+            if not self.send_command_and_wait("$#", timeout=8.0):
+                raise RuntimeError(_("Controller did not acknowledge: %s") % "$#")
 
             probe_timeout = max(10.0, (abs(settings["probe_depth"]) / settings["probe_feed"] * 60.0) + 5.0)
             for index, point in enumerate(points, start=1):
@@ -1668,21 +1744,41 @@ class ToolCNCControl(AppTool):
                 if not result.get("success", False):
                     raise RuntimeError(_("Probe failed at X%.3f Y%.3f.") % (point["x"], point["y"]))
 
-                measurements[point["row"]][point["column"]] = result["z"]
+                work_result = self.probe_result_to_work_position(
+                    result,
+                    wcs_label,
+                    expected_xy=(point["x"], point["y"])
+                )
+                measurements[point["row"]][point["column"]] = work_result["z"]
 
                 retract_command = "G0 Z%s" % self.format_gcode_number(settings["safe_z"])
                 if not self.send_command_and_wait(retract_command, timeout=8.0):
                     raise RuntimeError(_("Controller did not acknowledge: %s") % retract_command)
 
             reference = self.auto_level_reference_point(x_values, y_values, measurements)
+            measured_values = [
+                z_value for row_values in measurements for z_value in row_values if z_value is not None
+            ]
+            # Normalize all Z measurements relative to the reference point.
+            # The reference point (closest probe to work origin) defines Z=0 of the map.
+            # All other points are expressed as deltas relative to it, so that at the
+            # G-code Z=0 position the tool touches exactly the surface with zero offset.
+            measured_ref_z = reference["z"]
+            normalized_measurements = [
+                [z_val - measured_ref_z if z_val is not None else None for z_val in row]
+                for row in measurements
+            ]
             auto_map = {
                 "unit": "mm",
                 "x_values": x_values,
                 "y_values": y_values,
-                "z_values": measurements,
+                "z_values": normalized_measurements,
                 "reference_x": reference["x"],
                 "reference_y": reference["y"],
-                "reference_z": reference["z"],
+                "reference_z": 0.0,
+                "measured_reference_z": measured_ref_z,
+                "reference_mode": "work_zero",
+                "probe_coordinate_mode": self.probe_coordinate_mode,
                 "rows": len(y_values),
                 "columns": len(x_values),
                 "point_count": total,
@@ -1696,7 +1792,15 @@ class ToolCNCControl(AppTool):
                 "progress": 100,
                 "status": _("Height map ready: %d points") % total,
             })
-            self.append_console_sig.emit(_("Auto level height map ready: %d points.") % total, "info")
+            if measured_values:
+                self.append_console_sig.emit(
+                    _("Auto level height map ready: %d points. Z range %.4f..%.4f mm; work zero is reference.") % (
+                        total, min(measured_values), max(measured_values)
+                    ),
+                    "info"
+                )
+            else:
+                self.append_console_sig.emit(_("Auto level height map ready: %d points.") % total, "info")
         except Exception as err:
             self.auto_level_update_sig.emit({
                 "busy": False,
@@ -2077,6 +2181,21 @@ class ToolCNCControl(AppTool):
             return False
         return all(isinstance(row, list) and len(row) == len(x_values) for row in z_values)
 
+    @staticmethod
+    def auto_level_map_z_values(height_map):
+        if not isinstance(height_map, dict):
+            return []
+        values = []
+        for row_values in height_map.get("z_values", []):
+            if not isinstance(row_values, list):
+                continue
+            for z_value in row_values:
+                try:
+                    values.append(float(z_value))
+                except (TypeError, ValueError):
+                    pass
+        return values
+
     def active_auto_level_map(self):
         enabled_widget = getattr(self.ui, "autolevel_enable_cb", None)
         enabled = bool(enabled_widget.get_value()) if enabled_widget is not None else False
@@ -2140,9 +2259,10 @@ class ToolCNCControl(AppTool):
 
         units = self.effective_gcode_units(context.get("units"))
         factor = 25.4 if units == "inch" else 1.0
+        # z_values are already normalized: reference point = 0.0, other points = delta.
+        # surface_z is therefore the Z correction to apply (positive = surface is higher).
         surface_z = self.auto_level_surface_z(height_map, x_value * factor, y_value * factor)
-        offset_mm = surface_z - float(height_map.get("reference_z", 0.0) or 0.0)
-        return offset_mm / factor
+        return surface_z / factor
 
     def replace_axis_word(self, line, axis, value):
         replacement = "%s%s" % (axis, self.format_gcode_number(value))
@@ -2310,6 +2430,11 @@ class ToolCNCControl(AppTool):
             self.last_controller_ack = lower
             self.ok_received.set()
 
+        if self.parse_work_offset_report(line):
+            if echo:
+                self.append_console_sig.emit(line, "rx")
+            return
+
         if self.parse_probe_result(line):
             if echo:
                 self.append_console_sig.emit(line, "rx")
@@ -2357,6 +2482,116 @@ class ToolCNCControl(AppTool):
         }
         self.probe_result_event.set()
         return True
+
+    @staticmethod
+    def parse_offset_coords(raw_coords, tlo=False):
+        coords = []
+        for value in str(raw_coords).split(","):
+            try:
+                coords.append(float(value))
+            except ValueError:
+                coords.append(0.0)
+
+        if tlo and len(coords) == 1:
+            return [0.0, 0.0, coords[0]]
+
+        while len(coords) < 3:
+            coords.append(0.0)
+        return coords[:3]
+
+    def parse_work_offset_report(self, line):
+        match = re.match(
+            r"\[(G54|G55|G56|G57|G58|G59(?:\.[123])?|G92|TLO):([^\]]+)\]",
+            line or "",
+            flags=re.IGNORECASE
+        )
+        if not match:
+            return False
+
+        label = match.group(1).upper()
+        coords = self.parse_offset_coords(match.group(2), tlo=(label == "TLO"))
+        if label.startswith("G5"):
+            self.work_offsets[label] = coords
+        elif label == "G92":
+            self.g92_offset = coords
+        elif label == "TLO":
+            self.tool_length_offset = coords
+        return True
+
+    def combined_work_offset(self, wcs_label):
+        wcs_offset = self.work_offsets.get(str(wcs_label or "G54").upper())
+        if wcs_offset is None:
+            wcs_offset = self.last_wco or [0.0, 0.0, 0.0]
+
+        return [
+            float(wcs_offset[idx]) + float(self.g92_offset[idx]) + float(self.tool_length_offset[idx])
+            for idx in range(3)
+        ]
+
+    def probe_result_to_work_position(self, result, wcs_label, expected_xy=None):
+        coords = [
+            float(result.get("x", 0.0) or 0.0),
+            float(result.get("y", 0.0) or 0.0),
+            float(result.get("z", 0.0) or 0.0),
+        ]
+
+        combined_offset = self.combined_work_offset(wcs_label)
+        machine_as_work = [coords[idx] - combined_offset[idx] for idx in range(3)]
+
+        mode = None
+        if expected_xy is not None:
+            try:
+                expected_x = float(expected_xy[0])
+                expected_y = float(expected_xy[1])
+                raw_xy_error = math.hypot(coords[0] - expected_x, coords[1] - expected_y)
+                converted_xy_error = math.hypot(machine_as_work[0] - expected_x, machine_as_work[1] - expected_y)
+                tolerance = 0.25
+                margin = 0.05
+                if raw_xy_error + margin < converted_xy_error:
+                    mode = "work"
+                elif converted_xy_error + margin < raw_xy_error:
+                    mode = "machine"
+                elif raw_xy_error <= tolerance and converted_xy_error > tolerance:
+                    mode = "work"
+                elif converted_xy_error <= tolerance and raw_xy_error > tolerance:
+                    mode = "machine"
+            except (TypeError, ValueError, IndexError):
+                mode = None
+
+        if mode is None:
+            raw_z_error = abs(coords[2])
+            converted_z_error = abs(machine_as_work[2])
+            z_margin = 0.25
+            if raw_z_error + z_margin < converted_z_error:
+                mode = "work"
+            elif converted_z_error + z_margin < raw_z_error:
+                mode = "machine"
+
+        if mode is None:
+            mode = self.probe_coordinate_mode
+        if mode is None:
+            offset_size = math.sqrt(sum(value * value for value in combined_offset))
+            mode = "machine" if offset_size > 0.001 else "work"
+
+        if self.probe_coordinate_mode is None:
+            self.probe_coordinate_mode = mode
+            label = _("work coordinates") if mode == "work" else _("machine coordinates")
+            self.append_console_sig.emit(_("Probe coordinate mode detected: %s.") % label, "info")
+
+        if mode == "work":
+            return {
+                "x": coords[0],
+                "y": coords[1],
+                "z": coords[2],
+                "success": result.get("success", False),
+            }
+
+        return {
+            "x": machine_as_work[0],
+            "y": machine_as_work[1],
+            "z": machine_as_work[2],
+            "success": result.get("success", False),
+        }
 
     def parse_status(self, line):
         parts = line[1:-1].split("|")
@@ -2458,6 +2693,12 @@ class ToolCNCControl(AppTool):
             f"background-color: {colors.get(state, '#999999')}; border-radius: 6px;"
         )
 
+        if "WCO" in data:
+            try:
+                self.last_wco = [float(x) for x in (data["WCO"].split(",") + ["0", "0", "0"])[:3]]
+            except ValueError:
+                pass
+
         if "WPos" in data:
             coords = (data["WPos"].split(",") + ["0.000", "0.000", "0.000"])[:3]
             self.ui.x_val.setText(coords[0])
@@ -2466,7 +2707,7 @@ class ToolCNCControl(AppTool):
         elif "MPos" in data and "WCO" in data:
             # Calculate WPos from MPos and WCO if WPos is not directly provided
             m_coords = [float(x) for x in (data["MPos"].split(",") + ["0", "0", "0"])[:3]]
-            wco = [float(x) for x in (data["WCO"].split(",") + ["0", "0", "0"])[:3]]
+            wco = self.last_wco or [0.0, 0.0, 0.0]
             self.ui.x_val.setText(f"{m_coords[0] - wco[0]:.3f}")
             self.ui.y_val.setText(f"{m_coords[1] - wco[1]:.3f}")
             self.ui.z_val.setText(f"{m_coords[2] - wco[2]:.3f}")
@@ -2520,6 +2761,9 @@ class ToolCNCControl(AppTool):
             self.on_queue_add()
             if not self.job_queue:
                 return
+
+        if not self.refresh_queued_gcode():
+            return
 
         for item in self.job_queue:
             item["status"] = _("Queued")
@@ -2633,10 +2877,23 @@ class ToolCNCControl(AppTool):
                 )
             if transform_context.get("autolevel_enabled"):
                 height_map = transform_context.get("autolevel_map", {})
-                self.append_console_sig.emit(
-                    _("Auto level map is active: %d points.") % int(height_map.get("point_count", 0) or 0),
-                    "info"
-                )
+                z_values = self.auto_level_map_z_values(height_map)
+                mode_label = height_map.get("probe_coordinate_mode") or _("unknown")
+                if z_values:
+                    self.append_console_sig.emit(
+                        _("Auto level map is active: %d points. Z range %.4f..%.4f mm; probe mode: %s.") % (
+                            int(height_map.get("point_count", 0) or 0),
+                            min(z_values),
+                            max(z_values),
+                            mode_label
+                        ),
+                        "info"
+                    )
+                else:
+                    self.append_console_sig.emit(
+                        _("Auto level map is active: %d points.") % int(height_map.get("point_count", 0) or 0),
+                        "info"
+                    )
 
             wcs_label, _p_num = self.selected_work_offset()
             self.ok_received.clear()
@@ -2663,7 +2920,7 @@ class ToolCNCControl(AppTool):
                     continue
                 self.last_controller_ack = ""
                 self.send_command(sent_command, log=True)
-                if not self.wait_for_stream_ack(sent_command, timeout=None):
+                if not self.wait_for_stream_ack(sent_command, timeout=None, warn_after=None):
                     item["status"] = _("Stopped")
                     self.queue_update_sig.emit()
                     stream_aborted = True

@@ -675,6 +675,43 @@ class GeometryObject(FlatCAMObj, Geometry):
 
         # Object initialization function for app.app_obj.new_object()
         # RUNNING ON SEPARATE THREAD!
+        def resolve_milling_offset(tool_data, dia_value):
+            try:
+                dia_float = float(dia_value)
+            except (TypeError, ValueError):
+                dia_float = 0.0
+
+            offset_type = tool_data.get('tools_mill_offset_type', 0)
+            if isinstance(offset_type, str):
+                offset_key = offset_type.strip().lower()
+            else:
+                try:
+                    offset_key = int(offset_type)
+                except (TypeError, ValueError):
+                    offset_key = 0
+
+            if offset_key in ('in', 'inside', '1', 1):
+                return -dia_float / 2.0
+            if offset_key in ('out', 'outside', '2', 2):
+                return dia_float / 2.0
+            if offset_key in ('custom', '3', 3):
+                offset_value = tool_data.get('tools_mill_offset_value', None)
+                if offset_value in (None, ''):
+                    try:
+                        offset_value = self.ui.tool_offset_entry.get_value()
+                    except AttributeError:
+                        offset_value = 0.0
+                try:
+                    return float(offset_value)
+                except (TypeError, ValueError):
+                    try:
+                        return float(str(offset_value).replace(',', '.'))
+                    except ValueError:
+                        self.app.inform.emit('[ERROR_NOTCL] %s' %
+                                             _("Wrong value format entered, use a number."))
+                        return None
+            return 0.0
+
         def job_init_single_geometry(job_obj, app_obj):
             self.app.log.debug("Creating a CNCJob out of a single-geometry")
             assert job_obj.kind == 'cncjob', "Initializer expected a CNCJobObject, got %s" % type(job_obj)
@@ -706,36 +743,18 @@ class GeometryObject(FlatCAMObj, Geometry):
 
                 dia_cnc_dict = deepcopy(tools_dict[tool_uid_key])
                 tooldia_val = app_obj.dec_format(float(tools_dict[tool_uid_key]['tooldia']), self.decimals)
+                tooldia_float = float(tooldia_val)
                 dia_cnc_dict.update({
                     'tooldia': tooldia_val
                 })
 
-                if dia_cnc_dict['data']['tools_mill_offset_type'] == 'in':
-                    tool_offset = -dia_cnc_dict['tooldia'] / 2
-                elif dia_cnc_dict['data']['tools_mill_offset_type'].lower() == 'out':
-                    tool_offset = dia_cnc_dict['tooldia'] / 2
-                elif dia_cnc_dict['data']['tools_mill_offset_type'].lower() == 'custom':
-                    try:
-                        offset_value = float(self.ui.tool_offset_entry.get_value())
-                    except ValueError:
-                        # try to convert comma to decimal point. if it's still not working error message and return
-                        try:
-                            offset_value = float(self.ui.tool_offset_entry.get_value().replace(',', '.'))
-                        except ValueError:
-                            app_obj.inform.emit('[ERROR_NOTCL] %s' % _("Wrong value format entered, use a number."))
-                            return
-                    if offset_value:
-                        tool_offset = float(offset_value)
-                    else:
-                        app_obj.inform.emit(
-                            '[WARNING] %s' % _("Tool Offset is selected in Tool Table but no value is provided.\n"
-                                               "Add a Tool Offset or change the Offset Type.")
-                        )
-                        return
-                else:
-                    tool_offset = 0.0
+                tool_offset = resolve_milling_offset(dia_cnc_dict['data'], tooldia_float)
+                if tool_offset is None:
+                    return
 
-                dia_cnc_dict['data']['tools_mill_offset_type'] = tool_offset
+                dia_cnc_dict['data']['tools_mill_tooldia'] = tooldia_val
+                dia_cnc_dict['data']['tools_mill_offset_value'] = tool_offset
+                tools_dict[tool_uid_key]['data']['tools_mill_offset_value'] = tool_offset
 
                 z_cut = tools_dict[tool_uid_key]['data']["tools_mill_cutz"]
                 z_move = tools_dict[tool_uid_key]['data']["tools_mill_travelz"]
@@ -857,6 +876,7 @@ class GeometryObject(FlatCAMObj, Geometry):
                 tool_cnt += 1
                 dia_cnc_dict = deepcopy(tools_dict[tooluid_key])
                 tooldia_val = app_obj.dec_format(float(tools_dict[tooluid_key]['tooldia']), self.decimals)
+                tooldia_float = float(tooldia_val)
                 dia_cnc_dict.update({
                     'tooldia': tooldia_val
                 })
@@ -872,24 +892,13 @@ class GeometryObject(FlatCAMObj, Geometry):
                 #         current_uid = int(k)
                 #         break
 
-                if dia_cnc_dict['data']['tools_mill_offset_type'].lower() == 'in':
-                    tool_offset = -tooldia_val / 2
-                elif dia_cnc_dict['data']['tools_mill_offset_type'].lower() == 'out':
-                    tool_offset = tooldia_val / 2
-                elif dia_cnc_dict['data']['tools_mill_offset_type'].lower() == 'custom':
-                    offset_value = float(self.ui.tool_offset_entry.get_value())
-                    if offset_value:
-                        tool_offset = float(offset_value)
-                    else:
-                        self.app.inform.emit('[WARNING] %s' %
-                                             _("Tool Offset is selected in Tool Table but "
-                                               "no value is provided.\n"
-                                               "Add a Tool Offset or change the Offset Type."))
-                        return
-                else:
-                    tool_offset = 0.0
+                tool_offset = resolve_milling_offset(dia_cnc_dict['data'], tooldia_float)
+                if tool_offset is None:
+                    return
 
-                dia_cnc_dict['data']['tools_mill_offset_type'] = tool_offset
+                dia_cnc_dict['data']['tools_mill_tooldia'] = tooldia_val
+                dia_cnc_dict['data']['tools_mill_offset_value'] = tool_offset
+                tools_dict[tooluid_key]['data']['tools_mill_offset_value'] = tool_offset
 
                 # z_cut = tools_dict[tooluid_key]['data']["cutz"]
                 # z_move = tools_dict[tooluid_key]['data']["travelz"]

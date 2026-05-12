@@ -312,17 +312,20 @@ class AutoLevelSection(CNCSectionPlugin):
         ui.autolevel_probe_btn = FluidStyleButton(_("Probe Map"), "#5cb85c", "#449d44")
         ui.autolevel_stop_btn = FluidStyleButton(_("Stop"), "#d9534f", "#c9302c")
         ui.autolevel_clear_btn = FluidStyleButton(_("Clear"), "#444444", "#222222")
+        ui.autolevel_3d_btn = FluidStyleButton(_("3D Map"), "#5bc0de", "#31b0d5")
 
         ui.setup_button(ui.autolevel_fit_btn, "replot16.png", _("Set probing area from the selected CNCJob bounds."))
         ui.setup_button(ui.autolevel_probe_btn, "calibrate_16.png", _("Probe the grid and build a height map."))
         ui.setup_button(ui.autolevel_stop_btn, "power16.png", _("Stop the current probing cycle."))
         ui.setup_button(ui.autolevel_clear_btn, "trash16.png", _("Clear the current height map."))
+        ui.setup_button(ui.autolevel_3d_btn, "3d_area32.png", _("Open the measured height map in 3D."))
 
         button_grid.addWidget(ui.autolevel_fit_btn, 0, 0)
         button_grid.addWidget(ui.autolevel_probe_btn, 0, 1)
         button_grid.addWidget(ui.autolevel_stop_btn, 0, 2)
         button_grid.addWidget(ui.autolevel_clear_btn, 0, 3)
-        for column in range(4):
+        button_grid.addWidget(ui.autolevel_3d_btn, 0, 4)
+        for column in range(5):
             button_grid.setColumnStretch(column, 1)
 
         ui.autolevel_progress = QtWidgets.QProgressBar()

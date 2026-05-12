@@ -1102,6 +1102,7 @@ class App(QtCore.QObject):
         self.cnc_control_tool = ToolCNCControl(self)
         self.levelling_tool = self.cnc_control_tool
         self.cnc_preview_3d_tool = ToolCNCPreview3D(self)
+        self.cnc_height_map_3d_tool = ToolCNCHeightMap3D(self)
         self.ai_assistant_tool = ToolAIAssistant(self)
 
         # this is calculated in the class above (somehow?)
@@ -1712,6 +1713,10 @@ class App(QtCore.QObject):
         self.cnc_preview_3d_tool.install(icon=QtGui.QIcon(self.resource_location + '/3d_area32.png'),
                                          pos=self.ui.menu_plugins, separator=True)
 
+        self.cnc_height_map_3d_tool = ToolCNCHeightMap3D(self)
+        self.cnc_height_map_3d_tool.install(icon=QtGui.QIcon(self.resource_location + '/3d_area32.png'),
+                                            pos=self.ui.menu_plugins, separator=True)
+
         self.ai_assistant_tool = ToolAIAssistant(self)
         self.ai_assistant_tool.install(icon=QtGui.QIcon(self.resource_location + '/experiment32.png'),
                                        pos=self.ui.menu_plugins, separator=True)
@@ -1766,6 +1771,7 @@ class App(QtCore.QObject):
             self.milling_tool,
             self.cnc_control_tool,
             self.cnc_preview_3d_tool,
+            self.cnc_height_map_3d_tool,
             self.ai_assistant_tool,
 
             self.image_tool,

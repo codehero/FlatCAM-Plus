@@ -809,46 +809,48 @@ class ToolIsolation(Gerber, AppTool):
         self.ui.v_frame.hide()
 
     def on_update_tool_dia(self):
-        if not self.ui.v_frame.isVisible():
-            return
-
         self.ui_disconnect()
-
-        vdia = float(self.ui.tipdia_entry.get_value())
-        half_vangle = float(self.ui.tipangle_entry.get_value()) / 2
-        cut_z = self.ui.cutz_entry.get_value()
-        cut_z = -cut_z if cut_z < 0 else cut_z  # cut_z param has to have a positive value here
-
-        row = self.ui.tools_table.currentRow()
-        tool_uid_item = self.ui.tools_table.item(row, 3)
-        if tool_uid_item is None:
-            return
-        tool_uid = int(tool_uid_item.text())
-
-        tool_dia_item = self.ui.tools_table.item(row, 1)
-        if tool_dia_item is None:
-            return
-
         try:
+            self.sync_selected_tool_parameters(options=[
+                "tools_mill_tool_shape",
+                "tools_mill_cutz",
+                "tools_mill_vtipdia",
+                "tools_mill_vtipangle",
+            ])
+
+            if not self.ui.v_frame.isVisible():
+                return
+
+            vdia = float(self.ui.tipdia_entry.get_value())
+            half_vangle = float(self.ui.tipangle_entry.get_value()) / 2
+            cut_z = self.ui.cutz_entry.get_value()
+            cut_z = -cut_z if cut_z < 0 else cut_z  # cut_z param has to have a positive value here
+
             new_tooldia = vdia + (2 * cut_z * math.tan(math.radians(half_vangle)))
-        except ZeroDivisionError:
+            f_new_tool_dia = self.app.dec_format(new_tooldia, self.decimals)
+
+            # V-bit: update the selected tool's diameter to the calculated effective
+            # cutting width so that isolation offsets are computed correctly.
+            rows = self.selected_tool_rows()
+            for row in rows:
+                tooluid_item = self.ui.tools_table.item(row, 3)
+                if tooluid_item is None:
+                    continue
+                tooluid = int(tooluid_item.text())
+                if tooluid in self.iso_tools:
+                    self.iso_tools[tooluid]['tooldia'] = f_new_tool_dia
+                    self.iso_tools[tooluid]['data']['tools_iso_tooldia'] = f_new_tool_dia
+                    self.iso_tools[tooluid]['data']['tools_mill_tooldia'] = f_new_tool_dia
+                    dia_item = self.ui.tools_table.item(row, 1)
+                    if dia_item is not None:
+                        dia_item.setText(str(f_new_tool_dia))
+
+            # Also keep the calculated value as a suggestion for adding a new tool.
+            self.ui.new_tooldia_entry.set_value(f_new_tool_dia)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+        finally:
             self.ui_connect()
-            return
-
-        f_new_tool_dia = self.app.dec_format(new_tooldia, self.decimals)
-
-        tool_dias = [
-            self.app.dec_format(v['tooldia'], self.decimals) for v in self.iso_tools.values() if 'tooldia' in v]
-        if f_new_tool_dia in tool_dias:
-            # if the new diameter is already in the current tools abort: we don't want duplicates
-            self.ui_connect()
-            return
-
-        self.iso_tools[tool_uid]['tooldia'] = deepcopy(f_new_tool_dia)
-        self.iso_tools[tool_uid]['data']['tools_iso_tooldia'] = deepcopy(f_new_tool_dia)
-        self.ui.tools_table.item(row, 1).setText(str(f_new_tool_dia))
-
-        self.ui_connect()
 
     def on_toggle_all_rows(self):
         """
@@ -982,25 +984,53 @@ class ToolIsolation(Gerber, AppTool):
         self.blockSignals(True)
 
         widget_changed = self.sender()
+        if widget_changed is None or widget_changed.objectName() not in self.name2option:
+            self.sync_selected_tool_parameters()
+            self.blockSignals(False)
+            return
+
         wdg_objname = widget_changed.objectName()
         option_changed = self.name2option[wdg_objname]
+        self.sync_selected_tool_parameters(options=[option_changed])
 
-        # row = self.ui.tools_table.currentRow()
+        self.blockSignals(False)
+
+    def selected_tool_rows(self):
         rows = sorted(set(index.row() for index in self.ui.tools_table.selectedIndexes()))
+        if not rows:
+            current_row = self.ui.tools_table.currentRow()
+            if current_row >= 0:
+                rows = [current_row]
+        return [row for row in rows if 0 <= row < self.ui.tools_table.rowCount()]
+
+    def sync_selected_tool_parameters(self, options=None):
+        """
+        Persist the visible parameter form into selected isolation tools.
+
+        Spinner editingFinished signals do not always emit returnPressed, therefore
+        generation has to explicitly sync the visible values before CAM geometry is made.
+        """
+        if self.ui.tools_table.rowCount() == 0:
+            return
+
+        rows = self.selected_tool_rows()
+        sync_options = list(options or self.form_fields.keys())
         for row in rows:
-            if row < 0:
-                row = 0
-            tooluid_item = int(self.ui.tools_table.item(row, 3).text())
+            tooluid_item = self.ui.tools_table.item(row, 3)
+            if tooluid_item is None:
+                continue
+            tooluid_item = int(tooluid_item.text())
 
             for tooluid_key, tooluid_val in self.iso_tools.items():
                 if int(tooluid_key) == tooluid_item:
-                    new_option_value = self.form_fields[option_changed].get_value()
-                    if option_changed in tooluid_val:
-                        tooluid_val[option_changed] = new_option_value
-                    if option_changed in tooluid_val['data']:
-                        tooluid_val['data'][option_changed] = new_option_value
-
-        self.blockSignals(False)
+                    for option_changed in sync_options:
+                        if option_changed not in self.form_fields:
+                            continue
+                        new_option_value = self.form_fields[option_changed].get_value()
+                        if option_changed in tooluid_val:
+                            tooluid_val[option_changed] = new_option_value
+                        if 'data' in tooluid_val:
+                            tooluid_val['data'][option_changed] = new_option_value
 
     def on_apply_param_to_all_clicked(self):
         if self.ui.tools_table.rowCount() == 0:
@@ -1430,10 +1460,10 @@ class ToolIsolation(Gerber, AppTool):
             if truncated_tooldia == db_tooldia:
                 tool_found += 1
                 for d in db_tool_val['data']:
-                    if d.find('tools_iso_') == 0:
+                    if d.find('tools_iso_') == 0 or d.find('tools_mill_') == 0:
                         new_tools_dict[d] = db_tool_val['data'][d]
                     elif d.find('tools_') == 0:
-                        # don't need data for other App Tools; this tests after 'tools_iso_'
+                        # don't need data for other App Tools; this tests after Isolation/Milling data
                         continue
                     else:
                         new_tools_dict[d] = db_tool_val['data'][d]
@@ -1442,10 +1472,10 @@ class ToolIsolation(Gerber, AppTool):
                 tool_found += 1
                 updated_tooldia = db_tooldia
                 for d in db_tool_val['data']:
-                    if d.find('tools_iso_') == 0:
+                    if d.find('tools_iso_') == 0 or d.find('tools_mill_') == 0:
                         new_tools_dict[d] = db_tool_val['data'][d]
                     elif d.find('tools_') == 0:
-                        # don't need data for other App Tools; this tests after 'tools_iso_'
+                        # don't need data for other App Tools; this tests after Isolation/Milling data
                         continue
                     else:
                         new_tools_dict[d] = db_tool_val['data'][d]
@@ -1495,6 +1525,19 @@ class ToolIsolation(Gerber, AppTool):
 
         tool_dia = dia if dia is not None else self.ui.new_tooldia_entry.get_value()
 
+        # V-bit akıllı başlangıç: Diameter alanı 0 ya da boşsa ve V-bit tipi seçiliyse,
+        # Tip Dia + Tip Angle + Cut Z parametrelerinden efektif çapı otomatik hesapla.
+        if (tool_dia is None or tool_dia == 0) and self.ui.v_frame.isVisible():
+            try:
+                vdia = float(self.ui.tipdia_entry.get_value() or 0)
+                half_vangle = float(self.ui.tipangle_entry.get_value() or 0) / 2
+                cut_z = self.ui.cutz_entry.get_value() or 0
+                cut_z = -cut_z if cut_z < 0 else cut_z
+                if vdia > 0 and half_vangle > 0:
+                    tool_dia = vdia + (2 * cut_z * math.tan(math.radians(half_vangle)))
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+
         if tool_dia is None or tool_dia == 0:
             self.build_ui()
             self.app.inform.emit('[WARNING_NOTCL] %s' % _("Please enter a tool diameter with non-zero value, "
@@ -1535,6 +1578,10 @@ class ToolIsolation(Gerber, AppTool):
         # update the UI form
         self.update_ui()
 
+        # V-bit tipinde yeni eklenen aracın efektif çapını hemen güncelle
+        if self.ui.v_frame.isVisible():
+            self.on_update_tool_dia()
+
         if muted is None:
             self.app.inform.emit('[success] %s' % _("Default tool added to Tool Table."))
 
@@ -1562,7 +1609,10 @@ class ToolIsolation(Gerber, AppTool):
         # identify the tool that was edited and get it's tooluid
         if new_tool_dia not in tool_dias:
             try:
-                self.iso_tools[editeduid]['tooldia'] = deepcopy(float('%.*f' % (self.decimals, new_tool_dia)))
+                synced_dia = deepcopy(float('%.*f' % (self.decimals, new_tool_dia)))
+                self.iso_tools[editeduid]['tooldia'] = synced_dia
+                self.iso_tools[editeduid]['data']['tools_iso_tooldia'] = synced_dia
+                self.iso_tools[editeduid]['data']['tools_mill_tooldia'] = synced_dia
             except Exception as err:
                 self.app.inform.emit('[ERROR_NOTCL] %s' % _("Failed."))
                 self.app.log.error("Failed due: %s" % str(err))
@@ -1663,6 +1713,7 @@ class ToolIsolation(Gerber, AppTool):
 
     def on_iso_button_click(self, copper_mode=False):
         self.copper_mode_active = bool(copper_mode)
+        self.sync_selected_tool_parameters()
         use_validation = self.ui.valid_cb.get_value()
         # assume that the validation is OK
         self.validation_status = True
@@ -1929,20 +1980,13 @@ class ToolIsolation(Gerber, AppTool):
 
         for tool in sel_tools:
             tool_data = tools_storage[tool]['data']
-
-            for key in tools_storage[tool]:
-                if key == 'data':
-                    tools_storage[tool][key]["tools_iso_isoexcept"] = use_iso_except
-                    tools_storage[tool][key]["tools_iso_simplification"] = use_simplification
-                    tools_storage[tool][key]["tools_iso_simplification_tol"] = simplification_tol
-                    tools_storage[tool][key]["tools_mill_job_type"] = 2
-                    tools_storage[tool][key]["tools_mill_tool_shape"] = self.ui.tool_shape_combo.get_value()
-                    tools_storage[tool][key]["tools_mill_cutz"] = self.ui.cutz_entry.get_value()
-                    tools_storage[tool][key]["tools_mill_vtipdia"] = self.ui.tipdia_entry.get_value()
-                    tools_storage[tool][key]["tools_mill_vtipangle"] = self.ui.tipangle_entry.get_value()
-                    tools_storage[tool][key]["tools_iso_passes"] = self.ui.passes_entry.get_value()
-                    tools_storage[tool][key]["tools_iso_overlap"] = self.ui.iso_overlap_entry.get_value()
-                    tools_storage[tool][key]["tools_iso_milling_type"] = self.ui.milling_type_radio.get_value()
+            tool_data.update({
+                "tools_iso_isoexcept": use_iso_except,
+                "tools_iso_simplification": use_simplification,
+                "tools_iso_simplification_tol": simplification_tol,
+                "tools_mill_job_type": 2,
+            })
+            tool_data.setdefault("tools_mill_tool_shape", self.ui.tool_shape_combo.get_value())
 
             passes = max(1, int(tool_data['tools_iso_passes']))
             overlap = float(tool_data['tools_iso_overlap']) / 100.0
@@ -1994,6 +2038,9 @@ class ToolIsolation(Gerber, AppTool):
                 tool_data_for_obj.update({
                     "name": iso_name,
                     "tools_mill_tooldia": float(tool_dia),
+                    "tools_iso_tooldia": float(tool_dia),
+                    "tools_mill_offset_type": 0,
+                    "tools_mill_offset_value": 0.0,
                 })
 
                 def iso_init(geo_obj, fc_obj, solid_geo=deepcopy(new_solid_geo), dia=tool_dia,
@@ -2074,28 +2121,25 @@ class ToolIsolation(Gerber, AppTool):
         simplification_tol = args['simplification_tol'] if 'simplification_tol' in args else \
             self.ui.sim_tol_entry.get_value()
 
-        # update the Common Parameters values in the self.iso_tools
-        for tool_iso in tools_storage:
-            for key in tools_storage[tool_iso]:
-                if key == 'data':
-                    tools_storage[tool_iso][key]["tools_iso_rest"] = use_rest
-                    tools_storage[tool_iso][key]["tools_iso_combine_passes"] = use_combine
-                    tools_storage[tool_iso][key]["tools_iso_simplification"] = use_simplification
-                    tools_storage[tool_iso][key]["tools_iso_simplification_tol"] = simplification_tol
-                    tools_storage[tool_iso][key]["tools_iso_isoexcept"] = use_iso_except
-                    tools_storage[tool_iso][key]["tools_iso_selection"] = selection_type
-                    tools_storage[tool_iso][key]["tools_iso_area_shape"] = sel_area_shape
-                    tools_storage[tool_iso][key]["tools_mill_job_type"] = 2  # _("Isolation")
-                    tools_storage[tool_iso][key]["tools_mill_tool_shape"] = tool_tip_shape
-
-                    # Update parameters from UI that are common or visible
-                    tools_storage[tool_iso][key]["tools_mill_cutz"] = self.ui.cutz_entry.get_value()
-                    tools_storage[tool_iso][key]["tools_mill_vtipdia"] = self.ui.tipdia_entry.get_value()
-                    tools_storage[tool_iso][key]["tools_mill_vtipangle"] = self.ui.tipangle_entry.get_value()
-                    tools_storage[tool_iso][key]["tools_iso_passes"] = self.ui.passes_entry.get_value()
-                    tools_storage[tool_iso][key]["tools_iso_overlap"] = self.ui.iso_overlap_entry.get_value()
-                    tools_storage[tool_iso][key]["tools_iso_milling_type"] = self.ui.milling_type_radio.get_value()
-                    tools_storage[tool_iso][key]["tools_iso_isotype"] = self.ui.iso_type_radio.get_value()
+        # update only the selected tools; tool-specific values were synced from the UI before generation
+        for tool_iso in sel_tools:
+            if tool_iso not in tools_storage or 'data' not in tools_storage[tool_iso]:
+                continue
+            tool_data = tools_storage[tool_iso]['data']
+            tool_data.update({
+                "tools_iso_rest": use_rest,
+                "tools_iso_combine_passes": use_combine,
+                "tools_iso_simplification": use_simplification,
+                "tools_iso_simplification_tol": simplification_tol,
+                "tools_iso_isoexcept": use_iso_except,
+                "tools_iso_selection": selection_type,
+                "tools_iso_area_shape": sel_area_shape,
+                "tools_mill_job_type": 2,  # _("Isolation")
+            })
+            if 'tip_shape' in args:
+                tool_data["tools_mill_tool_shape"] = tool_tip_shape
+            else:
+                tool_data.setdefault("tools_mill_tool_shape", tool_tip_shape)
 
         if use_combine:
             if use_rest:
@@ -2208,28 +2252,34 @@ class ToolIsolation(Gerber, AppTool):
                         new_solid_geo = [
                             g.simplify(tolerance=simplification_tol) for g in new_solid_geo if not g.is_empty]
 
-                    tool_data.update({
+                    tool_data_for_obj = deepcopy(tool_data)
+                    tool_data_for_obj.update({
                         "name": iso_name,
+                        "tools_mill_tooldia": float(tool_dia),
+                        "tools_iso_tooldia": float(tool_dia),
+                        "tools_mill_offset_type": 0,
+                        "tools_mill_offset_value": 0.0,
                     })
 
-                    def iso_init(geo_obj, fc_obj):
+                    def iso_init(geo_obj, fc_obj, solid_geo=deepcopy(new_solid_geo), dia=tool_dia,
+                                 obj_tool_data=deepcopy(tool_data_for_obj),
+                                 use_exception=use_area_exception):
                         # Propagate options
-                        geo_obj.obj_options["tools_mill_tooldia"] = str(tool_dia)
-                        tool_data["tools_mill_tooldia"] = float(tool_dia)
+                        geo_obj.obj_options["tools_mill_tooldia"] = str(dia)
 
-                        geo_obj.solid_geometry = flatten_shapely_geometry(new_solid_geo)
+                        geo_obj.solid_geometry = flatten_shapely_geometry(solid_geo)
 
                         # ############################################################
                         # ########## AREA SUBTRACTION ################################
                         # ############################################################
-                        if use_area_exception:
+                        if use_exception:
                             self.app.proc_container.update_view_text(' %s' % _("Subtracting Geo"))
                             geo_obj.solid_geometry = self.area_subtraction(geo_obj.solid_geometry)
 
                         geo_obj.tools = {
                             1: {
-                                'tooldia':          float(tool_dia),
-                                'data':             tool_data,
+                                'tooldia':          float(dia),
+                                'data':             deepcopy(obj_tool_data),
                                 'solid_geometry':   flatten_shapely_geometry(geo_obj.solid_geometry)
                             }
                         }
@@ -2397,6 +2447,9 @@ class ToolIsolation(Gerber, AppTool):
                         }
                     })
                     tools_storage[tool]['data']['tools_mill_tooldia'] = float(tool_dia)
+                    tools_storage[tool]['data']['tools_iso_tooldia'] = float(tool_dia)
+                    tools_storage[tool]['data']['tools_mill_offset_type'] = 0
+                    tools_storage[tool]['data']['tools_mill_offset_value'] = 0.0
                     total_solid_geometry += new_solid_geo
 
                     # if the geometry is all isolated
@@ -2525,8 +2578,8 @@ class ToolIsolation(Gerber, AppTool):
 
         for tool in sel_tools:
             tool_dia = tools_storage[tool]['tooldia']
-            tool_has_offset = tools_storage[tool]['data']['tools_mill_offset_type']
-            tool_offset_value = tools_storage[tool]['data']['tools_mill_offset_value']
+            tool_has_offset = 0
+            tool_offset_value = 0.0
             tool_type = tools_storage[tool]['data']['tools_mill_tool_shape']
             tool_data = tools_storage[tool]['data']
 
@@ -2626,6 +2679,9 @@ class ToolIsolation(Gerber, AppTool):
                 }
             })
             tools_storage[tool]['data']['tools_mill_tooldia'] = float(tool_dia)
+            tools_storage[tool]['data']['tools_iso_tooldia'] = float(tool_dia)
+            tools_storage[tool]['data']['tools_mill_offset_type'] = 0
+            tools_storage[tool]['data']['tools_mill_offset_value'] = 0.0
 
             total_solid_geometry += new_solid_geo
 
