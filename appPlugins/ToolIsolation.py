@@ -1,4 +1,4 @@
-﻿# ##########################################################
+# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -682,9 +682,9 @@ class ToolIsolation(Gerber, AppTool):
         self.ui.tools_table.itemChanged.connect(self.on_tool_edit)
 
         # V-shape tool parameters changes
-        self.ui.cutz_entry.editingFinished.connect(self.on_update_tool_dia)
-        self.ui.tipdia_entry.editingFinished.connect(self.on_update_tool_dia)
-        self.ui.tipangle_entry.editingFinished.connect(self.on_update_tool_dia)
+        self.ui.cutz_entry.valueChanged.connect(self.on_update_tool_dia)
+        self.ui.tipdia_entry.valueChanged.connect(self.on_update_tool_dia)
+        self.ui.tipangle_entry.valueChanged.connect(self.on_update_tool_dia)
 
         # rows selected
         self.ui.tools_table.clicked.connect(self.on_row_selection_change)
@@ -720,15 +720,15 @@ class ToolIsolation(Gerber, AppTool):
 
         # V-shape tool parameters changes
         try:
-            self.ui.cutz_entry.editingFinished.disconnect()
+            self.ui.cutz_entry.valueChanged.disconnect()
         except (TypeError, AttributeError):
             pass
         try:
-            self.ui.tipdia_entry.editingFinished.disconnect()
+            self.ui.tipdia_entry.valueChanged.disconnect()
         except (TypeError, AttributeError):
             pass
         try:
-            self.ui.tipangle_entry.editingFinished.disconnect()
+            self.ui.tipangle_entry.valueChanged.disconnect()
         except (TypeError, AttributeError):
             pass
 
@@ -1714,6 +1714,9 @@ class ToolIsolation(Gerber, AppTool):
     def on_iso_button_click(self, copper_mode=False):
         self.copper_mode_active = bool(copper_mode)
         self.sync_selected_tool_parameters()
+        if self.ui.v_frame.isVisible():
+            self.on_update_tool_dia()
+        
         use_validation = self.ui.valid_cb.get_value()
         # assume that the validation is OK
         self.validation_status = True
