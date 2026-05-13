@@ -301,6 +301,20 @@ class AutoLevelSection(CNCSectionPlugin):
             if widget_b is not None:
                 grid.addWidget(FCLabel(label_b, bold=True), row, 2)
                 grid.addWidget(widget_b, row, 3)
+
+        # Auto Zero Z — like 3D printer auto bed leveling:
+        # After probing, automatically move to reference point and set G92 Z0 there.
+        # User only needs to touch the bit to the PCB once (no manual Set Z Zero needed).
+        ui.autolevel_auto_zero = FCCheckBox(_("Auto Zero Z after probe"))
+        ui.autolevel_auto_zero.set_value(True)
+        ui.autolevel_auto_zero.setToolTip(
+            _("After probing completes, automatically move to the reference point\n"
+              "and set Z=0 there (G92 Z0). This means you do NOT need to manually\n"
+              "set Z=0 before probing — just touch the bit to the PCB at origin.\n"
+              "Works like 3D printer auto bed leveling.")
+        )
+        grid.addWidget(ui.autolevel_auto_zero, len(rows), 0, 1, 4)
+
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
 

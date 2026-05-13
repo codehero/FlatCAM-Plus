@@ -1474,6 +1474,13 @@ class ToolCNCControl(AppTool):
         if probe_depth >= 0:
             probe_depth = -abs(probe_depth) if probe_depth else -1.0
 
+        def bool_value(attr, default=True):
+            widget = getattr(self.ui, attr, None)
+            try:
+                return bool(widget.get_value())
+            except Exception:
+                return bool(default)
+
         return {
             "x_min": x_min,
             "x_max": x_max,
@@ -1484,6 +1491,7 @@ class ToolCNCControl(AppTool):
             "safe_z": double_value("autolevel_safe_z", 5.0),
             "probe_depth": probe_depth,
             "probe_feed": max(1, int_value("autolevel_probe_feed", 120)),
+            "auto_zero_z": bool_value("autolevel_auto_zero", True),
         }
 
     @staticmethod
@@ -1760,9 +1768,8 @@ class ToolCNCControl(AppTool):
                 z_value for row_values in measurements for z_value in row_values if z_value is not None
             ]
             # Normalize all Z measurements relative to the reference point.
-            # The reference point (closest probe to work origin) defines Z=0 of the map.
-            # All other points are expressed as deltas relative to it, so that at the
-            # G-code Z=0 position the tool touches exactly the surface with zero offset.
+            # The reference point (closest to work XY origin) defines Z=0 of the map.
+            # All other values are deltas — same as 3D printer auto bed leveling.
             measured_ref_z = reference["z"]
             normalized_measurements = [
                 [z_val - measured_ref_z if z_val is not None else None for z_val in row]
@@ -1777,7 +1784,7 @@ class ToolCNCControl(AppTool):
                 "reference_y": reference["y"],
                 "reference_z": 0.0,
                 "measured_reference_z": measured_ref_z,
-                "reference_mode": "work_zero",
+                "reference_mode": "self_zeroing",
                 "probe_coordinate_mode": self.probe_coordinate_mode,
                 "rows": len(y_values),
                 "columns": len(x_values),
@@ -1785,6 +1792,36 @@ class ToolCNCControl(AppTool):
                 "created_at": time.strftime("%H:%M:%S"),
             }
             self.auto_level_map = auto_map
+
+            # Auto Zero Z: move to reference point and set G92 Z0 there.
+            # Like 3D printer auto bed leveling — the probe map defines its own Z=0.
+            # This means the user only needs to physically touch the bit to the PCB
+            # surface (no manual Set Z Zero needed before probing).
+            if settings.get("auto_zero_z", True):
+                self.append_console_sig.emit(
+                    _("Auto Zero Z: moving to reference point X%.3f Y%.3f and setting Z=0...") % (
+                        reference["x"], reference["y"]
+                    ), "info"
+                )
+                auto_zero_commands = [
+                    "G0 X%s Y%s" % (
+                        self.format_gcode_number(reference["x"]),
+                        self.format_gcode_number(reference["y"]),
+                    ),
+                    "G0 Z%s" % self.format_gcode_number(measured_ref_z),
+                    "G92 Z0",
+                    "G0 Z%s" % self.format_gcode_number(settings["safe_z"]),
+                ]
+                for cmd in auto_zero_commands:
+                    if not self.send_command_and_wait(cmd, timeout=12.0):
+                        self.append_console_sig.emit(
+                            _("Auto Zero Z warning: command not acknowledged: %s") % cmd, "warn"
+                        )
+                        break
+                else:
+                    self.append_console_sig.emit(
+                        _("Auto Zero Z complete: Z=0 is now set at the PCB surface reference point."), "info"
+                    )
             self.auto_level_update_sig.emit({
                 "busy": False,
                 "enabled": True,
@@ -2530,44 +2567,35 @@ class ToolCNCControl(AppTool):
 
     def probe_result_to_work_position(self, result, wcs_label, expected_xy=None):
         # GRBL [PRB:X,Y,Z:1] always reports in MACHINE coordinates.
-        # To get work coordinates we must subtract the combined offset:
-        #   work = machine - (WCS_offset + G92_offset + TLO_offset)
-        # This is identical to what the DRO shows as "Work Position".
+        # For Z: we normalize against the reference point, so the absolute coordinate
+        # system (machine vs work) does NOT matter as long as we are consistent.
+        # We use raw machine Z for simplicity and reliability.
+        # For XY: convert to work coordinates so probe grid aligns with G-code XY.
         machine = [
             float(result.get("x", 0.0) or 0.0),
             float(result.get("y", 0.0) or 0.0),
             float(result.get("z", 0.0) or 0.0),
         ]
         combined_offset = self.combined_work_offset(wcs_label)
-        work = [machine[idx] - combined_offset[idx] for idx in range(3)]
+        # XY in work coordinates (so they align with G-code positions)
+        work_x = machine[0] - combined_offset[0]
+        work_y = machine[1] - combined_offset[1]
+        # Z: use raw machine coordinate — normalization (ref subtraction) handles the rest
+        raw_z = machine[2]
 
-        # Log coordinate mode for diagnostics (heuristic, not used for calculation)
         if self.probe_coordinate_mode is None:
-            if expected_xy is not None:
-                try:
-                    expected_x = float(expected_xy[0])
-                    expected_y = float(expected_xy[1])
-                    work_err = math.hypot(work[0] - expected_x, work[1] - expected_y)
-                    mach_err = math.hypot(machine[0] - expected_x, machine[1] - expected_y)
-                    if work_err < mach_err:
-                        detected_mode = "machine"   # offset subtraction brought us closer
-                    else:
-                        detected_mode = "work"      # raw value was already in work coords
-                except (TypeError, ValueError, IndexError):
-                    detected_mode = "machine"
-            else:
-                offset_size = math.sqrt(sum(v * v for v in combined_offset))
-                detected_mode = "machine" if offset_size > 0.001 else "work"
+            # Heuristic for logging only — does not affect the Z value used
+            offset_size = math.sqrt(sum(v * v for v in combined_offset))
+            detected_mode = "machine" if offset_size > 0.001 else "work"
             self.probe_coordinate_mode = detected_mode
-            label = _("work coordinates") if detected_mode == "work" else _("machine coordinates")
             self.append_console_sig.emit(
-                _("Probe coordinate mode detected: %s (offsets applied).") % label, "info"
+                _("Probe Z using raw machine coordinates. Normalization will define Z=0."), "info"
             )
 
         return {
-            "x": work[0],
-            "y": work[1],
-            "z": work[2],
+            "x": work_x,
+            "y": work_y,
+            "z": raw_z,
             "success": result.get("success", False),
         }
 
