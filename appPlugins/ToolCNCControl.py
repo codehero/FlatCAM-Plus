@@ -2278,11 +2278,12 @@ class ToolCNCControl(AppTool):
 
     @staticmethod
     def auto_level_bracket(values, value):
-        if value <= values[0]:
-            return 0, 0
-        if value >= values[-1]:
-            last = len(values) - 1
-            return last, last
+        if len(values) < 2: return 0, 0
+        if value <= values[0]: return 0, 1
+        if value >= values[-1]: return len(values) - 2, len(values) - 1
+        for i in range(len(values) - 1):
+            if values[i] <= value <= values[i + 1]: return i, i + 1
+        return len(values) - 2, len(values) - 1
         for index in range(len(values) - 1):
             if values[index] <= value <= values[index + 1]:
                 return index, index + 1
@@ -2389,12 +2390,8 @@ class ToolCNCControl(AppTool):
         has_xy = "X" in words or "Y" in words
         has_z = "Z" in words
         program_z = next_position.get("Z", position.get("Z", 0.0))
-        if (
-                context.get("autolevel_enabled") and
-                motion in [1, 2, 3] and
-                program_z <= 0.000001 and
-                (has_xy or has_z)
-        ):
+        if context.get("autolevel_enabled") and (has_xy or has_z):
+            # Apply offset to all motions (G0-G3) to maintain surface following
             z_offset = self.auto_level_offset_at(context, next_position["X"], next_position["Y"])
             adjusted_z = program_z + z_offset
             transformed = self.replace_axis_word(transformed, "Z", adjusted_z)
@@ -3116,4 +3113,5 @@ class ToolCNCControl(AppTool):
         if data.get("is_dir"):
             self.ui.current_path = self.ui.current_path.rstrip("/") + "/" + data["name"] + "/"
             self.on_refresh_files()
+
 
