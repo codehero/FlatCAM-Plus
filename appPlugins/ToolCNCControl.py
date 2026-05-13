@@ -2397,6 +2397,11 @@ class ToolCNCControl(AppTool):
             adjusted_z = program_z + z_offset
             transformed = self.replace_axis_word(transformed, "Z", adjusted_z)
             modified = True
+            
+            # Print Z-plunge transformations to console for debugging air-cutting issues
+            if program_z < 0.0:
+                msg = "[DEBUG-AL] G-code Z: %.3f | Offset: %+.3f | Adjusted Z: %.3f" % (program_z, z_offset, adjusted_z)
+                self.append_console_sig.emit(msg, "info")
 
         context["position"] = next_position
         return transformed if modified else command

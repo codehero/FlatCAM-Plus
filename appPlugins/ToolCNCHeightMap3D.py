@@ -209,6 +209,13 @@ class HeightMap3DCanvas(scene.SceneCanvas):
         if reset_camera or self._first_render:
             self.set_named_view("iso")
             self._first_render = False
+        else:
+            try:
+                self.view.camera.center = tuple(self.scene_center)
+                self.view.camera.view_changed()
+            except Exception:
+                pass
+
         self.update()
 
         # Statistics use only valid (non-NaN) Z values
