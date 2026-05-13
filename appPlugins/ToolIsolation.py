@@ -1,4 +1,4 @@
-# ##########################################################
+﻿# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -222,12 +222,12 @@ class ToolIsolation(Gerber, AppTool):
         # #############################################################################
         self.ui.tools_table.setupContextMenu()
         self.ui.tools_table.addContextMenu(
-            _("Search and Add"),
+            _("Add by Diameter"),
             self.on_add_tool_by_key,
             icon=QtGui.QIcon(self.app.resource_location + "/plus16.png")
         )
         self.ui.tools_table.addContextMenu(
-            _("Select tool From DB"),
+            _("Browse DB..."),
             self.on_tool_add_from_db_clicked,
             icon=QtGui.QIcon(self.app.resource_location + "/search_db32.png")
         )
@@ -3801,11 +3801,11 @@ class IsoUI:
         separator_line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         new_tool_grid.addWidget(separator_line, 0, 0, 1, 3)
 
-        self.tool_sel_label = FCLabel('%s' % _('Add from DB'), bold=True)
+        self.tool_sel_label = FCLabel('%s' % _('Add Tool'), bold=True)
         new_tool_grid.addWidget(self.tool_sel_label, 2, 0, 1, 3)
 
         # ### Tool Diameter ####
-        self.new_tooldia_lbl = FCLabel('%s: ' % _('Tool Dia'))
+        self.new_tooldia_lbl = FCLabel('%s: ' % _('Diameter'))
         self.new_tooldia_lbl.setToolTip(
             _("Diameter for the new tool")
         )
@@ -3833,7 +3833,7 @@ class IsoUI:
         button_grid = GLay(v_spacing=5, h_spacing=3, c_stretch=[1, 0])
         new_tool_grid.addLayout(button_grid, 6, 0, 1, 3)
 
-        self.search_and_add_btn = FCButton(_('Search and Add'))
+        self.search_and_add_btn = FCButton(_('Add by Diameter'))
         self.search_and_add_btn.setToolTip(
             _("Add a new tool to the Tool Table\n"
               "with the diameter specified above.\n"
@@ -3844,7 +3844,7 @@ class IsoUI:
 
         button_grid.addWidget(self.search_and_add_btn, 0, 0)
 
-        self.addtool_from_db_btn = FCButton(_('Select tool From DB'))
+        self.addtool_from_db_btn = FCButton(_('Browse DB...'))
         self.addtool_from_db_btn.setToolTip(
             _("Add a new tool to the Tool Table\n"
               "from the Tools Database.\n"
@@ -4359,3 +4359,5 @@ class IsoUI:
                                             (_("Edited value is out of range"), minval, maxval), False)
         else:
             self.app.inform[str, bool].emit('[success] %s' % _("Edited value is within limits."), False)
+
+
