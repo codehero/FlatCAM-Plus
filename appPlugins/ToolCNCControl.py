@@ -1799,29 +1799,53 @@ class ToolCNCControl(AppTool):
             # surface (no manual Set Z Zero needed before probing).
             if settings.get("auto_zero_z", True):
                 self.append_console_sig.emit(
-                    _("Auto Zero Z: moving to reference point X%.3f Y%.3f and setting Z=0...") % (
+                    _("Auto Zero Z: moving to X%.3f Y%.3f and probing surface to set Z=0...") % (
                         reference["x"], reference["y"]
                     ), "info"
                 )
-                auto_zero_commands = [
-                    "G0 X%s Y%s" % (
-                        self.format_gcode_number(reference["x"]),
-                        self.format_gcode_number(reference["y"]),
-                    ),
-                    "G0 Z%s" % self.format_gcode_number(measured_ref_z),
-                    "G92 Z0",
-                    "G0 Z%s" % self.format_gcode_number(settings["safe_z"]),
-                ]
-                for cmd in auto_zero_commands:
-                    if not self.send_command_and_wait(cmd, timeout=12.0):
-                        self.append_console_sig.emit(
-                            _("Auto Zero Z warning: command not acknowledged: %s") % cmd, "warn"
-                        )
-                        break
-                else:
+                # Step 1: move to reference XY (already at safe Z from last retract)
+                move_ref = "G0 X%s Y%s" % (
+                    self.format_gcode_number(reference["x"]),
+                    self.format_gcode_number(reference["y"]),
+                )
+                if not self.send_command_and_wait(move_ref, timeout=12.0):
                     self.append_console_sig.emit(
-                        _("Auto Zero Z complete: Z=0 is now set at the PCB surface reference point."), "info"
+                        _("Auto Zero Z: move to reference point failed."), "warn"
                     )
+                else:
+                    # Step 2: probe the surface again (same settings as main probe)
+                    # This stops exactly when the bit touches the PCB — no G0 to raw machine Z.
+                    probe_timeout = max(10.0, (abs(settings["probe_depth"]) / settings["probe_feed"] * 60.0) + 5.0)
+                    self.last_probe_result = None
+                    self.probe_result_event.clear()
+                    self.ok_received.clear()
+                    zero_probe_cmd = "G38.2 Z%s F%d" % (
+                        self.format_gcode_number(settings["probe_depth"]),
+                        int(settings["probe_feed"]),
+                    )
+                    self.send_command(zero_probe_cmd, log=True)
+                    probe_hit = self.probe_result_event.wait(timeout=probe_timeout)
+                    self.ok_received.wait(timeout=2.0)
+
+                    if probe_hit and self.last_probe_result and self.last_probe_result.get("success"):
+                        # Step 3: at the exact surface contact point → set Z=0
+                        if self.send_command_and_wait("G92 Z0", timeout=5.0):
+                            # Step 4: retract to safe Z
+                            retract = "G0 Z%s" % self.format_gcode_number(settings["safe_z"])
+                            self.send_command_and_wait(retract, timeout=10.0)
+                            self.append_console_sig.emit(
+                                _("Auto Zero Z complete: Z=0 set at PCB surface (reference point)."), "info"
+                            )
+                        else:
+                            self.append_console_sig.emit(
+                                _("Auto Zero Z: G92 Z0 not acknowledged."), "warn"
+                            )
+                    else:
+                        self.append_console_sig.emit(
+                            _("Auto Zero Z: surface probe did not trigger. Check Probe Z depth setting."), "warn"
+                        )
+                        # Retract to safety even on failure
+                        self.send_command_and_wait("G0 Z%s" % self.format_gcode_number(settings["safe_z"]), timeout=10.0)
             self.auto_level_update_sig.emit({
                 "busy": False,
                 "enabled": True,
