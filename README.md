@@ -46,6 +46,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Copper-aware isolation:** The Isolation plugin now includes **Generate With Copper**, a second generation path that uses the selected isolation tool while preserving large copper pours and filtering frame-like outer paths.
 - **Project-tree aware plugin object selectors:** Plugin object combo boxes now target the real Gerber, Excellon, Geometry, and CNCJob groups under the project root, so tools see actual files instead of group labels.
 - **Excellon DB loading:** Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing.
+- **Excellon Unit Scaling Fix:** Restored unit conversion logic for drill objects, ensuring tool diameters and depths scale correctly between MM and IN.
 - **Reference-aware rotation:** Toolbar and plot-area Rotate actions use the Transform Plugin reference setting, so late-loaded Excellon drill files can be rotated around the Gerber board center instead of only their own selection bounds.
 - **Gerber object action layout:** Gerber object actions place editor and information controls side by side for quicker access in the object properties panel.
 
@@ -66,6 +67,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Safer streaming:** Queue streaming now waits for controller `ok`/`error` acknowledgements before sending the next G-code line, preventing command flooding when the controller stops responding.
 - **GRBL status visibility:** Homing state and active X/Y/Z limit inputs are normalized and shown in the CNC dashboard for clearer WiFi/TCP GRBL operation.
 - **Machine-aware G-code metadata:** Exported G-code now records the active machine profile, travel limits, safe Z, and max spindle RPM as header comments, while Verify checks X/Y/Z motion bounds against the active profile.
+- **CNC Bed Compensation:** Preprocessors now support unit-aware **Bed Offset** and **Bed Skew** compensation for non-square machine beds, ensuring milling accuracy across the entire workspace.
 - **Modular CNC architecture:** CNC controller features are split into focused modules under `appPlugins/cnc_control/` for easier maintenance and future plugin-style extensions.
 - **Centralized manufacturing preferences:** Core machine setup starts from a dedicated Manufacturing Settings group before deeper plugin-specific defaults.
 - **FlatCAM CNC Android app (beta):** A native Android CNC control app is included under `flatcam-cnc-android/` as a beta companion for mobile controller sessions.
@@ -141,6 +143,8 @@ The CNC page is organized as a compact production dashboard:
 
 - **Probe pin workflow:** GRBL/FluidNC probe reports are parsed from `[PRB:x,y,z:1]` responses and used by the CNC Control height-map workflow.
 - **Height map probing:** The Auto Level panel can fit the probing area from the selected CNCJob, probe a configurable grid, and store a reusable height map.
+- **High-Precision Probing:** Implemented a dual-stage **"Fast Seek + Slow Touch"** probing cycle (Candle-style) to prevent PCB surface deformation and ensure sub-micron Z-zero accuracy.
+- **Advanced Auto-Leveling:** Added support for **G2/G3 arc path segmentation** and G91 incremental moves within the surface-following engine, allowing precise leveling even for complex curved geometries.
 - **Map application:** When **Use Map** is enabled, queue streaming applies bilinear Z compensation to cutting moves while preserving the original XY placement workflow.
 - **Safe probing controls:** Probing uses configured safe Z, probe depth, probe feed, selected WCS, spindle stop, stop/cancel state, and progress feedback.
 
