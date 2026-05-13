@@ -36,6 +36,7 @@ class HeightMap3DCanvas(scene.SceneCanvas):
         self.visuals = []
         self.scene_center = (0.0, 0.0, 0.0)
         self.scene_span = 50.0
+        self._first_render = True
         self.freeze()
 
     def clear_map(self):
@@ -45,6 +46,7 @@ class HeightMap3DCanvas(scene.SceneCanvas):
             except Exception:
                 pass
         self.visuals = []
+        self._first_render = True
         self.update()
 
     @staticmethod
@@ -97,7 +99,7 @@ class HeightMap3DCanvas(scene.SceneCanvas):
             [x_min, y_min, 0.0],
         ], dtype=np.float32)
 
-    def render_height_map(self, height_map, exaggeration=50.0, show_points=True):
+    def render_height_map(self, height_map, exaggeration=50.0, show_points=True, reset_camera=False):
         self.clear_map()
 
         x_values = np.asarray(height_map.get("x_values", []), dtype=np.float32)
@@ -202,7 +204,11 @@ class HeightMap3DCanvas(scene.SceneCanvas):
         z_max = float(np.nanmax(z_display)) if not has_nan else float(np.max(z_display))
         self.scene_center = ((x_min + x_max) / 2.0, (y_min + y_max) / 2.0, (z_min + z_max) / 2.0)
         self.scene_span = max(x_max - x_min, y_max - y_min, abs(z_max - z_min), 1.0)
-        self.set_named_view("iso")
+        # Only reset camera view on first load or explicit reset; preserve user's current view
+        # when just re-rendering due to Z scale change.
+        if reset_camera or self._first_render:
+            self.set_named_view("iso")
+            self._first_render = False
         self.update()
 
         # Statistics use only valid (non-NaN) Z values
@@ -305,7 +311,12 @@ class ToolCNCHeightMap3D(AppTool):
         top_btn.clicked.connect(lambda: self.canvas.set_named_view("top"))
         iso_btn.clicked.connect(lambda: self.canvas.set_named_view("iso"))
         fit_btn.clicked.connect(self.canvas.fit_current_view)
-        self.exaggeration_slider.valueChanged.connect(self.on_exaggeration_changed)
+        # Use sliderReleased so camera is not reset on every tick while dragging
+        self.exaggeration_slider.sliderReleased.connect(self.on_exaggeration_changed)
+        # Also update the label on every value change for live feedback
+        self.exaggeration_slider.valueChanged.connect(
+            lambda v: self.exaggeration_value.setText("%dx" % int(v))
+        )
 
         self._ui_built = True
 
@@ -328,11 +339,12 @@ class ToolCNCHeightMap3D(AppTool):
         cnc_tool = getattr(self.app, "cnc_control_tool", None) or getattr(self.app, "levelling_tool", None)
         return getattr(cnc_tool, "auto_level_map", None)
 
-    def on_exaggeration_changed(self, value):
-        self.exaggeration_value.setText("%dx" % int(value))
-        self.render_current_map()
+    def on_exaggeration_changed(self, value=None):
+        if value is not None:
+            self.exaggeration_value.setText("%dx" % int(value))
+        self.render_current_map(reset_camera=False)
 
-    def render_current_map(self):
+    def render_current_map(self, reset_camera=True):
         self.ensure_ui()
         height_map = self.height_map()
         if not height_map:
@@ -344,7 +356,8 @@ class ToolCNCHeightMap3D(AppTool):
         result = self.canvas.render_height_map(
             height_map,
             exaggeration=float(self.exaggeration_slider.value()),
-            show_points=True
+            show_points=True,
+            reset_camera=reset_camera
         )
         if not result.get("ok"):
             self.status_label.setText(result.get("message", _("Height map could not be rendered.")))

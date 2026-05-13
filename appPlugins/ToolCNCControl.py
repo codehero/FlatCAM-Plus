@@ -2529,69 +2529,48 @@ class ToolCNCControl(AppTool):
         ]
 
     def probe_result_to_work_position(self, result, wcs_label, expected_xy=None):
-        coords = [
+        # GRBL [PRB:X,Y,Z:1] always reports in MACHINE coordinates.
+        # To get work coordinates we must subtract the combined offset:
+        #   work = machine - (WCS_offset + G92_offset + TLO_offset)
+        # This is identical to what the DRO shows as "Work Position".
+        machine = [
             float(result.get("x", 0.0) or 0.0),
             float(result.get("y", 0.0) or 0.0),
             float(result.get("z", 0.0) or 0.0),
         ]
-
         combined_offset = self.combined_work_offset(wcs_label)
-        machine_as_work = [coords[idx] - combined_offset[idx] for idx in range(3)]
+        work = [machine[idx] - combined_offset[idx] for idx in range(3)]
 
-        mode = None
-        if expected_xy is not None:
-            try:
-                expected_x = float(expected_xy[0])
-                expected_y = float(expected_xy[1])
-                raw_xy_error = math.hypot(coords[0] - expected_x, coords[1] - expected_y)
-                converted_xy_error = math.hypot(machine_as_work[0] - expected_x, machine_as_work[1] - expected_y)
-                tolerance = 0.25
-                margin = 0.05
-                if raw_xy_error + margin < converted_xy_error:
-                    mode = "work"
-                elif converted_xy_error + margin < raw_xy_error:
-                    mode = "machine"
-                elif raw_xy_error <= tolerance and converted_xy_error > tolerance:
-                    mode = "work"
-                elif converted_xy_error <= tolerance and raw_xy_error > tolerance:
-                    mode = "machine"
-            except (TypeError, ValueError, IndexError):
-                mode = None
-
-        if mode is None:
-            raw_z_error = abs(coords[2])
-            converted_z_error = abs(machine_as_work[2])
-            z_margin = 0.25
-            if raw_z_error + z_margin < converted_z_error:
-                mode = "work"
-            elif converted_z_error + z_margin < raw_z_error:
-                mode = "machine"
-
-        if mode is None:
-            mode = self.probe_coordinate_mode
-        if mode is None:
-            offset_size = math.sqrt(sum(value * value for value in combined_offset))
-            mode = "machine" if offset_size > 0.001 else "work"
-
+        # Log coordinate mode for diagnostics (heuristic, not used for calculation)
         if self.probe_coordinate_mode is None:
-            self.probe_coordinate_mode = mode
-            label = _("work coordinates") if mode == "work" else _("machine coordinates")
-            self.append_console_sig.emit(_("Probe coordinate mode detected: %s.") % label, "info")
-
-        if mode == "work":
-            return {
-                "x": coords[0],
-                "y": coords[1],
-                "z": coords[2],
-                "success": result.get("success", False),
-            }
+            if expected_xy is not None:
+                try:
+                    expected_x = float(expected_xy[0])
+                    expected_y = float(expected_xy[1])
+                    work_err = math.hypot(work[0] - expected_x, work[1] - expected_y)
+                    mach_err = math.hypot(machine[0] - expected_x, machine[1] - expected_y)
+                    if work_err < mach_err:
+                        detected_mode = "machine"   # offset subtraction brought us closer
+                    else:
+                        detected_mode = "work"      # raw value was already in work coords
+                except (TypeError, ValueError, IndexError):
+                    detected_mode = "machine"
+            else:
+                offset_size = math.sqrt(sum(v * v for v in combined_offset))
+                detected_mode = "machine" if offset_size > 0.001 else "work"
+            self.probe_coordinate_mode = detected_mode
+            label = _("work coordinates") if detected_mode == "work" else _("machine coordinates")
+            self.append_console_sig.emit(
+                _("Probe coordinate mode detected: %s (offsets applied).") % label, "info"
+            )
 
         return {
-            "x": machine_as_work[0],
-            "y": machine_as_work[1],
-            "z": machine_as_work[2],
+            "x": work[0],
+            "y": work[1],
+            "z": work[2],
             "success": result.get("success", False),
         }
+
 
     def parse_status(self, line):
         parts = line[1:-1].split("|")
