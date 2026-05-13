@@ -1828,7 +1828,9 @@ class ToolCNCControl(AppTool):
                     self.ok_received.wait(timeout=2.0)
 
                     if probe_hit and self.last_probe_result and self.last_probe_result.get("success"):
-                        # Step 3: at the exact surface contact point → set Z=0
+                        trigger_z = self.last_probe_result.get("z", 0.0)
+                        move_trigger_cmd = "G90 G53 G1 Z%.4f F%d" % (trigger_z, max(10, int(settings["probe_feed"]) // 2))
+                        self.send_command_and_wait(move_trigger_cmd, timeout=5.0)
                         if self.send_command_and_wait("G92 Z0", timeout=5.0):
                             # Step 4: retract to safe Z
                             retract = "G0 Z%s" % self.format_gcode_number(settings["safe_z"])
@@ -3114,3 +3116,4 @@ class ToolCNCControl(AppTool):
         if data.get("is_dir"):
             self.ui.current_path = self.ui.current_path.rstrip("/") + "/" + data["name"] + "/"
             self.on_refresh_files()
+
