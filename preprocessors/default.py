@@ -105,7 +105,9 @@ class default(PreProc):
 
         gcode += ('G20\n' if p.units.upper() == 'IN' else 'G21\n')
         gcode += 'G90\n'
+        gcode += 'G54\n'
         gcode += 'G94'
+
 
         return gcode
 

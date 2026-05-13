@@ -123,6 +123,9 @@ class ToolIsolation(Gerber, AppTool):
         self.form_fields = {
             "tools_mill_tool_shape":    self.ui.tool_shape_combo,
             "tools_mill_cutz":          self.ui.cutz_entry,
+            "tools_mill_travelz":       self.ui.travelz_entry,
+            "tools_mill_feedrate":      self.ui.feedrate_entry,
+            "tools_mill_spindlespeed":  self.ui.spindlespeed_entry,
             "tools_mill_vtipdia":       self.ui.tipdia_entry,
             "tools_mill_vtipangle":     self.ui.tipangle_entry,
             "tools_iso_passes":         self.ui.passes_entry,
@@ -136,6 +139,9 @@ class ToolIsolation(Gerber, AppTool):
         self.name2option = {
             "i_tool_shape":     "tools_mill_tool_shape",
             "i_cutz":           "tools_mill_cutz",
+            "i_travelz":        "tools_mill_travelz",
+            "i_feedrate":       "tools_mill_feedrate",
+            "i_spindlespeed":   "tools_mill_spindlespeed",
             "i_tipdia":         "tools_mill_vtipdia",
             "i_tipangle":       "tools_mill_vtipangle",
             "i_passes":         "tools_iso_passes",
@@ -1999,7 +2005,7 @@ class ToolIsolation(Gerber, AppTool):
             outname = "%s_%.*f" % (isolated_obj.obj_options["name"], self.decimals, float(tool_dia))
 
             for i in range(passes):
-                iso_offset = tool_dia * ((2 * i + 1) / 2.0000001) - (i * overlap * tool_dia)
+                iso_offset = tool_dia * ((2 * i + 1) / 2.0) - (i * overlap * tool_dia)
                 if negative_dia:
                     iso_offset = -iso_offset
 
@@ -2048,7 +2054,7 @@ class ToolIsolation(Gerber, AppTool):
 
                 def iso_init(geo_obj, fc_obj, solid_geo=deepcopy(new_solid_geo), dia=tool_dia,
                              obj_tool_data=deepcopy(tool_data_for_obj)):
-                    geo_obj.obj_options["tools_mill_tooldia"] = str(dia)
+                    geo_obj.obj_options["tools_mill_tooldia"] = float(dia)
                     geo_obj.solid_geometry = self._non_empty_flat_geometry(solid_geo)
                     geo_obj.tools = {
                         1: {
@@ -2181,7 +2187,7 @@ class ToolIsolation(Gerber, AppTool):
 
                 tool_dia = tools_storage[tool]['tooldia']
                 for i in range(passes):
-                    iso_offset = tool_dia * ((2 * i + 1) / 2.0000001) - (i * overlap * tool_dia)
+                    iso_offset = tool_dia * ((2 * i + 1) / 2.0) - (i * overlap * tool_dia)
                     if negative_dia:
                         iso_offset = -iso_offset
 
@@ -2268,7 +2274,7 @@ class ToolIsolation(Gerber, AppTool):
                                  obj_tool_data=deepcopy(tool_data_for_obj),
                                  use_exception=use_area_exception):
                         # Propagate options
-                        geo_obj.obj_options["tools_mill_tooldia"] = str(dia)
+                        geo_obj.obj_options["tools_mill_tooldia"] = float(dia)
 
                         geo_obj.solid_geometry = flatten_shapely_geometry(solid_geo)
 
@@ -2474,7 +2480,7 @@ class ToolIsolation(Gerber, AppTool):
                 tools_storage.pop(tool, None)
 
         def iso_init(geo_obj, app_obj):
-            geo_obj.obj_options["tools_mill_tooldia"] = str(tool_dia)
+            geo_obj.obj_options["tools_mill_tooldia"] = float(tool_dia)
 
             geo_obj.tools = dict(tools_storage)
             geo_obj.solid_geometry = total_solid_geometry
@@ -2706,7 +2712,7 @@ class ToolIsolation(Gerber, AppTool):
                 g.simplify(tolerance=simp_tol) for g in total_solid_geometry if not g.is_empty]
 
         def iso_init(geo_obj, app_obj):
-            geo_obj.obj_options["tools_mill_tooldia"] = str(tool_dia)
+            geo_obj.obj_options["tools_mill_tooldia"] = float(tool_dia)
 
             geo_obj.tools = dict(tools_storage)
             geo_obj.solid_geometry = total_solid_geometry
@@ -3990,6 +3996,42 @@ class IsoUI:
         separator_line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         v_grid.addWidget(separator_line, 6, 0, 1, 2)
 
+        # Travel Z
+        self.travelzlabel = FCLabel('%s:' % _('Travel Z'))
+        self.travelzlabel.setToolTip(
+            _("Height of the tool when\n"
+              "moving without cutting."))
+        self.travelz_entry = FCDoubleSpinner(callback=self.confirmation_message)
+        self.travelz_entry.set_precision(self.decimals)
+        self.travelz_entry.set_range(-10000.0000, 10000.0000)
+        self.travelz_entry.setObjectName("i_travelz")
+        tool_param_grid.addWidget(self.travelzlabel, 7, 0)
+        tool_param_grid.addWidget(self.travelz_entry, 7, 1)
+
+        # Feedrate
+        self.feedratelabel = FCLabel('%s:' % _('Feedrate X-Y'))
+        self.feedratelabel.setToolTip(
+            _("Cutting speed in the XY\n"
+              "plane in units per minute"))
+        self.feedrate_entry = FCDoubleSpinner(callback=self.confirmation_message)
+        self.feedrate_entry.set_precision(self.decimals)
+        self.feedrate_entry.set_range(0.0000, 910000.0000)
+        self.feedrate_entry.setObjectName("i_feedrate")
+        tool_param_grid.addWidget(self.feedratelabel, 8, 0)
+        tool_param_grid.addWidget(self.feedrate_entry, 8, 1)
+
+        # Spindle Speed
+        self.spindlespeedlabel = FCLabel('%s:' % _('Spindle speed'))
+        self.spindlespeedlabel.setToolTip(
+            _("Speed of the spindle\n"
+              "in RPM (optional)"))
+        self.spindlespeed_entry = FCSpinner(callback=self.confirmation_message_int)
+        self.spindlespeed_entry.set_range(0, 1000000)
+        self.spindlespeed_entry.set_step(100)
+        self.spindlespeed_entry.setObjectName("i_spindlespeed")
+        tool_param_grid.addWidget(self.spindlespeedlabel, 9, 0)
+        tool_param_grid.addWidget(self.spindlespeed_entry, 9, 1)
+
         self.v_frame.hide()
 
         # Passes
@@ -4002,8 +4044,8 @@ class IsoUI:
         self.passes_entry.set_range(1, 999)
         self.passes_entry.setObjectName("i_passes")
 
-        tool_param_grid.addWidget(passlabel, 6, 0)
-        tool_param_grid.addWidget(self.passes_entry, 6, 1)
+        tool_param_grid.addWidget(passlabel, 10, 0)
+        tool_param_grid.addWidget(self.passes_entry, 10, 1)
 
         # Pad Passes
         padpasslabel = FCLabel('%s:' % _('Pad Passes'))
@@ -4015,8 +4057,8 @@ class IsoUI:
         self.pad_passes_entry.set_range(0, 999)
         self.pad_passes_entry.setObjectName("i_pad_passes")
 
-        tool_param_grid.addWidget(padpasslabel, 8, 0)
-        tool_param_grid.addWidget(self.pad_passes_entry, 8, 1)
+        tool_param_grid.addWidget(padpasslabel, 11, 0)
+        tool_param_grid.addWidget(self.pad_passes_entry, 11, 1)
 
         # Overlap Entry
         overlabel = FCLabel('%s:' % _('Overlap'))

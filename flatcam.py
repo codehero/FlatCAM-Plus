@@ -23,7 +23,8 @@ MIN_VERSION_MINOR = 6
 
 fcTranslate.apply_language('strings')
 if '_' not in builtins.__dict__:
-    _ = gettext.gettext
+    builtins._ = gettext.gettext
+_ = builtins._
 
 
 class StartupProjectLauncher(QtWidgets.QDialog):
@@ -315,7 +316,7 @@ class StartupProjectLauncher(QtWidgets.QDialog):
         self.accept()
 
     def on_open_project(self):
-        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+        filename, filter_ext = QtWidgets.QFileDialog.getOpenFileName(
             self,
             _("Open Project"),
             self.default_project_folder(),

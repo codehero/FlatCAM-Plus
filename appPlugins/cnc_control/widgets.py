@@ -21,176 +21,219 @@ class FluidStyleButton(QtWidgets.QToolButton):
 
 
 class GCodeJobCanvas(QtWidgets.QWidget):
+    full_screen_requested = QtCore.pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.preview = {}
         self.setMinimumSize(360, 280)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.setMouseTracking(True)
+        
+        # Pan and Zoom state
+        self.offset = QtCore.QPointF(0, 0)
+        self.zoom = 1.0
+        self.last_mouse_pos = None
+        self.is_panning = False
+        self.enable_fs_button = True
 
     def set_preview(self, preview):
         self.preview = preview or {}
+        # Reset pan/zoom on new preview load
+        self.offset = QtCore.QPointF(0, 0)
+        self.zoom = 1.0
         self.update()
 
     @staticmethod
     def nice_grid_step(span):
-        if span <= 0:
-            return 10.0
+        if span <= 0: return 10.0
         raw_step = span / 8.0
         magnitude = 10 ** math.floor(math.log10(raw_step))
         for multiplier in [1, 2, 5, 10]:
             step = multiplier * magnitude
-            if raw_step <= step:
-                return step
+            if raw_step <= step: return step
         return 10 * magnitude
-
-    @staticmethod
-    def draw_cross(painter, point, radius, color):
-        painter.setPen(QtGui.QPen(QtGui.QColor(color), 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        painter.drawLine(QtCore.QPointF(point.x() - radius, point.y()), QtCore.QPointF(point.x() + radius, point.y()))
-        painter.drawLine(QtCore.QPointF(point.x(), point.y() - radius), QtCore.QPointF(point.x(), point.y() + radius))
 
     def paintEvent(self, event):
         super().paintEvent(event)
-
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
         palette = self.palette()
-        base_color = palette.color(QtGui.QPalette.ColorRole.Base)
         text_color = palette.color(QtGui.QPalette.ColorRole.WindowText)
-        mid_color = palette.color(QtGui.QPalette.ColorRole.Mid)
 
-        outer = self.rect().adjusted(4, 4, -4, -4)
-        painter.setPen(QtGui.QPen(mid_color, 1))
-        painter.setBrush(base_color)
-        painter.drawRoundedRect(QtCore.QRectF(outer), 8, 8)
-
-        job_bounds = self.preview.get("job_bounds")
-        if not job_bounds:
-            painter.setPen(QtGui.QPen(text_color))
-            painter.drawText(outer, Qt.AlignmentFlag.AlignCenter, "No job canvas preview")
+        if not self.preview or not self.preview.get("segments"):
+            painter.setPen(QtGui.QColor("#777777"))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No Preview Available")
             return
 
-        x_min, x_max, y_min, y_max = [float(value) for value in job_bounds]
-        job_width = x_max - x_min
-        job_height = y_max - y_min
-        if job_width <= 0 or job_height <= 0:
-            painter.setPen(QtGui.QPen(text_color))
-            painter.drawText(outer, Qt.AlignmentFlag.AlignCenter, "Invalid job size")
-            return
+        outer = self.rect()
+        canvas_rect = outer.adjusted(4, 4, -4, -4)
 
-        header_height = 24
-        drawing_area = outer.adjusted(14, header_height + 8, -14, -14)
-        scale = min(drawing_area.width() / job_width, drawing_area.height() / job_height)
-        if scale <= 0:
-            return
-
-        canvas_width = job_width * scale
-        canvas_height = job_height * scale
-        canvas_rect = QtCore.QRectF(
-            drawing_area.center().x() - canvas_width / 2,
-            drawing_area.center().y() - canvas_height / 2,
-            canvas_width,
-            canvas_height
-        )
-
-        def to_canvas(x_value, y_value):
-            return QtCore.QPointF(
-                canvas_rect.left() + (float(x_value) - x_min) * scale,
-                canvas_rect.bottom() - (float(y_value) - y_min) * scale
-            )
-
-        header = self.preview.get("label", "")
-        painter.setPen(QtGui.QPen(text_color))
-        header_text = painter.fontMetrics().elidedText(
-            header,
-            Qt.TextElideMode.ElideRight,
-            max(20, outer.width() - 24)
-        )
-        painter.drawText(outer.adjusted(12, 5, -12, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, header_text)
-
-        painter.setBrush(QtGui.QColor("#fbfdff"))
+        # Draw Background
+        painter.setBrush(QtGui.QColor("#fbfdff") if text_color.lightness() > 128 else QtGui.QColor("#1e1e1e"))
         painter.setPen(QtGui.QPen(QtGui.QColor("#b8c2d0"), 1.2))
         painter.drawRect(canvas_rect)
 
-        grid_step = self.nice_grid_step(max(job_width, job_height))
-        grid_pen = QtGui.QPen(QtGui.QColor("#dce2ea"), 1)
-        painter.setPen(grid_pen)
+        # Full Screen Button
+        if self.enable_fs_button:
+            fs_rect = QtCore.QRect(outer.right() - 28, outer.top() + 8, 20, 18)
+            painter.setBrush(QtGui.QColor("#337ab7"))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QtCore.QRectF(fs_rect), 3, 3)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff"), 1.2))
+            painter.drawPolyline([
+                QtCore.QPoint(fs_rect.left()+4, fs_rect.top()+7),
+                QtCore.QPoint(fs_rect.left()+4, fs_rect.top()+4),
+                QtCore.QPoint(fs_rect.left()+7, fs_rect.top()+4)
+            ])
+            painter.drawPolyline([
+                QtCore.QPoint(fs_rect.right()-4, fs_rect.top()+7),
+                QtCore.QPoint(fs_rect.right()-4, fs_rect.top()+4),
+                QtCore.QPoint(fs_rect.right()-7, fs_rect.top()+4)
+            ])
+            painter.drawPolyline([
+                QtCore.QPoint(fs_rect.left()+4, fs_rect.bottom()-7),
+                QtCore.QPoint(fs_rect.left()+4, fs_rect.bottom()-4),
+                QtCore.QPoint(fs_rect.left()+7, fs_rect.bottom()-4)
+            ])
+            painter.drawPolyline([
+                QtCore.QPoint(fs_rect.right()-4, fs_rect.bottom()-7),
+                QtCore.QPoint(fs_rect.right()-4, fs_rect.bottom()-4),
+                QtCore.QPoint(fs_rect.right()-7, fs_rect.bottom()-4)
+            ])
 
-        first_x = math.ceil(x_min / grid_step) * grid_step
-        value = first_x
-        while value <= x_max + 1e-9:
-            point_a = to_canvas(value, y_min)
-            point_b = to_canvas(value, y_max)
-            painter.drawLine(point_a, point_b)
-            value += grid_step
+        # Bounds calculation
+        job_bounds = self.preview.get("job_bounds") # material size [x_min, x_max, y_min, y_max]
+        if job_bounds:
+            x_min, x_max, y_min, y_max = [float(v) for v in job_bounds]
+        else:
+            x_min, x_max, y_min, y_max = 0.0, 100.0, 0.0, 100.0
 
-        first_y = math.ceil(y_min / grid_step) * grid_step
-        value = first_y
-        while value <= y_max + 1e-9:
-            point_a = to_canvas(x_min, value)
-            point_b = to_canvas(x_max, value)
-            painter.drawLine(point_a, point_b)
-            value += grid_step
+        span_x = max(0.1, x_max - x_min)
+        span_y = max(0.1, y_max - y_min)
+        
+        base_scale = min(canvas_rect.width() / span_x, canvas_rect.height() / span_y) * 0.9
+        total_scale = base_scale * self.zoom
 
-        margin_pen = QtGui.QPen(QtGui.QColor("#f0ad4e"), 1.3, Qt.PenStyle.DashLine)
-        painter.setPen(margin_pen)
-        for guide in self.preview.get("margin_guides", []):
-            axis = guide.get("axis")
-            guide_value = float(guide.get("value", 0.0))
-            if axis == "X" and x_min <= guide_value <= x_max:
-                painter.drawLine(to_canvas(guide_value, y_min), to_canvas(guide_value, y_max))
-            elif axis == "Y" and y_min <= guide_value <= y_max:
-                painter.drawLine(to_canvas(x_min, guide_value), to_canvas(x_max, guide_value))
+        def to_canvas(x, y):
+            px = canvas_rect.center().x() + (float(x) - (x_min + x_max) / 2) * total_scale + self.offset.x()
+            py = canvas_rect.center().y() - (float(y) - (y_min + y_max) / 2) * total_scale + self.offset.y()
+            return QtCore.QPointF(px, py)
 
-        axis_pen = QtGui.QPen(QtGui.QColor("#d9534f"), 1.1, Qt.PenStyle.DashLine)
-        painter.setPen(axis_pen)
-        if x_min <= 0 <= x_max:
-            painter.drawLine(to_canvas(0, y_min), to_canvas(0, y_max))
-        if y_min <= 0 <= y_max:
-            painter.drawLine(to_canvas(x_min, 0), to_canvas(x_max, 0))
+        painter.setClipRect(canvas_rect)
 
-        painter.save()
-        painter.setClipRect(canvas_rect.adjusted(1, 1, -1, -1))
+        # 1. Draw Job/Material Outline (The PCB Board Area)
+        job_pen = QtGui.QPen(QtGui.QColor("#5bc0de"), 2, Qt.PenStyle.SolidLine)
+        painter.setPen(job_pen)
+        painter.setBrush(QtGui.QColor("#fcfdfd") if text_color.lightness() > 128 else QtGui.QColor("#252525"))
+        p_bl = to_canvas(x_min, y_min)
+        p_tr = to_canvas(x_max, y_max)
+        painter.drawRect(QtCore.QRectF(p_bl, p_tr))
 
-        rapid_pen = QtGui.QPen(QtGui.QColor("#9aa6b5"), 1, Qt.PenStyle.DashLine)
-        cut_pen = QtGui.QPen(QtGui.QColor("#3156d9"), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        for segment in self.preview.get("segments", []):
-            start = segment.get("start")
-            end = segment.get("end")
-            if not start or not end:
-                continue
-            painter.setPen(rapid_pen if segment.get("rapid") else cut_pen)
-            painter.drawLine(to_canvas(start[0], start[1]), to_canvas(end[0], end[1]))
+        # 2. Draw Margin Guides (Origin/Placement Guides)
+        margin_guides = self.preview.get("margin_guides", [])
+        painter.setPen(QtGui.QPen(QtGui.QColor("#f0ad4e"), 1, Qt.PenStyle.DashLine))
+        for guide in margin_guides:
+            if guide["axis"] == "X":
+                p1, p2 = to_canvas(guide["value"], y_min), to_canvas(guide["value"], y_max)
+                painter.drawLine(p1, p2)
+            else:
+                p1, p2 = to_canvas(x_min, guide["value"]), to_canvas(x_max, guide["value"])
+                painter.drawLine(p1, p2)
 
-        path_bounds = self.preview.get("path_bounds")
-        if path_bounds:
-            px_min, px_max, py_min, py_max = [float(value) for value in path_bounds]
-            path_rect = QtCore.QRectF(to_canvas(px_min, py_max), to_canvas(px_max, py_min)).normalized()
-            painter.setPen(QtGui.QPen(QtGui.QColor("#5cb85c"), 1.1, Qt.PenStyle.DashLine))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(path_rect)
+        # 3. Draw Grid (Subtle)
+        grid_step = self.nice_grid_step(max(span_x, span_y))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#dce2ea") if text_color.lightness() > 128 else QtGui.QColor("#333333"), 1))
+        curr_x = math.ceil(x_min / grid_step) * grid_step
+        while curr_x <= x_max:
+            p1, p2 = to_canvas(curr_x, y_min), to_canvas(curr_x, y_max)
+            painter.drawLine(p1, p2)
+            curr_x += grid_step
+        curr_y = math.ceil(y_min / grid_step) * grid_step
+        while curr_y <= y_max:
+            p1, p2 = to_canvas(x_min, curr_y), to_canvas(x_max, curr_y)
+            painter.drawLine(p1, p2)
+            curr_y += grid_step
 
-        painter.restore()
-
-        origin = self.preview.get("origin", [0.0, 0.0])
-        if x_min <= origin[0] <= x_max and y_min <= origin[1] <= y_max:
-            self.draw_cross(painter, to_canvas(origin[0], origin[1]), 7, "#d9534f")
-
-        start_point = self.preview.get("start")
-        if start_point:
-            painter.setPen(QtGui.QPen(QtGui.QColor("#1f7a3a"), 1))
-            painter.setBrush(QtGui.QColor("#5cb85c"))
-            painter.drawEllipse(to_canvas(start_point[0], start_point[1]), 4, 4)
-
-        painter.setPen(QtGui.QPen(QtGui.QColor("#b8c2d0"), 1.2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(canvas_rect)
-
+        # 4. Draw G-Code Path Bounds (If outside job)
         if self.preview.get("outside"):
-            warning_rect = outer.adjusted(12, 0, -12, -6)
-            painter.setPen(QtGui.QPen(QtGui.QColor("#d9534f")))
-            painter.drawText(warning_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom, "Path outside job size")
+            path_bounds = self.preview.get("path_bounds")
+            if path_bounds:
+                painter.setPen(QtGui.QPen(QtGui.QColor("#d9534f"), 1, Qt.PenStyle.DotLine))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                p_bl = to_canvas(path_bounds[0], path_bounds[2])
+                p_tr = to_canvas(path_bounds[1], path_bounds[3])
+                painter.drawRect(QtCore.QRectF(p_bl, p_tr))
+
+        # 5. Draw G-Code Segments
+        rapid_pen = QtGui.QPen(QtGui.QColor("#9aa6b5"), 1, Qt.PenStyle.DashLine)
+        cut_pen = QtGui.QPen(QtGui.QColor("#3156d9"), max(2.0, total_scale * 0.1), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        for seg in self.preview.get("segments", []):
+            painter.setPen(rapid_pen if seg.get("rapid") else cut_pen)
+            painter.drawLine(to_canvas(seg["start"][0], seg["start"][1]), to_canvas(seg["end"][0], seg["end"][1]))
+
+        # 6. Origin Marker (0,0 of Work CS)
+        origin_pt = to_canvas(0, 0)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#d9534f"), 2))
+        painter.drawLine(QtCore.QPointF(origin_pt.x() - 10, origin_pt.y()), QtCore.QPointF(origin_pt.x() + 10, origin_pt.y()))
+        painter.drawLine(QtCore.QPointF(origin_pt.x(), origin_pt.y() - 10), QtCore.QPointF(origin_pt.x(), origin_pt.y() + 10))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(origin_pt, 5, 5)
+
+        # 7. Live Spindle (Current Tool Position)
+        pos = self.preview.get("live_pos")
+        if pos:
+            spindle_pt = to_canvas(pos.get("X", 0), pos.get("Y", 0))
+            painter.setBrush(QtGui.QColor("#d9534f"))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff"), 1.5))
+            painter.drawEllipse(spindle_pt, 6, 6)
+            # Crosshair
+            painter.setPen(QtGui.QPen(QtGui.QColor("#d9534f"), 1))
+            painter.drawLine(QtCore.QPointF(spindle_pt.x() - 15, spindle_pt.y()), QtCore.QPointF(spindle_pt.x() + 15, spindle_pt.y()))
+            painter.drawLine(QtCore.QPointF(spindle_pt.x(), spindle_pt.y() - 15), QtCore.QPointF(spindle_pt.x(), spindle_pt.y() + 15))
+
+        painter.setClipping(False)
+
+        # Draw Info Label at Top Left
+        label = self.preview.get("label", "")
+        if label:
+            painter.setPen(text_color)
+            painter.setFont(QtGui.QFont("Segoe UI", 9))
+            painter.drawText(canvas_rect.adjusted(6, 4, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, label)
+
+    def wheelEvent(self, event):
+        angle = event.angleDelta().y()
+        factor = 1.1 if angle > 0 else 0.9
+        self.zoom *= factor
+        self.zoom = max(0.1, min(self.zoom, 50.0))
+        self.update()
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            outer = self.rect()
+            fs_rect = QtCore.QRect(outer.right() - 28, outer.top() + 8, 20, 18)
+            if self.enable_fs_button and fs_rect.contains(event.pos()):
+                self.full_screen_requested.emit()
+                return
+            self.is_panning = True
+            self.last_mouse_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.is_panning and self.last_mouse_pos:
+            delta = event.pos() - self.last_mouse_pos
+            self.offset += QtCore.QPointF(delta)
+            self.last_mouse_pos = event.pos()
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_panning = False
+            self.last_mouse_pos = None
+        super().mouseReleaseEvent(event)
 
 
 class DashboardGauge(QtWidgets.QWidget):

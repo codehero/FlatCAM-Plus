@@ -8,6 +8,23 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
+2026/05/14 - v1.0.3
+
+- added High-Precision Probing: Implemented a dual-stage "Fast Seek + Slow Touch" probing cycle (Candle-style) to prevent PCB surface deformation.
+- added Advanced Auto-Leveling: Added support for G2/G3 arc path segmentation and G91 incremental moves within the surface-following engine.
+- added CNC Bed Compensation: Preprocessors now support unit-aware Bed Offset and Bed Skew compensation for non-square machine beds.
+- added G-Code Preview: Enhanced real-time job preview with support for coordinate anchors and margins.
+- fixed Excellon Unit Scaling: Restored missing unit conversion logic for drill objects; tool diameters and depths now scale correctly between MM and IN.
+- fixed Coordinate Anchor Bug: Resolved "double anchor subtraction" issue that caused erratic machine movement during segmented moves.
+- fixed Streaming Crashes: Fixed a NameError in the CNC streaming worker when auto-leveling was active.
+- fixed Parameter Flow: Corrected parameter scaling in CNCJobObject by utilizing namespaced keys (tools_mill_*) for tool configurations.
+- fixed Coordinate Drift: Fixed coordinate displacement errors when switching units by ensuring xy_toolchange, xy_end, and bed offsets are correctly scaled.
+- fixed UI Responsiveness: Optimized status polling frequency during active probing to prevent controller timeouts.
+- changed Parameter Management: Updated the unit conversion chain to ensure tool dictionaries are fully synchronized with application-level unit changes.
+- changed G-Code Streaming: Refactored the streaming engine to pre-calculate transformations, minimizing latency before the first move.
+
+=================================================
+
 2026/05/03 - v1.0.0 beta
 
 - added centralized project version metadata in `appVersion.py`

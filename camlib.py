@@ -2742,7 +2742,7 @@ class CNCjob(Geometry):
     }
 
     def __init__(self, app,
-                 units="in", kind="generic", tooldia=0.0,
+                 units=None, kind="generic", tooldia=0.0,
                  z_cut=-0.002, z_move=0.1,
                  feedrate=3.0, feedrate_z=3.0, feedrate_rapid=3.0, feedrate_probe=3.0,
                  pp_geometry_name='default', pp_excellon_name='default',
@@ -2764,7 +2764,8 @@ class CNCjob(Geometry):
         Geometry.__init__(self, geo_steps_per_circle=self.steps_per_circle, app=app)
 
         self.kind = kind
-        self.units = units
+        # If no units specified, inherit from the app (the active document units)
+        self.units = (units or self.app.app_units).upper()
 
         self.z_cut = z_cut
         self.multidepth = False
@@ -2843,13 +2844,16 @@ class CNCjob(Geometry):
         self.input_geometry_bounds = None
 
         # compensation for CNC bed not square
-        self._bed_limit_x = self.app.options["cncjob_bed_max_x"]
-        self._bed_limit_y = self.app.options["cncjob_bed_max_y"]
+        # _bed_offset and _bed_skew are stored in app options as MM.
+        # Convert to job units so preprocessor position_code() applies them correctly.
+        _unit_factor = (1.0 / 25.4) if self.units == 'IN' else 1.0
+        self._bed_limit_x = float(self.app.options.get("cncjob_bed_max_x", 200.0)) * _unit_factor
+        self._bed_limit_y = float(self.app.options.get("cncjob_bed_max_y", 200.0)) * _unit_factor
 
-        self._bed_offset_x = self.app.options["cncjob_bed_offset_x"]
-        self._bed_offset_y = self.app.options["cncjob_bed_offset_y"]
-        self._bed_skew_x = self.app.options["cncjob_bed_skew_x"]
-        self._bed_skew_y = self.app.options["cncjob_bed_skew_y"]
+        self._bed_offset_x = float(self.app.options.get("cncjob_bed_offset_x", 0.0)) * _unit_factor
+        self._bed_offset_y = float(self.app.options.get("cncjob_bed_offset_y", 0.0)) * _unit_factor
+        self._bed_skew_x = float(self.app.options.get("cncjob_bed_skew_x", 0.0)) * _unit_factor
+        self._bed_skew_y = float(self.app.options.get("cncjob_bed_skew_y", 0.0)) * _unit_factor
 
         # coordinates used by the preprocessors position_code() method; updated when creating gcode
         self.x = 0.0
@@ -2918,6 +2922,12 @@ class CNCjob(Geometry):
         self.z_toolchange *= factor
         self.z_end *= factor
         self.z_depthpercut = float(self.z_depthpercut) * factor
+
+        # Scale XY toolchange and end positions
+        if self.xy_toolchange and isinstance(self.xy_toolchange, (list, tuple)) and len(self.xy_toolchange) >= 2:
+            self.xy_toolchange = [v * factor for v in self.xy_toolchange]
+        if self.xy_end and isinstance(self.xy_end, (list, tuple)) and len(self.xy_end) >= 2:
+            self.xy_end = [v * factor for v in self.xy_end]
 
         return factor
 
@@ -3801,6 +3811,18 @@ class CNCjob(Geometry):
 
         temp_solid_geometry = [t_geo for t_geo in temp_solid_geometry if not t_geo.is_empty]
 
+        # ─── Depth & feed parameters — read from tool dict FIRST ────────────────
+        # CRITICAL: these assignments MUST come before the safety checks below.
+        # Previously the safety checks (satır 3804-3843) ran first, then these
+        # lines re-read from tool_dict and silently overwrote the corrections,
+        # causing the CNC head to plunge into the board when cutz was positive.
+        self.z_cut = float(tool_dict['tools_mill_cutz'])
+        self.multidepth = tool_dict['tools_mill_multidepth']
+        self.z_depthpercut = float(tool_dict['tools_mill_depthperpass'])
+        self.z_move = float(tool_dict['tools_mill_travelz'])
+        self.f_plunge = self.app.options["tools_mill_f_plunge"]
+
+        # ─── Safety checks — applied AFTER reading from tool_dict ────────────
         if self.z_cut is None:
             if 'laser' not in self.pp_geometry_name:
                 self.app.inform.emit(
@@ -3846,13 +3868,6 @@ class CNCjob(Geometry):
         if abs(self.z_cut) < self.z_depthpercut:
             self.z_depthpercut = abs(self.z_cut)
 
-        # Depth parameters
-        self.z_cut = float(tool_dict['tools_mill_cutz'])
-        self.multidepth = tool_dict['tools_mill_multidepth']
-        self.z_depthpercut = float(tool_dict['tools_mill_depthperpass'])
-        self.z_move = float(tool_dict['tools_mill_travelz'])
-        self.f_plunge = self.app.options["tools_mill_f_plunge"]
-
         self.feedrate = float(tool_dict['tools_mill_feedrate'])
         self.z_feedrate = float(tool_dict['tools_mill_feedrate_z'])
         self.feedrate_rapid = float(tool_dict['tools_mill_feedrate_rapid'])
@@ -3866,14 +3881,10 @@ class CNCjob(Geometry):
         self.laser_on_code = tool_dict['tools_mill_laser_on']
 
         try:
-            self.spindlespeed = float(tool_dict['tools_mill_spindlespeed'])
+            val = float(tool_dict['tools_mill_spindlespeed'])
+            self.spindlespeed = int(val) if val != 0 else None
         except TypeError:
-            self.spindlespeed = 0.0
-
-        try:
-            self.spindledir = tool_dict['tools_mill_spindledir']
-        except KeyError:
-            self.spindledir = self.app.options["tools_mill_spindledir"]
+            self.spindlespeed = None
 
         try:
             self.spindledir = tool_dict['tools_mill_spindledir']
@@ -3884,8 +3895,6 @@ class CNCjob(Geometry):
         self.dwelltime = float(tool_dict['tools_mill_dwelltime'])
 
         self.startz = float(tool_dict['tools_mill_startz']) if tool_dict['tools_mill_startz'] else None
-        if self.startz == '':
-            self.startz = None
 
         self.z_end = float(tool_dict['tools_mill_endz'])
         self.xy_end = last_pt
@@ -3908,7 +3917,10 @@ class CNCjob(Geometry):
             self.app.log.error("camlib.CNCJob.geometry_tool_gcode_gen xy_end --> %s" % str(e))
             self.xy_end = [0, 0]
 
-        self.z_toolchange = tool_dict['tools_mill_toolchangez']
+        try:
+            self.z_toolchange = float(tool_dict['tools_mill_toolchangez'])
+        except (TypeError, ValueError):
+            self.z_toolchange = float(self.app.options.get('tools_mill_toolchangez', 15.0))
         self.xy_toolchange = tool_dict["tools_mill_toolchangexy"]
         try:
             if self.xy_toolchange == '':
@@ -3929,7 +3941,11 @@ class CNCjob(Geometry):
             pass
 
         self.extracut = tool_dict['tools_mill_extracut']
-        self.extracut_length = tool_dict['tools_mill_extracut_length']
+        try:
+            self.extracut_length = float(tool_dict['tools_mill_extracut_length']) \
+                if tool_dict['tools_mill_extracut_length'] is not None else None
+        except (TypeError, ValueError):
+            self.extracut_length = None
 
         # Probe parameters
         # self.z_p_depth = tool_dict["tools_drill_z_p_depth"]
@@ -4907,12 +4923,12 @@ class CNCjob(Geometry):
         return gcode, start_gcode
 
     # no longer used
-    def generate_from_multitool_geometry(self, geometry, append=True, tooldia=None, offset=0.0, tolerance=0, z_cut=1.0,
-                                         z_move=2.0, feedrate=2.0, feedrate_z=2.0, feedrate_rapid=30,
-                                         spindlespeed=None, spindledir='CW', dwell=False, dwelltime=1.0,
-                                         multidepth=False, depthpercut=None, toolchange=False, toolchangez=1.0,
-                                         toolchangexy="0.0, 0.0", extracut=False, extracut_length=0.2,
-                                         startz=None, endz=2.0, endxy='', pp_geometry_name=None, tool_no=1):
+    def generate_from_multitool_geometry(self, geometry, append=True, tooldia=None, offset=0.0, tolerance=0, z_cut=None,
+                                         z_move=None, feedrate=None, feedrate_z=None, feedrate_rapid=None,
+                                         spindlespeed=None, spindledir='CW', dwell=False, dwelltime=None,
+                                         multidepth=False, depthpercut=None, toolchange=False, toolchangez=None,
+                                         toolchangexy=None, extracut=False, extracut_length=None,
+                                         startz=None, endz=None, endxy='', pp_geometry_name=None, tool_no=1):
         """
         Algorithm to generate from multitool Geometry.
 
@@ -5615,7 +5631,7 @@ class CNCjob(Geometry):
 
             if 'laser' not in self.pp_geometry_name:
                 self.gcode += self.doformat(p.spindle_code)  # Spindle start
-                if self.dwell is True:
+                if bool(self.dwell):
                     self.gcode += self.doformat(p.dwell_code)  # Dwell time
             else:
                 # for laser this will disable the laser
@@ -5623,7 +5639,7 @@ class CNCjob(Geometry):
         else:
             if 'laser' not in self.pp_geometry_name:
                 self.gcode += self.doformat(p.spindle_code)  # Spindle start
-                if self.dwell is True:
+                if bool(self.dwell):
                     self.gcode += self.doformat(p.dwell_code)  # Dwell time
             else:
                 # for laser this will disable the laser
@@ -7457,7 +7473,9 @@ class CNCjob(Geometry):
             temp_gcode = ''
             header_start = False
             header_stop = False
-            units = self.app.app_units.upper()
+            # Use the job's own units (set at generation time), NOT the current app_units,
+            # to avoid G20/G21 swap errors if the user changes units after generating the job.
+            units = self.units.upper() if hasattr(self, 'units') and self.units else self.app.app_units.upper()
 
             lines = StringIO(g)
             for line in lines:

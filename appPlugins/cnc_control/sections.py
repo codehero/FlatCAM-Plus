@@ -9,7 +9,7 @@ from PyQt6 import QtWidgets
 
 from appGUI.GUIElements import FCCheckBox, FCComboBox, FCDoubleSpinner, FCLabel, FCSpinner
 
-from .widgets import DashboardGauge, FluidStyleButton
+from .widgets import DashboardGauge, FluidStyleButton, GCodeJobCanvas
 
 import appTranslation as fcTranslate
 
@@ -375,11 +375,31 @@ class MacroSection(CNCSectionPlugin):
 
 
 class TerminalSection(CNCSectionPlugin):
-    section_id = "terminal"
-    title = _("Terminal Console")
+    section_id = "terminal_simulation"
+    title = _("Terminal & Live Simulation")
 
     def build(self, ui, body):
-        ui.build_terminal_console(body)
+        main_split = QtWidgets.QHBoxLayout()
+        main_split.setContentsMargins(0, 0, 0, 0)
+        main_split.setSpacing(12)
+        body.addLayout(main_split)
+
+        # Left: Terminal
+        term_container = QtWidgets.QVBoxLayout()
+        ui.build_terminal_console(term_container)
+        main_split.addLayout(term_container, 1)
+
+        # Right: Simulation
+        sim_container = QtWidgets.QVBoxLayout()
+        sim_header = QtWidgets.QHBoxLayout()
+        sim_header.addWidget(FCLabel(_("Live Path Simulation"), bold=True))
+        sim_header.addStretch()
+        sim_container.addLayout(sim_header)
+
+        ui.live_simulation_canvas = GCodeJobCanvas()
+        ui.live_simulation_canvas.setMinimumHeight(450)
+        sim_container.addWidget(ui.live_simulation_canvas)
+        main_split.addLayout(sim_container, 1)
 
 
 class ModalActionsSection:
@@ -411,6 +431,8 @@ DEFAULT_CNC_SECTIONS = {
     "auto_level": AutoLevelSection,
     "overrides_system": OverridesSystemSection,
     "macros": MacroSection,
-    "terminal": TerminalSection,
+    "terminal_simulation": TerminalSection,
     "modal_actions": ModalActionsSection,
 }
+
+

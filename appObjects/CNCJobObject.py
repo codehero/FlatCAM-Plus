@@ -1490,8 +1490,17 @@ class CNCJobObject(FlatCAMObj, CNCjob):
         factor = CNCjob.convert_units(self, units)
         self.obj_options["tooldia"] = float(self.obj_options["tooldia"]) * factor
 
-        param_list = ['cutz', 'depthperpass', 'travelz', 'feedrate', 'feedrate_z', 'feedrate_rapid',
-                      'endz', 'toolchangez']
+        param_list = [
+            'tools_mill_cutz', 'tools_mill_depthperpass', 'tools_mill_travelz',
+            'tools_mill_feedrate', 'tools_mill_feedrate_z', 'tools_mill_feedrate_rapid',
+            'tools_mill_endz', 'tools_mill_toolchangez', 'tools_mill_startz',
+            'tools_mill_extracut_length',
+            'tools_drill_cutz', 'tools_drill_travelz', 'tools_drill_feedrate_rapid',
+            'tools_drill_toolchangez', 'tools_drill_endz', 'tools_drill_feedrate_z',
+            'tools_drill_depthperpass'
+        ]
+        
+        xy_param_list = ['tools_mill_toolchangexy', 'tools_mill_endxy']
 
         temp_tools_dict = {}
         tool_dia_copy = {}
@@ -1515,12 +1524,17 @@ class CNCJobObject(FlatCAMObj, CNCjob):
                     tool_dia_copy[dia_key] = dia_value
                 if dia_key == 'data':
                     for data_key, data_value in dia_value.items():
-                        # convert the form fields that are convertible
-                        for param in param_list:
-                            if data_key == param and data_value is not None:
-                                data_copy[data_key] = data_value * factor
-                        # copy the other dict entries that are not convertible
-                        if data_key not in param_list:
+                        if data_key in param_list and data_value is not None:
+                            data_copy[data_key] = data_value * factor
+                        elif data_key in xy_param_list and data_value is not None and isinstance(data_value, str) and data_value != '':
+                            try:
+                                import re
+                                cleaned = re.sub(r'[()\[\]]', '', data_value)
+                                coords = [float(eval(c)) * factor for c in cleaned.split(',')]
+                                data_copy[data_key] = f"{coords[0]}, {coords[1]}"
+                            except Exception:
+                                data_copy[data_key] = data_value
+                        else:
                             data_copy[data_key] = data_value
                     tool_dia_copy[dia_key] = deepcopy(data_copy)
                     data_copy.clear()

@@ -1193,37 +1193,47 @@ class ExcellonObject(FlatCAMObj, Excellon):
     def convert_units(self, units):
         self.app.log.debug("ExcellonObject.convert_units()")
 
-        Excellon.convert_units(self, units)
+        factor = Excellon.convert_units(self, units)
+        if not factor:
+            return
 
-        # factor = Excellon.convert_units(self, units)
-        # self.obj_options['drillz'] = float(self.obj_options['drillz']) * factor
-        # self.obj_options['travelz'] = float(self.obj_options['travelz']) * factor
-        # self.obj_options['feedrate'] = float(self.obj_options['feedrate']) * factor
-        # self.obj_options['feedrate_rapid'] = float(self.obj_options['feedrate_rapid']) * factor
-        # self.obj_options['toolchangez'] = float(self.obj_options['toolchangez']) * factor
-        #
-        # if self.app.options["excellon_toolchangexy"] == '':
-        #     self.obj_options['toolchangexy'] = "0.0, 0.0"
-        # else:
-        #     coords_xy = [float(eval(coord)) for coord in self.app.options["excellon_toolchangexy"].split(",")]
-        #     if len(coords_xy) < 2:
-        #         self.app.inform.emit('[ERROR] %s' % _("The Toolchange X,Y field in Edit -> Preferences has to be "
-        #                                               "in the format (x, y) \n"
-        #                                               "but now there is only one value, not two. "))
-        #         return 'fail'
-        #     coords_xy[0] *= factor
-        #     coords_xy[1] *= factor
-        #     self.obj_options['toolchangexy'] = "%f, %f" % (coords_xy[0], coords_xy[1])
-        #
-        # if self.obj_options['startz'] is not None:
-        #     self.obj_options['startz'] = float(self.obj_options['startz']) * factor
-        # self.obj_options['endz'] = float(self.obj_options['endz']) * factor
+        # Scale all CNC parameters stored in obj_options
+        z_params = [
+            'tools_drill_cutz', 'tools_drill_travelz', 'tools_drill_feedrate',
+            'tools_drill_feedrate_rapid', 'tools_drill_toolchangez', 'tools_drill_endz'
+        ]
+        for key in z_params:
+            if key in self.obj_options and self.obj_options[key] is not None:
+                try:
+                    self.obj_options[key] = float(self.obj_options[key]) * factor
+                except (ValueError, TypeError):
+                    pass
+
+        if self.obj_options.get('tools_drill_startz') is not None:
+            try:
+                self.obj_options['tools_drill_startz'] = float(
+                    self.obj_options['tools_drill_startz']) * factor
+            except (ValueError, TypeError):
+                pass
+
+        # Scale toolchangexy if set
+        toolchangexy = self.app.options.get("tools_drill_toolchangexy", '')
+        if toolchangexy:
+            try:
+                coords_xy = [float(eval(coord)) for coord in toolchangexy.split(",")]
+                if len(coords_xy) >= 2:
+                    coords_xy[0] *= factor
+                    coords_xy[1] *= factor
+                    self.obj_options['tools_drill_toolchangexy'] = "%f, %f" % (coords_xy[0], coords_xy[1])
+            except Exception:
+                pass
 
     def on_solid_cb_click(self):
         if self.muted_ui:
             return
         self.read_form_item('solid')
         self.plot()
+
 
     def on_multicolored_cb_click(self, val):
         if self.muted_ui:

@@ -563,7 +563,7 @@ class CNCControlUI:
         probing_preview_row.addWidget(self.section_plugins["auto_level"].build_panel(self), 1)
         probing_preview_row.addWidget(self.section_plugins["gcode_preview_verification"].build_panel(self), 2)
 
-        self.content_lay.addWidget(self.section_plugins["terminal"].build_panel(self), 1)
+        self.content_lay.addWidget(self.section_plugins["terminal_simulation"].build_panel(self), 1)
         self.content_lay.addWidget(self.section_plugins["modal_actions"].build_widget(self))
 
     def build_file_system_dialog(self):
@@ -1495,3 +1495,28 @@ class CNCControlUI:
             f'<span style="color:{color};">{safe_text}</span>'
         )
         self.console.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+
+
+class CNCPreviewModal(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_('CNC Live Simulation - Full Screen'))
+        self.setMinimumSize(1000, 800)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.canvas = GCodeJobCanvas()
+        self.canvas.enable_fs_button = False  # No recursive full screen
+        layout.addWidget(self.canvas)
+        
+        bottom_lay = QtWidgets.QHBoxLayout()
+        close_btn = FluidStyleButton(_("Close"), "#777777", "#666666")
+        close_btn.clicked.connect(self.accept)
+        bottom_lay.addStretch()
+        bottom_lay.addWidget(close_btn)
+        layout.addLayout(bottom_lay)
+
+    def set_preview(self, preview):
+        self.canvas.set_preview(preview)

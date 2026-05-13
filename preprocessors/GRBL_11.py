@@ -106,7 +106,9 @@ class GRBL_11(PreProc):
         gcode += ('G20' if p.units.upper() == 'IN' else 'G21') + "\n"
         gcode += 'G90\n'
         gcode += 'G17\n'
+        gcode += 'G54\n'
         gcode += 'G94\n'
+
 
         return gcode
 
