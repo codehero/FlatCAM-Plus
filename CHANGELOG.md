@@ -1,4 +1,4 @@
-FlatCAM Plus v1.0.0 BETA (c) 2026 - by Sadri ERCAN
+FlatCAM Plus v1.0.4 BETA (c) 2026 - by Sadri ERCAN
 
 Based on FlatCAM: 
 2D Computer-Aided PCB Manufacturing by (c) 2014-2016 Juan Pablo Caram
@@ -8,7 +8,7 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
-2026/05/14 - v1.0.3
+2026/05/14 - v1.0.4
 
 - added High-Precision Probing: Implemented a dual-stage "Fast Seek + Slow Touch" probing cycle (Candle-style) to prevent PCB surface deformation.
 - added Advanced Auto-Leveling: Added support for G2/G3 arc path segmentation and G91 incremental moves within the surface-following engine.
