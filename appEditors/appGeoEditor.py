@@ -1571,7 +1571,7 @@ class AppGeoEditor(QtCore.QObject):
         """
         Deletes shape(shapes) from the storage, selection and utility
         """
-        w_shapes = [shapes] if not isinstance(shapes, list) else shapes
+        w_shapes = list(shapes) if isinstance(shapes, list) else [shapes]
 
         for shape in w_shapes:
             # remove from Utility
