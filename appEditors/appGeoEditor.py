@@ -1553,6 +1553,21 @@ class AppGeoEditor(QtCore.QObject):
     def get_sel_color(self):
         return self.app.options['global_sel_draw_color']
 
+    @staticmethod
+    def _color_with_alpha(color, alpha='FF'):
+        if not color:
+            return color
+        if len(color) == 7:
+            return color + alpha
+        if len(color) == 9:
+            return color[:7] + alpha
+        return color
+
+    def get_edit_geometry_color(self):
+        return getattr(self.fcgeometry, 'outline_color', None) or self.app.options.get(
+            'geometry_plot_line', self.get_draw_color()
+        )
+
     def on_delete_btn(self):
         self.delete_selected()
         # self.plot_all()
@@ -1676,10 +1691,8 @@ class AppGeoEditor(QtCore.QObject):
         """
         # self.app.log.debug(str(inspect.stack()[1][3]) + " --> AppGeoEditor.plot_all()")
 
-        orig_draw_color = self.get_draw_color()
-        draw_color = orig_draw_color[:-2] + "FF"
-        orig_sel_color = self.get_sel_color()
-        sel_color = orig_sel_color[:-2] + 'FF'
+        draw_color = self._color_with_alpha(self.get_edit_geometry_color(), 'FF')
+        sel_color = self._color_with_alpha(self.get_sel_color(), 'FF')
 
         geo_drawn = []
         geos_selected = []
@@ -1691,22 +1704,22 @@ class AppGeoEditor(QtCore.QObject):
                 else:
                     geo_drawn.append(shape.geo)
 
-        if geo_drawn:
-            self.shapes.clear(update=True)
+        self.shapes.clear(update=False)
+        self.sel_shapes.clear(update=False)
 
+        if geo_drawn:
             for geo in geo_drawn:
                 self.plot_shape(storage=self.shapes, geometry=geo, color=draw_color, linewidth=1)
 
-            for shape in self.utility:
-                self.plot_shape(storage=self.shapes, geometry=shape.geo, linewidth=1)
-
-            self.shapes.redraw()
+        for shape in self.utility:
+            self.plot_shape(storage=self.shapes, geometry=shape.geo, linewidth=1)
 
         if geos_selected:
-            self.sel_shapes.clear(update=True)
             for geo in geos_selected:
                 self.plot_shape(storage=self.sel_shapes, geometry=geo, color=sel_color, linewidth=3)
-            self.sel_shapes.redraw()
+
+        self.shapes.redraw()
+        self.sel_shapes.redraw()
 
     def on_shape_complete(self):
         self.app.log.debug("on_shape_complete()")
