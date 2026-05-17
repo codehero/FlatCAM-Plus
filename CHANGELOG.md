@@ -1,4 +1,4 @@
-FlatCAM Plus v1.0.4 BETA (c) 2026 - by Sadri ERCAN
+FlatCAM Plus v1.0.5 BETA (c) 2026 - by Sadri ERCAN
 
 Based on FlatCAM: 
 2D Computer-Aided PCB Manufacturing by (c) 2014-2016 Juan Pablo Caram
@@ -8,7 +8,7 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
-## 2026/05/17 - v1.0.4 CNC Control Live Placement Update
+## 2026/05/17 - v1.0.5 CNC Control Live Placement Update
 
 ### Highlights
 
@@ -44,6 +44,8 @@ CHANGELOG for FlatCAM Plus beta
 - Fixed live preview travel/dotted lines so start and end points line up with the same mapped object position.
 - Fixed stream/probe coordinate mismatches after saving Live Placement.
 - Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
+- Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks @ecp2022.
+- Fixed Geometry Editor shape deletion iteration. Thanks @ecp2022.
 
 ### Validation
 
