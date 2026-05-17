@@ -298,6 +298,9 @@ class ToolIsolation(Gerber, AppTool):
         self.form_fields = {
             "tools_mill_tool_shape":    self.ui.tool_shape_combo,
             "tools_mill_cutz":          self.ui.cutz_entry,
+            "tools_mill_travelz":       self.ui.travelz_entry,
+            "tools_mill_feedrate":      self.ui.feedrate_entry,
+            "tools_mill_spindlespeed":  self.ui.spindlespeed_entry,
             "tools_mill_vtipdia":       self.ui.tipdia_entry,
             "tools_mill_vtipangle":     self.ui.tipangle_entry,
             "tools_iso_passes":         self.ui.passes_entry,
@@ -956,31 +959,53 @@ class ToolIsolation(Gerber, AppTool):
         self.ui_connect()
 
     def storage_to_form(self, dict_storage):
+        """
+        Populate the UI form with data from the tool storage.
+        Handles both prefixed (tools_mill_*) and non-prefixed (flat) keys.
+        """
         for form_key in self.form_fields:
-            # Try top-level keys
-            for storage_key in dict_storage:
-                if form_key == storage_key:
-                    try:
-                        val = dict_storage[form_key]
-                        from appGUI.GUIElements import RadioSet
-                        if isinstance(self.form_fields[form_key], RadioSet) and (val == 0 or val == '0'):
-                            continue
-                        self.form_fields[form_key].set_value(val)
-                    except Exception as e:
-                        self.app.log.error("ToolIsolation.storage_to_form() top -> %s" % str(e))
+            # 1. Try exact match (e.g. 'tools_mill_cutz')
+            if form_key in dict_storage:
+                try:
+                    val = dict_storage[form_key]
+                    from appGUI.GUIElements import RadioSet
+                    if isinstance(self.form_fields[form_key], RadioSet) and (val == 0 or val == '0'):
+                        continue
+                    self.form_fields[form_key].set_value(val)
+                    continue
+                except Exception as e:
+                    self.app.log.error("ToolIsolation.storage_to_form() exact -> %s" % str(e))
 
-            # Try 'data' sub-dictionary
+            # 2. Try flat key match (e.g. 'tools_mill_cutz' -> 'cutz')
+            flat_key = form_key.replace('tools_mill_', '').replace('tools_iso_', '')
+            if flat_key in dict_storage:
+                try:
+                    val = dict_storage[flat_key]
+                    from appGUI.GUIElements import RadioSet
+                    if isinstance(self.form_fields[form_key], RadioSet) and (val == 0 or val == '0'):
+                        continue
+                    self.form_fields[form_key].set_value(val)
+                    continue
+                except Exception as e:
+                    self.app.log.error("ToolIsolation.storage_to_form() flat -> %s" % str(e))
+
+            # 3. Try nested 'data' dictionary (some legacy structures)
             if 'data' in dict_storage:
-                for data_key in dict_storage['data']:
-                    if form_key == data_key:
-                        try:
-                            val = dict_storage['data'][data_key]
-                            from appGUI.GUIElements import RadioSet
-                            if isinstance(self.form_fields[form_key], RadioSet) and (val == 0 or val == '0'):
-                                continue
-                            self.form_fields[form_key].set_value(val)
-                        except Exception as e:
-                            self.app.log.error("ToolIsolation.storage_to_form() data -> %s" % str(e))
+                if form_key in dict_storage['data']:
+                    try:
+                        val = dict_storage['data'][form_key]
+                        self.form_fields[form_key].set_value(val)
+                        continue
+                    except Exception as e:
+                        self.app.log.error("ToolIsolation.storage_to_form() nested -> %s" % str(e))
+
+                if flat_key in dict_storage['data']:
+                    try:
+                        val = dict_storage['data'][flat_key]
+                        self.form_fields[form_key].set_value(val)
+                        continue
+                    except Exception as e:
+                        self.app.log.error("ToolIsolation.storage_to_form() nested flat -> %s" % str(e))
 
     def form_to_storage(self):
         if self.ui.tools_table.rowCount() == 0:
@@ -3390,6 +3415,7 @@ class ToolIsolation(Gerber, AppTool):
                 break
 
         self.ui_connect()
+        self.on_row_selection_change()
         self.ui.tools_table.viewport().update()
         return tooluid
         # if self.ui.tools_table.rowCount() != 0:

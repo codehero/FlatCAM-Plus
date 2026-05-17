@@ -27,6 +27,7 @@ import re
 import math
 
 import numpy as np
+import shapely.affinity as affinity
 try:
     from numpy import Inf
 except ImportError:
@@ -836,15 +837,18 @@ class appIO(QtCore.QObject):
             self.inform.emit('[WARNING_NOTCL] %s' % _("Cancelled."))
             return
 
-        project_name, project_filename = project_details
-        self.create_named_project(project_name, project_filename)
+        project_name, project_filename, width, height, thickness = project_details
+        self.create_named_project(project_name, project_filename, width, height, thickness)
 
-    def create_named_project(self, project_name, project_filename):
+    def create_named_project(self, project_name, project_filename, width=None, height=None, thickness=None):
         project_folder = os.path.dirname(project_filename)
         if project_folder and not os.path.exists(project_folder):
             os.makedirs(project_folder)
 
         self.on_file_new_project(use_thread=False, keep_scripts=False)
+
+        if width is not None and height is not None:
+            self.apply_project_workspace(width, height, thickness)
 
         self.app.project_filename = project_filename
         self.app.ui.activate_project_workspace(project_name=project_name)
@@ -855,6 +859,124 @@ class appIO(QtCore.QObject):
         self.app.file_saved.emit("project", project_filename)
         self.app.should_we_save = False
         self.inform.emit('[success] %s: %s' % (_("New Project created"), project_name))
+
+    def apply_project_workspace(self, width, height, thickness=None, fit_view=True):
+        try:
+            width = float(width)
+            height = float(height)
+            thickness = float(thickness if thickness is not None else 0.0)
+        except (TypeError, ValueError):
+            return
+
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        self.app.options['global_workspace'] = True
+        self.app.options['global_workspaceT'] = 'CUSTOM'
+        self.app.options['global_workspace_orientation'] = 'p'
+        self.app.options['global_workspace_custom_width'] = width
+        self.app.options['global_workspace_custom_height'] = height
+        self.app.options['global_workspace_custom_thickness'] = thickness
+
+        try:
+            self.app.plotcanvas.draw_workspace(workspace_size='CUSTOM')
+            if fit_view and hasattr(self.app.plotcanvas, 'fit_workspace'):
+                self.app.plotcanvas.fit_workspace()
+        except Exception as e:
+            self.log.error("apply_project_workspace() --> %s" % str(e))
+
+    def keep_object_inside_workspace(self, obj, margin=0.0):
+        if not self.app.options.get('global_workspace', False):
+            return
+
+        if self.app.options.get('global_workspaceT') != 'CUSTOM':
+            return
+
+        try:
+            width = float(self.app.options.get('global_workspace_custom_width', 0.0))
+            height = float(self.app.options.get('global_workspace_custom_height', 0.0))
+            margin = float(margin)
+        except (TypeError, ValueError):
+            return
+
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        try:
+            xmin, ymin, xmax, ymax = obj.bounds()
+        except Exception:
+            return
+
+        obj_width = xmax - xmin
+        obj_height = ymax - ymin
+        if obj_width > width or obj_height > height:
+            return
+
+        dx = 0.0
+        dy = 0.0
+        if xmin < margin:
+            dx = margin - xmin
+        elif xmax > width - margin:
+            dx = (width - margin) - xmax
+
+        if ymin < margin:
+            dy = margin - ymin
+        elif ymax > height - margin:
+            dy = (height - margin) - ymax
+
+        if dx == 0.0 and dy == 0.0:
+            return
+
+        try:
+            if isinstance(obj, GerberObject):
+                self.translate_gerber_for_workspace(obj, dx, dy)
+            else:
+                obj.offset((dx, dy))
+            xmin, ymin, xmax, ymax = obj.bounds()
+            obj.obj_options['xmin'] = xmin
+            obj.obj_options['ymin'] = ymin
+            obj.obj_options['xmax'] = xmax
+            obj.obj_options['ymax'] = ymax
+            self.log.debug(
+                "keep_object_inside_workspace() moved %s by %.4f, %.4f" %
+                (obj.obj_options.get('name', obj.kind), dx, dy)
+            )
+        except Exception as e:
+            self.log.error("keep_object_inside_workspace() --> %s" % str(e))
+
+    @staticmethod
+    def translate_workspace_geometry(geometry, dx, dy):
+        if isinstance(geometry, list):
+            return [appIO.translate_workspace_geometry(geo, dx, dy) for geo in geometry]
+
+        if isinstance(geometry, tuple):
+            return tuple(appIO.translate_workspace_geometry(geo, dx, dy) for geo in geometry)
+
+        try:
+            if geometry is None or geometry.is_empty:
+                return geometry
+            return affinity.translate(geometry, xoff=dx, yoff=dy)
+        except AttributeError:
+            return geometry
+
+    def translate_gerber_for_workspace(self, obj, dx, dy):
+        """
+        Move an imported Gerber inside the project workspace without using
+        Gerber.offset(). The regular offset method updates progress/UI state,
+        and imports run in a worker thread.
+        """
+        obj.solid_geometry = self.translate_workspace_geometry(obj.solid_geometry, dx, dy)
+        obj.follow_geometry = self.translate_workspace_geometry(obj.follow_geometry, dx, dy)
+
+        for tool_data in obj.tools.values():
+            for geo_key in ('solid_geometry', 'follow_geometry'):
+                if geo_key in tool_data:
+                    tool_data[geo_key] = self.translate_workspace_geometry(tool_data[geo_key], dx, dy)
+
+            for geo_el in tool_data.get('geometry', []) or []:
+                for geo_key in ('solid', 'follow', 'clear'):
+                    if geo_key in geo_el:
+                        geo_el[geo_key] = self.translate_workspace_geometry(geo_el[geo_key], dx, dy)
 
     def on_file_new_project(self, cli=None, reset_tcl=True, use_thread=None, keep_scripts=True):
         """
@@ -917,6 +1039,11 @@ class appIO(QtCore.QObject):
 
         # delete any selection shape on canvas
         self.app.delete_selection_shape()
+
+        try:
+            self.app.plotcanvas.delete_workspace()
+        except Exception:
+            pass
 
         # delete any hover shapes on canvas
         try:
@@ -2120,6 +2247,8 @@ class appIO(QtCore.QObject):
             if parse_ret_val:
                 return parse_ret_val
 
+            self.keep_object_inside_workspace(gerber_obj)
+
         self.log.debug("open_gerber()")
         if not self._ensure_project_workspace():
             return
@@ -2780,6 +2909,16 @@ class appIO(QtCore.QObject):
                             continue
                     if ret == 'fail':
                         continue
+
+                try:
+                    if self.app.options.get('global_workspace', False):
+                        self.app.plotcanvas.draw_workspace(
+                            workspace_size=self.app.options.get('global_workspaceT', 'A4')
+                        )
+                        if hasattr(self.app.plotcanvas, 'fit_workspace'):
+                            self.app.plotcanvas.fit_workspace()
+                except Exception as e:
+                    self.log.error("restore_project_objects() workspace restore --> %s" % str(e))
 
                 self.inform.emit('[success] %s: %s' % (_("Project loaded from"), filename))
 

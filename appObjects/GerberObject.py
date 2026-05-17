@@ -945,6 +945,13 @@ class GerberObject(FlatCAMObj, Gerber):
         pcb_preview = bool(self.app.options.get("gerber_pcb_preview", True)) and self.app.use_3d_engine and \
             not self.obj_options['follow']
         if pcb_preview:
+            try:
+                gxmin, gymin, gxmax, gymax = geometry.bounds
+                if (gxmax - gxmin) <= 0.0 or (gymax - gymin) <= 0.0:
+                    pcb_preview = False
+            except Exception:
+                pass
+        if pcb_preview:
             if self.app.options.get("gerber_pcb_preview_canvas", True):
                 apply_theme = getattr(self.app.plotcanvas, "apply_pcb_preview_theme", None)
                 if callable(apply_theme):

@@ -489,21 +489,9 @@ if __name__ == '__main__':
         font.setPointSize(font_size)
         app.setFont(font)
 
-    startup_project_request = None
-    has_project_argument = any('.flatprj' in str(arg).lower() for arg in getattr(App, "args", []))
-    should_show_launcher = (
-        App.cmd_line_headless != 1 and
-        not has_project_argument and
-        not App.cmd_line_shellfile and
-        not App.cmd_line_shellvar
-    )
-    if should_show_launcher:
-        launcher = StartupProjectLauncher(data_path=data_path)
-        if launcher.exec() != QtWidgets.QDialog.DialogCode.Accepted or launcher.selection is None:
-            sys.exit(0)
-        startup_project_request = launcher.selection
-
-    fc = App(qapp=app, startup_project_request=startup_project_request)
+    # Start directly in the main window. The project create/open actions are now
+    # shown inside the workspace start screen instead of blocking startup.
+    fc = App(qapp=app, startup_project_request=None)
 
     # interrupt the Qt loop such that Python events have a chance to be responsive
     timer = QTimer()

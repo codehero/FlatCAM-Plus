@@ -591,17 +591,12 @@ class PlotCanvasLegacy(QtCore.QObject):
         :param workspace_size: the workspace size; tuple
         :return:
         """
-        try:
-            if self.app.app_units.upper() == 'MM':
-                dims = self.pagesize_dict[workspace_size]
-            else:
-                dims = (self.pagesize_dict[workspace_size][0] / 25.4, self.pagesize_dict[workspace_size][1] / 25.4)
-        except Exception as e:
-            self.app.log.error("PlotCanvasLegacy.draw_workspace() --> %s" % str(e))
+        dims = self.workspace_dimensions(workspace_size)
+        if not dims:
             return
 
-        if self.app.options['global_workspace_orientation'] == 'l':
-            dims = (dims[1], dims[0])
+        label = self.workspace_label(workspace_size, dims)
+        tooltip = self.workspace_tooltip(workspace_size, dims)
 
         xdata = [0, dims[0], dims[0], 0, 0]
         ydata = [0, 0, dims[1], dims[1], 0]
@@ -611,8 +606,8 @@ class PlotCanvasLegacy(QtCore.QObject):
             self.axes.add_line(self.workspace_line)
             self.canvas.draw()
 
-        self.app.ui.wplace_label.set_value(workspace_size[:3])
-        self.app.ui.wplace_label.setToolTip(workspace_size)
+        self.app.ui.wplace_label.set_value(label)
+        self.app.ui.wplace_label.setToolTip(tooltip)
         self.app.ui.wplace_label.setStyleSheet("""
                         QLabel
                         {
@@ -621,6 +616,49 @@ class PlotCanvasLegacy(QtCore.QObject):
                         }
                         """)
         self.app.options['global_workspace'] = True
+
+    def workspace_dimensions(self, workspace_size):
+        try:
+            if workspace_size == 'CUSTOM':
+                dims = (
+                    float(self.app.options.get('global_workspace_custom_width', 0.0)),
+                    float(self.app.options.get('global_workspace_custom_height', 0.0))
+                )
+            else:
+                if self.app.app_units.upper() == 'MM':
+                    dims = self.pagesize_dict[workspace_size]
+                else:
+                    dims = (self.pagesize_dict[workspace_size][0] / 25.4,
+                            self.pagesize_dict[workspace_size][1] / 25.4)
+        except Exception as e:
+            self.app.log.error("PlotCanvasLegacy.draw_workspace() --> %s" % str(e))
+            return None
+
+        if workspace_size != 'CUSTOM' and self.app.options['global_workspace_orientation'] == 'l':
+            dims = (dims[1], dims[0])
+
+        if dims[0] <= 0 or dims[1] <= 0:
+            return None
+        return dims
+
+    def workspace_label(self, workspace_size, dims):
+        if workspace_size == 'CUSTOM':
+            return "%.0f x %.0f" % (dims[0], dims[1])
+        return workspace_size[:3]
+
+    def workspace_tooltip(self, workspace_size, dims):
+        if workspace_size == 'CUSTOM':
+            thickness = float(self.app.options.get('global_workspace_custom_thickness', 0.0) or 0.0)
+            units = self.app.app_units.lower()
+            return "%.3f x %.3f x %.3f %s" % (dims[0], dims[1], thickness, units)
+        return workspace_size
+
+    def fit_workspace(self):
+        dims = self.workspace_dimensions(self.app.options.get('global_workspaceT', 'A4'))
+        if dims:
+            width = dims[0]
+            height = dims[1]
+            self.adjust_axes(-0.02 * width, -0.02 * height, width * 1.02, height * 1.02)
 
     def delete_workspace(self):
         try:

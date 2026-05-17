@@ -366,6 +366,7 @@ class App(QtCore.QObject):
         # True value = a selection from left to right
         # False value = a selection from right to left
         self.selection_type = None
+        self.canvas_object_drag = None
 
         # List to store the objects that are currently loaded in FlatCAM
         # This list is updated on each object creation or object delete
@@ -1589,6 +1590,7 @@ class App(QtCore.QObject):
         # when changing those properties the associated keys change, so we get an updated Properties default Tab
         if key_changed in [
             "global_grid_lines", "global_grid_snap", "global_axis", "global_workspace", "global_workspaceT",
+            "global_workspace_custom_width", "global_workspace_custom_height", "global_workspace_custom_thickness",
             "global_workspace_orientation", "global_hud", "global_rulers"
         ]:
             self.on_properties_tab_click()
@@ -2938,11 +2940,18 @@ class App(QtCore.QObject):
         self.setup_recent_items()
 
     def on_project_file_opened(self, kind, filename):
-        if str(kind).lower() != "project":
+        file_kind = str(kind).lower()
+        if file_kind == "project":
+            project_name = os.path.splitext(os.path.basename(str(filename)))[0]
+            self.ui.activate_project_workspace(project_name=project_name)
             return
 
-        project_name = os.path.splitext(os.path.basename(str(filename)))[0]
-        self.ui.activate_project_workspace(project_name=project_name)
+        if file_kind in {"gerber", "excellon", "geometry", "cncjob", "dxf", "svg"}:
+            self.ui.activate_project_workspace()
+            try:
+                self.ui.plot_tab_area.setCurrentWidget(self.ui.plot_tab)
+            except Exception:
+                pass
 
     def on_about(self):
         """
@@ -5569,6 +5578,24 @@ class App(QtCore.QObject):
         self.clipboard.setText(name)
         self.inform.emit(_("Name copied to clipboard ..."))
 
+    def selected_visible_objects_at_position(self, position):
+        objects = []
+        try:
+            x_pos, y_pos = position
+        except (TypeError, ValueError):
+            return objects
+
+        for obj in self.collection.get_selected():
+            try:
+                if not obj.obj_options['plot'] or obj.visible is not True:
+                    continue
+                xmin, ymin, xmax, ymax = obj.bounds()
+                if xmin <= x_pos <= xmax and ymin <= y_pos <= ymax:
+                    objects.append(obj)
+            except Exception:
+                continue
+        return objects
+
     def on_mouse_click_over_plot(self, event):
         """
         Default actions are:
@@ -5593,6 +5620,20 @@ class App(QtCore.QObject):
         self.mouse_click_pos = [pos[0], pos[1]]
 
         try:
+            if event.button == 1 and self.call_source == 'app' and self.command_active is None:
+                drag_objects = self.selected_visible_objects_at_position(pos)
+                if drag_objects:
+                    self.canvas_object_drag = {
+                        "start": (pos[0], pos[1]),
+                        "objects": drag_objects
+                    }
+                    try:
+                        self.delete_selection_shape()
+                        self.move_tool.delete_shape()
+                        self.move_tool.draw_sel_bbox()
+                    except Exception as e:
+                        self.log.debug("App.on_mouse_click_over_plot() drag bbox --> %s" % str(e))
+
             if event.button == 1:
                 # Reset here the relative coordinates so there is a new reference on the click position
                 if self.rel_point1 is None:
@@ -5677,6 +5718,14 @@ class App(QtCore.QObject):
                 self.plotcanvas.on_update_text_hud(self.dx, self.dy, pos[0], pos[1])
 
                 self.mouse_pos = [pos[0], pos[1]]
+
+                if self.canvas_object_drag and self.event_is_dragging == 1 and event.button == 1:
+                    self.selection_type = None
+                    try:
+                        self.move_tool.update_sel_bbox((self.dx, self.dy))
+                    except Exception as e:
+                        self.log.debug("App.on_mouse_move_over_plot() drag bbox --> %s" % str(e))
+                    return
 
                 if self.options['global_selection_shape'] is False:
                     self.selection_type = None
@@ -5777,6 +5826,21 @@ class App(QtCore.QObject):
         # selection and then select a type of selection ("enclosing" or "touching")
 
         if event.button == 1:  # left click
+            if self.canvas_object_drag:
+                drag_state = self.canvas_object_drag
+                self.canvas_object_drag = None
+                self.selection_type = None
+                start_x, start_y = drag_state.get("start", (pos[0], pos[1]))
+                offset = (pos[0] - start_x, pos[1] - start_y)
+                try:
+                    self.move_tool.delete_shape()
+                except Exception:
+                    pass
+                if abs(offset[0]) > 1e-9 or abs(offset[1]) > 1e-9:
+                    self.move_tool.move_handler(offset=offset, objects=drag_state.get("objects", []))
+                self.mouse_click_pos = [pos[0], pos[1]]
+                return
+
             key_modifier = QtWidgets.QApplication.keyboardModifiers()
             shift_modifier_key = QtCore.Qt.KeyboardModifier.ShiftModifier
             ctrl_modifier_key = QtCore.Qt.KeyboardModifier.ControlModifier
@@ -6919,7 +6983,16 @@ class App(QtCore.QObject):
                                  column1=True)
         d_properties_tw.addChild(parent=canvas_cat,
                                  title=['%s:' % _("Workspace size"),
-                                        '%s' % str(self.options['global_workspaceT'])],
+                                        '%s' % (
+                                            "%.3f x %.3f x %.3f %s" % (
+                                                float(self.options.get('global_workspace_custom_width', 0.0)),
+                                                float(self.options.get('global_workspace_custom_height', 0.0)),
+                                                float(self.options.get('global_workspace_custom_thickness', 0.0)),
+                                                self.app_units.lower()
+                                            )
+                                            if self.options.get('global_workspaceT') == 'CUSTOM'
+                                            else str(self.options['global_workspaceT'])
+                                        )],
                                  column1=True)
         d_properties_tw.addChild(parent=canvas_cat,
                                  title=['%s:' % _("Workspace orientation"),
@@ -7051,6 +7124,18 @@ class App(QtCore.QObject):
             xmin, ymin, xmax, ymax = self.collection.get_bounds()
             width = xmax - xmin
             height = ymax - ymin
+            if width <= 0.0:
+                pad = max(abs(height) * 0.5, 5.0)
+                center = (xmin + xmax) * 0.5
+                xmin = center - pad
+                xmax = center + pad
+                width = xmax - xmin
+            if height <= 0.0:
+                pad = max(abs(width) * 0.08, 5.0)
+                center = (ymin + ymax) * 0.5
+                ymin = center - pad
+                ymax = center + pad
+                height = ymax - ymin
             xmin -= 0.05 * width
             xmax += 0.05 * width
             ymin -= 0.05 * height

@@ -678,30 +678,20 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         :return:
         """
         self.delete_workspace()
-        try:
-            if self.fcapp.app_units.upper() == 'MM':
-                dims = self.pagesize_dict[workspace_size]
-            else:
-                dims = (self.pagesize_dict[workspace_size][0]/25.4, self.pagesize_dict[workspace_size][1]/25.4)
-        except Exception as e:
-            self.app.log.error("PlotCanvas.draw_workspace() --> %s" % str(e))
+        dims = self.workspace_dimensions(workspace_size)
+        if not dims:
             return
 
-        if self.fcapp.options['global_workspace_orientation'] == 'l':
-            dims = (dims[1], dims[0])
+        label = self.workspace_label(workspace_size, dims)
+        tooltip = self.workspace_tooltip(workspace_size, dims)
 
         a = np.array([(0, 0), (dims[0], 0), (dims[0], dims[1]), (0, dims[1])])
 
-        # if not self.workspace_line:
-        #     self.workspace_line = Line(pos=np.array((a[0], a[1], a[2], a[3], a[0])), color=(0.70, 0.3, 0.3, 0.7),
-        #                                antialias=True, method='agg', parent=self.view.scene)
-        # else:
-        #     self.workspace_line.parent = self.view.scene
         self.workspace_line = Line(pos=np.array((a[0], a[1], a[2], a[3], a[0])), color=(0.70, 0.3, 0.3, 0.7),
                                    antialias=True, method='agg', parent=self.view.scene)
 
-        self.fcapp.ui.wplace_label.set_value(workspace_size[:3])
-        self.fcapp.ui.wplace_label.setToolTip(workspace_size)
+        self.fcapp.ui.wplace_label.set_value(label)
+        self.fcapp.ui.wplace_label.setToolTip(tooltip)
         self.fcapp.ui.wplace_label.setStyleSheet("""
                         QLabel
                         {
@@ -710,6 +700,47 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
                         }
                         """)
         self.fcapp.options['global_workspace'] = True
+
+    def workspace_dimensions(self, workspace_size):
+        try:
+            if workspace_size == 'CUSTOM':
+                dims = (
+                    float(self.fcapp.options.get('global_workspace_custom_width', 0.0)),
+                    float(self.fcapp.options.get('global_workspace_custom_height', 0.0))
+                )
+            else:
+                if self.fcapp.app_units.upper() == 'MM':
+                    dims = self.pagesize_dict[workspace_size]
+                else:
+                    dims = (self.pagesize_dict[workspace_size][0]/25.4,
+                            self.pagesize_dict[workspace_size][1]/25.4)
+        except Exception as e:
+            self.app.log.error("PlotCanvas.draw_workspace() --> %s" % str(e))
+            return None
+
+        if workspace_size != 'CUSTOM' and self.fcapp.options['global_workspace_orientation'] == 'l':
+            dims = (dims[1], dims[0])
+
+        if dims[0] <= 0 or dims[1] <= 0:
+            return None
+        return dims
+
+    def workspace_label(self, workspace_size, dims):
+        if workspace_size == 'CUSTOM':
+            return "%.0f x %.0f" % (dims[0], dims[1])
+        return workspace_size[:3]
+
+    def workspace_tooltip(self, workspace_size, dims):
+        if workspace_size == 'CUSTOM':
+            thickness = float(self.fcapp.options.get('global_workspace_custom_thickness', 0.0) or 0.0)
+            units = self.fcapp.app_units.lower()
+            return "%.3f x %.3f x %.3f %s" % (dims[0], dims[1], thickness, units)
+        return workspace_size
+
+    def fit_workspace(self):
+        dims = self.workspace_dimensions(self.fcapp.options.get('global_workspaceT', 'A4'))
+        if dims:
+            self.fit_view(rect=Rect(0, 0, dims[0], dims[1]))
 
     def delete_workspace(self):
         try:
@@ -893,59 +924,74 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         # Lock updates in other threads
         self.shape_collection.lock_updates()
 
-        if not rect:
-            rect = Rect(-1, -1, 20, 20)
-            try:
-                rect.left, rect.right = self.shape_collection.bounds(axis=0)
-                rect.bottom, rect.top = self.shape_collection.bounds(axis=1)
-            except TypeError:
-                pass
+        try:
+            if not rect:
+                rect = Rect(-1, -1, 20, 20)
+                try:
+                    rect.left, rect.right = self.shape_collection.bounds(axis=0)
+                    rect.bottom, rect.top = self.shape_collection.bounds(axis=1)
+                except TypeError:
+                    pass
 
-        # adjust the view camera to be slightly bigger than the bounds so the shape collection can be seen clearly
-        # otherwise the shape collection boundary will have no border
-        dx = rect.right - rect.left
-        dy = rect.top - rect.bottom
-        x_factor = dx * 0.02
-        y_factor = dy * 0.02
+            # adjust the view camera to be slightly bigger than the bounds so the shape collection can be seen clearly
+            # otherwise the shape collection boundary will have no border
+            dx = rect.right - rect.left
+            dy = rect.top - rect.bottom
+            if dx <= 0.0:
+                pad = max(abs(dy) * 0.5, 5.0)
+                center = (rect.left + rect.right) * 0.5
+                rect.left = center - pad
+                rect.right = center + pad
+                dx = rect.right - rect.left
+            if dy <= 0.0:
+                pad = max(abs(dx) * 0.08, 5.0)
+                center = (rect.bottom + rect.top) * 0.5
+                rect.bottom = center - pad
+                rect.top = center + pad
+                dy = rect.top - rect.bottom
 
-        rect.left -= x_factor
-        rect.bottom -= y_factor
-        rect.right += x_factor
-        rect.top += y_factor
+            x_factor = dx * 0.02
+            y_factor = dy * 0.02
 
-        # rect.left *= 0.96
-        # rect.bottom *= 0.96
-        # rect.right *= 1.04
-        # rect.top *= 1.04
+            rect.left -= x_factor
+            rect.bottom -= y_factor
+            rect.right += x_factor
+            rect.top += y_factor
 
-        # units = self.fcapp.app_units.upper()
-        # if units == 'MM':
-        #     compensation = 0.5
-        # else:
-        #     compensation = 0.5 / 25.4
-        # rect.left -= compensation
-        # rect.bottom -= compensation
-        # rect.right += compensation
-        # rect.top += compensation
+            # rect.left *= 0.96
+            # rect.bottom *= 0.96
+            # rect.right *= 1.04
+            # rect.top *= 1.04
 
-        self.view.camera.rect = rect
+            # units = self.fcapp.app_units.upper()
+            # if units == 'MM':
+            #     compensation = 0.5
+            # else:
+            #     compensation = 0.5 / 25.4
+            # rect.left -= compensation
+            # rect.bottom -= compensation
+            # rect.right += compensation
+            # rect.top += compensation
 
-        self.shape_collection.unlock_updates()
+            self.view.camera.rect = rect
+        finally:
+            self.shape_collection.unlock_updates()
 
     def fit_center(self, loc, rect=None):
 
         # Lock updates in other threads
         self.shape_collection.lock_updates()
 
-        if not rect:
-            try:
-                rect = Rect(loc[0]-20, loc[1]-20, 40, 40)
-            except TypeError:
-                pass
+        try:
+            if not rect:
+                try:
+                    rect = Rect(loc[0]-20, loc[1]-20, 40, 40)
+                except TypeError:
+                    pass
 
-        self.view.camera.rect = rect
-
-        self.shape_collection.unlock_updates()
+            self.view.camera.rect = rect
+        finally:
+            self.shape_collection.unlock_updates()
 
     def clear(self):
         pass

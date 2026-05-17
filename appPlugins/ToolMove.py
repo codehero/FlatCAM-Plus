@@ -194,6 +194,8 @@ class ToolMove(AppTool):
         else:
             obj_list = objects
 
+        dx, dy, was_clamped = self.clamp_offset_to_workspace(dx, dy, obj_list)
+
         def job_move(app_obj):
             with self.app.proc_container.new('%s...' % _("Moving")):
 
@@ -247,9 +249,48 @@ class ToolMove(AppTool):
 
             # delete the selection bounding box
             self.delete_shape()
-            self.app.inform.emit('[success] %s' % _("Done."))
+            if was_clamped:
+                self.app.inform.emit('[WARNING_NOTCL] %s' % _("Move limited to the workspace."))
+            else:
+                self.app.inform.emit('[success] %s' % _("Done."))
 
         self.app.worker_task.emit({'fcn': job_move, 'params': [self]})
+
+    def clamp_offset_to_workspace(self, dx, dy, obj_list):
+        if not self.app.options.get('global_workspace', False):
+            return dx, dy, False
+
+        try:
+            dims = self.app.plotcanvas.workspace_dimensions(self.app.options.get('global_workspaceT', 'A4'))
+        except Exception:
+            dims = None
+        if not dims:
+            return dx, dy, False
+
+        bounds = []
+        for obj in obj_list:
+            if obj.obj_options.get('plot') and obj.visible is True:
+                bounds.append(obj.bounds())
+        if not bounds:
+            return dx, dy, False
+
+        xmin = min(item[0] for item in bounds)
+        ymin = min(item[1] for item in bounds)
+        xmax = max(item[2] for item in bounds)
+        ymax = max(item[3] for item in bounds)
+        width = xmax - xmin
+        height = ymax - ymin
+
+        clamped_dx = dx
+        clamped_dy = dy
+        if width <= dims[0]:
+            clamped_dx = max(clamped_dx, -xmin)
+            clamped_dx = min(clamped_dx, dims[0] - xmax)
+        if height <= dims[1]:
+            clamped_dy = max(clamped_dy, -ymin)
+            clamped_dy = min(clamped_dy, dims[1] - ymax)
+
+        return clamped_dx, clamped_dy, (clamped_dx != dx or clamped_dy != dy)
 
     def on_move(self, event):
         event_pos = event.pos if self.app.use_3d_engine else (event.xdata, event.ydata)

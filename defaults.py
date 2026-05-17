@@ -159,6 +159,9 @@ class AppDefaults:
 
         "global_workspace": False,
         "global_workspaceT": "A4",
+        "global_workspace_custom_width": 100.0,
+        "global_workspace_custom_height": 80.0,
+        "global_workspace_custom_thickness": 1.6,
         "global_workspace_orientation": 'p',
         "global_axis": True,
         "global_axis_color": '#B34D4D',
@@ -487,6 +490,9 @@ class AppDefaults:
         "tools_mill_vtipangle": 30,
         "tools_mill_multidepth": False,
         "tools_mill_depthperpass": 0.8,
+
+        # CNC Control: log per-line auto-level Z transforms (very verbose).
+        "cnc_debug_autolevel": False,
         "tools_mill_travelz": 2,
 
         "tools_mill_toolchange": False,

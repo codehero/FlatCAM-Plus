@@ -3622,7 +3622,7 @@ class ToolMilling(Excellon, AppTool):
                 })
                 dia_cnc_dict.clear()
 
-            new_cncjob_obj.source_file = total_gcode
+            new_cncjob_obj.source_file = new_cncjob_obj.gc_start + total_gcode
 
         if use_thread:
             # To be run in separate thread

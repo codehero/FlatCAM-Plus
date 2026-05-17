@@ -734,8 +734,12 @@ class GeometryObject(FlatCAMObj, Geometry):
             job_obj.seg_x = seg_x if seg_x else float(self.app.options["geometry_seg_x"])
             job_obj.seg_y = seg_y if seg_y else float(self.app.options["geometry_seg_y"])
 
-            job_obj.z_p_depth = float(self.app.options["tools_mill_z_p_depth"])
-            job_obj.feedrate_probe = float(self.app.options["tools_mill_feedrate_probe"])
+            # Use per-tool data if available, fallback to global options
+            first_tool_key = list(tools_dict.keys())[0]
+            job_obj.z_p_depth = float(tools_dict[first_tool_key]['data'].get(
+                "tools_mill_z_p_depth", self.app.options["tools_mill_z_p_depth"]))
+            job_obj.feedrate_probe = float(tools_dict[first_tool_key]['data'].get(
+                "tools_mill_feedrate_probe", self.app.options["tools_mill_feedrate_probe"]))
 
             total_gcode = ''
             for tool_uid_key in list(tools_dict.keys()):
@@ -776,7 +780,8 @@ class GeometryObject(FlatCAMObj, Geometry):
                 dwelltime = tools_dict[tool_uid_key]['data']["tools_mill_dwelltime"]
                 pp_geometry_name = tools_dict[tool_uid_key]['data']["tools_mill_ppname_g"]
 
-                spindledir = self.app.options['tools_mill_spindledir']
+                spindledir = tools_dict[tool_uid_key]['data'].get(
+                    'tools_mill_spindledir', self.app.options['tools_mill_spindledir'])
                 tool_solid_geometry = self.solid_geometry
 
                 job_obj.coords_decimals = self.app.options["cncjob_coords_decimals"]
@@ -858,8 +863,12 @@ class GeometryObject(FlatCAMObj, Geometry):
             job_obj.seg_x = seg_x if seg_x else float(self.app.options["geometry_seg_x"])
             job_obj.seg_y = seg_y if seg_y else float(self.app.options["geometry_seg_y"])
 
-            job_obj.z_p_depth = float(self.app.options["tools_mill_z_p_depth"])
-            job_obj.feedrate_probe = float(self.app.options["tools_mill_feedrate_probe"])
+            # Use per-tool data if available, fallback to global options
+            first_tool_key = list(tools_dict.keys())[0]
+            job_obj.z_p_depth = float(tools_dict[first_tool_key]['data'].get(
+                "tools_mill_z_p_depth", self.app.options["tools_mill_z_p_depth"]))
+            job_obj.feedrate_probe = float(tools_dict[first_tool_key]['data'].get(
+                "tools_mill_feedrate_probe", self.app.options["tools_mill_feedrate_probe"]))
 
             # make sure that trying to make a CNCJob from an empty file is not creating an app crash
             if not self.solid_geometry:
@@ -972,7 +981,7 @@ class GeometryObject(FlatCAMObj, Geometry):
                 })
                 dia_cnc_dict.clear()
 
-            job_obj.source_file = total_gcode
+            job_obj.source_file = job_obj.gc_start + total_gcode
 
         if use_thread:
             # To be run in separate thread

@@ -648,37 +648,25 @@ class MainGUI(QtWidgets.QMainWindow):
     def workspace_panel_style_sheet(self):
         splash_image = (self.app.resource_location + '/splash.png').replace("\\", "/")
         if self.app.options['global_theme'] in ['default', 'light']:
-            workspace_bg = "#eef2f6"
+            workspace_bg = "#10161b"
             surface = "#ffffff"
-            soft_surface = "#f6f8fb"
-            border = "#dfe4ec"
-            accent = "#2563eb"
-            accent_hover = "#1d4ed8"
-            text = "#1f2937"
-            muted_text = "#64748b"
-            chip_bg = "#eef4ff"
-            chip_border = "#d8e6ff"
-            chip_text = "#31527a"
-            start_panel = "rgba(255, 255, 255, 228)"
-            start_panel_soft = "rgba(246, 248, 251, 232)"
-            start_logo_bg = "rgba(255, 255, 255, 242)"
-            secondary_bg = "rgba(255, 255, 255, 226)"
+            border = "rgba(255, 255, 255, 72)"
+            accent = "#c58b2a"
+            accent_hover = "#d9a441"
+            text = "#f8fafc"
+            start_panel = "rgba(7, 12, 17, 202)"
+            button_bg = "rgba(255, 255, 255, 64)"
+            button_hover = "rgba(255, 255, 255, 86)"
         else:
-            workspace_bg = "#181818"
+            workspace_bg = "#10161b"
             surface = "#262626"
-            soft_surface = "#1c1c1c"
-            border = "#444444"
-            accent = "#3f8ee8"
-            accent_hover = "#2f78c8"
-            text = "#f4f4f5"
-            muted_text = "#b6b6b6"
-            chip_bg = "#202a35"
-            chip_border = "#344354"
-            chip_text = "#b8d7ff"
-            start_panel = "rgba(32, 32, 32, 224)"
-            start_panel_soft = "rgba(24, 24, 24, 232)"
-            start_logo_bg = "rgba(38, 38, 38, 242)"
-            secondary_bg = "rgba(32, 42, 53, 218)"
+            border = "rgba(255, 255, 255, 64)"
+            accent = "#c58b2a"
+            accent_hover = "#d9a441"
+            text = "#f8fafc"
+            start_panel = "rgba(7, 12, 17, 210)"
+            button_bg = "rgba(255, 255, 255, 56)"
+            button_hover = "rgba(255, 255, 255, 82)"
 
         return f"""
             QFrame#project_start_widget {{
@@ -691,78 +679,45 @@ class MainGUI(QtWidgets.QMainWindow):
                 border-radius: 10px;
             }}
             QFrame#project_start_shell {{
-                background-color: {surface};
+                background-color: #0b1116;
                 background-image: url("{splash_image}");
                 background-position: center;
                 background-repeat: no-repeat;
-                border: 1px solid {border};
-                border-radius: 22px;
-            }}
-            QFrame#project_start_brand_panel {{
-                background: {start_panel};
-                border: 1px solid {border};
-                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 60);
+                border-radius: 18px;
             }}
             QFrame#project_start_action_panel {{
-                background: {start_panel_soft};
+                background: {start_panel};
                 border: 1px solid {border};
-                border-radius: 16px;
-            }}
-            QFrame#project_start_logo_badge {{
-                background: {start_logo_bg};
-                border: 1px solid {border};
-                border-radius: 16px;
-            }}
-            QLabel#project_start_eyebrow {{
-                color: {accent};
-                font-size: 12px;
-                font-weight: 700;
-            }}
-            QLabel#project_start_title {{
-                color: {text};
-                font-size: 34px;
-                font-weight: 700;
-            }}
-            QLabel#project_start_subtitle {{
-                color: {muted_text};
-                font-size: 14px;
-            }}
-            QLabel#project_start_chip {{
-                color: {chip_text};
-                background: {secondary_bg};
-                border: 1px solid {chip_border};
-                border-radius: 12px;
-                padding: 8px 14px;
-                font-size: 12px;
-                font-weight: 600;
+                border-radius: 18px;
             }}
             QPushButton#project_start_primary,
             QPushButton#project_start_secondary {{
-                min-width: 310px;
-                min-height: 72px;
-                border-radius: 14px;
-                padding: 12px 22px;
-                font-size: 15px;
+                min-width: 250px;
+                min-height: 58px;
+                border-radius: 15px;
+                padding: 9px 20px;
+                font-size: 14px;
                 font-weight: 700;
                 text-align: left;
             }}
             QPushButton#project_start_primary {{
-                color: #ffffff;
-                background: {accent};
-                border: 1px solid {accent};
+                color: {text};
+                background: {button_bg};
+                border: 1px solid rgba(255, 255, 255, 82);
             }}
             QPushButton#project_start_primary:hover {{
-                background: {accent_hover};
-                border-color: {accent_hover};
+                background: {button_hover};
+                border-color: rgba(255, 255, 255, 116);
             }}
             QPushButton#project_start_secondary {{
                 color: {text};
-                background: {secondary_bg};
-                border: 1px solid {border};
+                background: {button_bg};
+                border: 1px solid rgba(255, 255, 255, 82);
             }}
             QPushButton#project_start_secondary:hover {{
-                background: {chip_bg};
-                border-color: {chip_border};
+                background: {button_hover};
+                border-color: rgba(255, 255, 255, 116);
             }}
         """
 
@@ -793,63 +748,20 @@ class MainGUI(QtWidgets.QMainWindow):
         shell_shadow = QtWidgets.QGraphicsDropShadowEffect(splash_shell)
         shell_shadow.setBlurRadius(34)
         shell_shadow.setOffset(0, 12)
-        shell_shadow.setColor(QtGui.QColor(15, 23, 42, 36))
+        shell_shadow.setColor(QtGui.QColor(0, 0, 0, 92))
         splash_shell.setGraphicsEffect(shell_shadow)
 
         shell_layout = QtWidgets.QVBoxLayout(splash_shell)
-        shell_layout.setContentsMargins(36, 36, 36, 32)
+        shell_layout.setContentsMargins(36, 36, 36, 34)
         shell_layout.setSpacing(24)
-
-        brand_panel = QtWidgets.QFrame(splash_shell)
-        brand_panel.setObjectName("project_start_brand_panel")
-        brand_panel.setMinimumHeight(150)
-        brand_layout = QtWidgets.QHBoxLayout(brand_panel)
-        brand_layout.setContentsMargins(24, 22, 24, 22)
-        brand_layout.setSpacing(22)
-
-        logo_badge = QtWidgets.QFrame(brand_panel)
-        logo_badge.setObjectName("project_start_logo_badge")
-        logo_badge.setFixedSize(82, 82)
-        logo_layout = QtWidgets.QVBoxLayout(logo_badge)
-        logo_layout.setContentsMargins(10, 10, 10, 10)
-
-        logo_label = QtWidgets.QLabel(logo_badge)
-        logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        logo_pixmap = QtGui.QPixmap(self.app.resource_location + '/app64.png')
-        if not logo_pixmap.isNull():
-            logo_label.setPixmap(logo_pixmap.scaled(
-                56, 56,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation
-            ))
-        logo_layout.addWidget(logo_label)
-        brand_layout.addWidget(logo_badge)
-
-        title_box = QtWidgets.QVBoxLayout()
-        title_box.setContentsMargins(0, 0, 0, 0)
-        title_box.setSpacing(4)
-
-        eyebrow_label = FCLabel(_("Project Start"))
-        eyebrow_label.setObjectName("project_start_eyebrow")
-        title_box.addWidget(eyebrow_label)
-
-        title_label = FCLabel(APP_NAME)
-        title_label.setObjectName("project_start_title")
-        title_box.addWidget(title_label)
-
-        subtitle_label = FCLabel(_("Create a new workspace or continue with a saved project."))
-        subtitle_label.setObjectName("project_start_subtitle")
-        subtitle_label.setWordWrap(True)
-        title_box.addWidget(subtitle_label)
-
-        brand_layout.addLayout(title_box, 1)
-        shell_layout.addWidget(brand_panel)
+        shell_layout.addStretch(1)
 
         action_panel = QtWidgets.QFrame(splash_shell)
         action_panel.setObjectName("project_start_action_panel")
+        action_panel.setMinimumHeight(126)
         action_layout = QtWidgets.QVBoxLayout(action_panel)
-        action_layout.setContentsMargins(20, 20, 20, 20)
-        action_layout.setSpacing(22)
+        action_layout.setContentsMargins(24, 24, 24, 24)
+        action_layout.setSpacing(0)
 
         self.start_new_project_btn = QtWidgets.QPushButton(_("Create New Project"))
         self.start_new_project_btn.setObjectName("project_start_primary")
@@ -880,17 +792,6 @@ class MainGUI(QtWidgets.QMainWindow):
         button_row.addWidget(self.start_open_project_btn, 1)
 
         action_layout.addLayout(button_row)
-
-        chip_row = QtWidgets.QHBoxLayout()
-        chip_row.setContentsMargins(0, 0, 0, 0)
-        chip_row.setSpacing(10)
-        chip_row.addStretch(1)
-        for chip_text in (_("Gerber"), _("Excellon"), _("Geometry"), _("CNC Job")):
-            chip_label = FCLabel(chip_text)
-            chip_label.setObjectName("project_start_chip")
-            chip_row.addWidget(chip_label)
-        chip_row.addStretch(1)
-        action_layout.addLayout(chip_row)
         shell_layout.addWidget(action_panel)
 
         layout.addWidget(
@@ -939,6 +840,30 @@ class MainGUI(QtWidgets.QMainWindow):
         form_layout.addRow(_("Project name:"), name_entry)
         form_layout.addRow(_("Save location:"), location_row)
 
+        material_group = QtWidgets.QGroupBox(_("Work Area"))
+        material_grid = GLay(v_spacing=6, h_spacing=8)
+        material_group.setLayout(material_grid)
+
+        def make_size_spinner(value, step=1.0):
+            spinner = FCDoubleSpinner()
+            spinner.set_precision(3)
+            spinner.set_range(0.001, 100000.0)
+            spinner.setSingleStep(step)
+            spinner.setSuffix(" %s" % self.app.app_units.lower())
+            spinner.set_value(value)
+            return spinner
+
+        width_entry = make_size_spinner(self.app.options.get('global_workspace_custom_width', 100.0))
+        height_entry = make_size_spinner(self.app.options.get('global_workspace_custom_height', 80.0))
+        thickness_entry = make_size_spinner(self.app.options.get('global_workspace_custom_thickness', 1.6), step=0.1)
+
+        material_grid.addWidget(FCLabel(_("Width:")), 0, 0)
+        material_grid.addWidget(width_entry, 0, 1)
+        material_grid.addWidget(FCLabel(_("Height:")), 1, 0)
+        material_grid.addWidget(height_entry, 1, 1)
+        material_grid.addWidget(FCLabel(_("Thickness:")), 2, 0)
+        material_grid.addWidget(thickness_entry, 2, 1)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok |
             QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -952,6 +877,7 @@ class MainGUI(QtWidgets.QMainWindow):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(16)
         layout.addLayout(form_layout)
+        layout.addWidget(material_group)
         layout.addWidget(buttons)
 
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
@@ -966,7 +892,13 @@ class MainGUI(QtWidgets.QMainWindow):
         if not filename.lower().endswith(".flatprj"):
             filename += ".FlatPrj"
 
-        return project_name, os.path.join(project_folder, filename)
+        return (
+            project_name,
+            os.path.join(project_folder, filename),
+            width_entry.get_value(),
+            height_entry.get_value(),
+            thickness_entry.get_value()
+        )
 
     def show_start_workspace(self):
         self.project_workspace_active = False

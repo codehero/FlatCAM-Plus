@@ -2329,7 +2329,7 @@ class ToolDrilling(Excellon, AppTool):
                     self.total_gcode_parsed += tool_gcode_parsed
 
             cnc_job_obj.gcode = self.total_gcode
-            cnc_job_obj.source_file = self.total_gcode
+            cnc_job_obj.source_file = cnc_job_obj.gc_start + self.total_gcode
             cnc_job_obj.gcode_parsed = self.total_gcode_parsed
             if cnc_job_obj.gcode == 'fail':
                 return 'fail'

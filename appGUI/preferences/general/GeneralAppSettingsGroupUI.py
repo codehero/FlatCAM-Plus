@@ -160,7 +160,7 @@ class GeneralAppSettingsGroupUI(OptionsGroupUI2):
                 option="global_workspaceT",
                 label_text="Size",
                 label_tooltip="Select the type of rectangle to be used on canvas,\nas valid workspace.",
-                choices=list(self.pagesize.keys())
+                choices=list(self.pagesize.keys()) + ['CUSTOM']
             ),
             RadioSetOptionUI(
                 option="global_workspace_orientation",

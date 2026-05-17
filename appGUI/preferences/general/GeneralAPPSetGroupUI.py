@@ -168,6 +168,8 @@ class GeneralAPPSetGroupUI(OptionsGroupUI):
                 'GOV_LETTER': (8, 10.5),
                 'GOV_LEGAL': (8.5, 13),
                 'LEDGER': (17, 11),
+
+                'CUSTOM': (0, 0),
             }
         )
 

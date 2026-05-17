@@ -593,7 +593,23 @@ class ShapeCollectionVisual(CompoundVisual):
         for i in list(self.data.keys()) if not indexes else indexes:
             if i in list(self.results.keys()):
                 try:
-                    self.results[i].wait()                                  # Wait for process results
+                    self.results[i].wait(timeout=8)                         # Wait for process results
+                    if not self.results[i].ready():
+                        print(
+                            "VisPyVisuals.ShapeCollectionVisual.redraw() --> Pool timeout. "
+                            "Falling back to direct data."
+                        )
+                        if i in self.data:
+                            try:
+                                self.data[i] = _update_shape_buffers(self.data[i])
+                            except Exception as direct_err:
+                                print("VisPyVisuals.ShapeCollectionVisual.redraw() --> Direct fallback error = %s." %
+                                      str(direct_err))
+                        try:
+                            del self.results[i]
+                        except Exception:
+                            pass
+                        continue
                     if i in self.data:
                         self.data[i] = self.results[i].get()[0]             # Store translated data
                         del self.results[i]

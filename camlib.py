@@ -3868,6 +3868,24 @@ class CNCjob(Geometry):
         if abs(self.z_cut) < self.z_depthpercut:
             self.z_depthpercut = abs(self.z_cut)
 
+        # Milling quality hints (non-fatal; skipped for laser post-processors)
+        if 'laser' not in self.pp_geometry_name:
+            if not self.multidepth and abs(self.z_cut) >= 0.18:
+                self.app.inform.emit(
+                    '[WARNING] %s' % _(
+                        "Cut depth is fairly deep with multi-depth disabled. "
+                        "For cleaner milling try enabling Multi-Depth and a shallow depth per pass "
+                        "(often 0.05–0.12 mm per pass on PCB)."
+                    )
+                )
+            if not self.f_plunge and abs(self.z_cut) >= 0.12:
+                self.app.inform.emit(
+                    '[WARNING] %s' % _(
+                        "Feed-rate plunge is off while cutting relatively deep. "
+                        "Consider enabling it in tool parameters to soften Z entry."
+                    )
+                )
+
         self.feedrate = float(tool_dict['tools_mill_feedrate'])
         self.z_feedrate = float(tool_dict['tools_mill_feedrate_z'])
         self.feedrate_rapid = float(tool_dict['tools_mill_feedrate_rapid'])
