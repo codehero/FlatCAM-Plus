@@ -32,7 +32,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Modern project startup:** FlatCAM Plus now opens into a project splash workspace with **Create New Project** and **Open Project** actions instead of immediately showing an empty canvas.
 - **Saved layout migration:** The modern workspace layout version resets stale Qt window/dock state when needed, preventing older saved layouts from compressing the main canvas or splash area.
 - **Gerber editor preview fix:** Gerber Editor now allocates the required VisPy layers for PCB preview mode, so copper traces render over the board background without repeated shape collection index errors.
-- **Geometry editor fixes:** Contributor updates from @ecp2022 restore unselected geometry line display and make Geometry Editor shape deletion safer while iterating selections.
+- **Geometry editor fixes:** Contributor updates from [@ecp2022](https://github.com/ecp2022) restore unselected geometry line display and make Geometry Editor shape deletion safer while iterating selections.
 
 ### CAM and Tool Data
 
@@ -295,7 +295,7 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 ## Contributors
 
 - **Sadri ERCAN** - FlatCAM Plus maintainer and project modernization.
-- **@ecp2022** - Geometry Editor fixes for unselected line display and safer shape deletion.
+- **[@ecp2022](https://github.com/ecp2022)** - Geometry Editor fixes for unselected line display and safer shape deletion.
 
 ---
 

@@ -44,8 +44,8 @@ CHANGELOG for FlatCAM Plus beta
 - Fixed live preview travel/dotted lines so start and end points line up with the same mapped object position.
 - Fixed stream/probe coordinate mismatches after saving Live Placement.
 - Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
-- Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks @ecp2022.
-- Fixed Geometry Editor shape deletion iteration. Thanks @ecp2022.
+- Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks [@ecp2022](https://github.com/ecp2022).
+- Fixed Geometry Editor shape deletion iteration. Thanks [@ecp2022](https://github.com/ecp2022).
 
 ### Validation
 
