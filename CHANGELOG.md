@@ -22,6 +22,9 @@ CHANGELOG for FlatCAM Plus beta
 - Added persistent Live Placement state so saved offsets and rotations are used during verification, probing, and engraving.
 - Added workspace-size binding for Job W and Job H from the project workspace.
 - Added controller-state-aware jog handling so jog commands are serialized and blocked while probing or streaming.
+- Added a **Simulate** button to G-Code Preview / Verification for safe-height XY-only dry runs using the same transformed path as real streaming.
+- Added per-section CNC Control help icons and focused help modals for the dashboard panels.
+- Added an **Auto Connect** toggle in the CNC connection modal to remember connection settings and retry automatically on the next CNC Control startup.
 
 ### Changed
 
@@ -34,6 +37,9 @@ CHANGELOG for FlatCAM Plus beta
 - Saving Live Placement refreshes the auto-level/probe area from the mapped job bounds.
 - Preview and full-screen Live Placement now use the same coordinate mapping and workspace rectangle.
 - Stream logs now report that canvas XY and saved Live Placement are being applied.
+- CNC dashboard section headers with help icons now align consistently with the other panel headers.
+- Auto Connect performs a short bounded retry sequence and stops if the controller is offline.
+- Windows installer script default AppVersion now points to `1.0.5` for release builds.
 
 ### Fixed
 
@@ -44,6 +50,7 @@ CHANGELOG for FlatCAM Plus beta
 - Fixed live preview travel/dotted lines so start and end points line up with the same mapped object position.
 - Fixed stream/probe coordinate mismatches after saving Live Placement.
 - Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
+- Fixed the CNC help modal crash caused by CSS percent signs being interpreted as Python string formatting placeholders.
 - Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks [@ecp2022](https://github.com/ecp2022).
 - Fixed Geometry Editor shape deletion iteration. Thanks [@ecp2022](https://github.com/ecp2022).
 
@@ -56,6 +63,7 @@ CHANGELOG for FlatCAM Plus beta
   - `appPlugins/cnc_control/widgets.py`
 - Ran `git diff --check` for the CNC Control changes.
 - Verified synthetic G-code mapping for Back-Left, Bottom-Left, Center, Absolute XY, and saved Live Placement offsets.
+- Verified that XY simulation strips Z, probe, and spindle-on commands while preserving the transformed XY path.
 
 =================================================
 

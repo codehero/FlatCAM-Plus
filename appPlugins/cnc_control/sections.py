@@ -23,7 +23,11 @@ class CNCSectionPlugin:
     title = ""
 
     def build_panel(self, ui):
-        panel, body = ui.create_panel(self.title)
+        help_callback = None
+        callback_factory = getattr(ui, "section_help_callback", None)
+        if callable(callback_factory):
+            help_callback = callback_factory(self.section_id)
+        panel, body = ui.create_panel(self.title, help_callback=help_callback)
         self.build(ui, body)
         return panel
 

@@ -142,6 +142,7 @@ class CNCControlUI:
                 color: {text};
             }}
             QFrame#cnc_strip,
+            QFrame#cnc_panel_header,
             QFrame#cnc_field_cell,
             QFrame#cnc_dro_row,
             QFrame#cnc_segment,
@@ -154,6 +155,14 @@ class CNCControlUI:
             QFrame#cnc_button_help_pair {{
                 background: transparent;
                 border: 0px;
+            }}
+            QFrame#cnc_panel_header {{
+                background: transparent;
+                border: 0px;
+            }}
+            QLabel#cnc_panel_title {{
+                font-weight: 700;
+                padding: 0 4px 4px 0;
             }}
             QLabel#cnc_field_label {{
                 font-weight: 600;
@@ -699,6 +708,10 @@ class CNCControlUI:
         self.setup_button(self.disconnect_btn, "power16.png", _("Disconnect the CNC controller."))
         self.com_refresh = FluidStyleButton(_("Refresh"), "#5bc0de", "#31b0d5")
         self.setup_button(self.com_refresh, "replot16.png", _("Refresh COM ports."))
+        self.auto_connect_cb = QtWidgets.QCheckBox(_("Auto Connect"))
+        self.auto_connect_cb.setToolTip(
+            _("Try to connect automatically in the background when CNC Control starts.")
+        )
         self.close_connection_btn = FluidStyleButton(_("Close"), "#777777", "#666666")
         self.setup_button(self.close_connection_btn, None, _("Close this window."))
         self.close_connection_btn.clicked.connect(self.connection_dialog.hide)
@@ -706,6 +719,7 @@ class CNCControlUI:
         action_lay = QtWidgets.QHBoxLayout()
         action_lay.setSpacing(6)
         action_lay.addWidget(self.com_refresh)
+        action_lay.addWidget(self.auto_connect_cb)
         action_lay.addStretch()
         action_lay.addWidget(self.test_connection_btn)
         action_lay.addWidget(self.connect_btn)
@@ -1198,6 +1212,13 @@ class CNCControlUI:
         self.live_placement_btn = FluidStyleButton(_("Live Placement"), "#ff6900", "#e65c00")
         self.setup_button(self.live_placement_btn, "edit16.png", _("Interactive mode to drag/rotate the job."))
         action_lay.addWidget(self.live_placement_btn)
+        self.simulate_xy_btn = FluidStyleButton(_("Simulate"), "#8e44ad", "#71368a")
+        self.setup_button(
+            self.simulate_xy_btn,
+            "cnc16.png",
+            _("Run the mapped G-code path as an XY-only safe-height simulation.")
+        )
+        action_lay.addWidget(self.simulate_xy_btn)
         body.addWidget(action_frame)
 
         stats_grid = QtWidgets.QGridLayout()
@@ -1302,18 +1323,313 @@ class CNCControlUI:
         command_lay.addWidget(self.command_entry, 1)
         body.addLayout(command_lay)
 
-    def create_panel(self, title):
-        panel = QtWidgets.QGroupBox(title)
+    def create_panel(self, title, help_callback=None):
+        panel = QtWidgets.QGroupBox("" if help_callback else title)
         panel.setObjectName("cnc_panel")
         body_lay = QtWidgets.QVBoxLayout(panel)
-        body_lay.setContentsMargins(8, 10, 8, 8)
+        body_lay.setContentsMargins(8, 4 if help_callback else 10, 8, 8)
         body_lay.setSpacing(6)
+        body_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        if help_callback:
+            header = QtWidgets.QFrame()
+            header.setObjectName("cnc_panel_header")
+            header.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
+            header_lay = QtWidgets.QHBoxLayout(header)
+            header_lay.setContentsMargins(0, 0, 0, 0)
+            header_lay.setSpacing(4)
+
+            title_label = FCLabel(title)
+            title_label.setObjectName("cnc_panel_title")
+            header_lay.addWidget(title_label)
+
+            help_btn = self.help_button(_("Show help for this section."))
+            help_btn.clicked.connect(lambda *_args: help_callback())
+            header_lay.addWidget(help_btn)
+            header_lay.addStretch()
+            body_lay.addWidget(header)
+
         return panel, body_lay
+
+    def section_help_callback(self, section_id):
+        if section_id not in self.section_help_data():
+            return None
+        return lambda: self.show_section_help(section_id)
+
+    def show_gcode_preview_help(self):
+        self.show_section_help("gcode_preview_verification")
+
+    def section_help_data(self):
+        return {
+            "gauges": {
+                "title": _("Feed / Spindle"),
+                "intro": _("This section mirrors live controller status as quick visual gauges."),
+                "groups": [
+                    (_("Values"), [
+                        (_("Feed gauge"), _("Shows the live feed rate reported by the controller in mm/min.")),
+                        (_("Spindle gauge"), _("Shows the live spindle speed reported by the controller in RPM.")),
+                    ]),
+                ],
+            },
+            "machine_profiles": {
+                "title": _("Machine Profile"),
+                "intro": _("Profiles keep machine-specific limits and default motion values in one place."),
+                "groups": [
+                    (_("Controls"), [
+                        (_("Profile selector"), _("Chooses the active machine profile used by jogging, probing, and safe-height actions.")),
+                        (_("Manage"), _("Opens the profile editor to create, edit, or remove machine profiles.")),
+                    ]),
+                    (_("Values"), [
+                        (_("Safe Z"), _("Default clearance height used before probing, simulation, and safety moves.")),
+                        (_("Jog Feed"), _("Default feed rate used by manual jog moves.")),
+                        (_("Max Spindle"), _("Maximum RPM expected for the selected spindle profile.")),
+                        (_("Travel"), _("Configured machine travel envelope for reference and safety checks.")),
+                    ]),
+                ],
+            },
+            "job_streaming": {
+                "title": _("Job Queue / Sender"),
+                "intro": _("This section selects CNCJob objects, builds the queue, and streams jobs to the controller."),
+                "groups": [
+                    (_("CNCJob Queue"), [
+                        (_("CNCJob"), _("Selects the CNCJob object that preview, queue, and streaming actions use.")),
+                        (_("Refresh Jobs"), _("Reloads available CNCJob objects from the project.")),
+                        (_("ADD"), _("Adds the selected CNCJob to the streaming queue.")),
+                        (_("REMOVE"), _("Removes the selected queue row when no job is running.")),
+                        (_("UP / DOWN"), _("Reorders queued jobs before streaming.")),
+                        (_("START QUEUE"), _("Streams queued jobs to the controller with active setup, placement, and auto-level transforms.")),
+                        (_("PAUSE"), _("Sends feed hold or resume while a queue is streaming.")),
+                        (_("STOP"), _("Stops streaming, resets queued motion, stops the spindle, and lifts to Safe Z when possible.")),
+                        (_("Queue table"), _("Shows queue order, job name, line count, and current status.")),
+                    ]),
+                    (_("SD Job"), [
+                        (_("SD"), _("Selects a file already stored on the controller or flash filesystem.")),
+                        (_("Refresh SD"), _("Requests the controller's SD or filesystem job list.")),
+                        (_("Run SD"), _("Starts the selected controller-side file when supported by the active profile.")),
+                    ]),
+                ],
+            },
+            "gcode_preview_verification": {
+                "title": _("G-Code Preview / Verification"),
+                "intro": _("This section shows the G-code that will be sent after job setup, origin mapping, Live Placement, and optional auto-level transformation."),
+                "groups": [
+                    (_("Controls"), [
+                        (_("Preview"), _("Refreshes the mapped G-code preview for the selected CNCJob or queue item.")),
+                        (_("Verify"), _("Runs safety and consistency checks such as bounds, spindle/feed usage, incremental mode, and warnings.")),
+                        (_("Live Placement"), _("Opens the placement modal. Drag, rotate, or type X/Y/Angle values, then save the physical job position.")),
+                        (_("Simulate"), _("Streams an XY-only dry run to the controller. Z is moved to Safe Z and all cut-depth, probe, and spindle-on commands are skipped.")),
+                    ]),
+                    (_("Values"), [
+                        (_("Lines"), _("Total parsed G-code lines in the transformed preview.")),
+                        (_("Motion"), _("Shows total motion commands and cutting moves detected in the job.")),
+                        (_("Distance"), _("Estimated travelled toolpath distance from parsed motion commands.")),
+                        (_("Bounds"), _("Minimum and maximum X/Y/Z coordinates after the active placement and setup mapping.")),
+                        (_("Est. Time"), _("Rough runtime estimate based on feed rates and motion distance.")),
+                        (_("Warnings"), _("Number of issues found by verification. Details appear in the warning table.")),
+                    ]),
+                    (_("Preview Area"), [
+                        (_("Canvas"), _("Displays the workspace rectangle, origin marker, toolpath, margins, and live machine position when available.")),
+                        (_("G-code Text"), _("Shows the transformed G-code lines that preview, verify, stream, and simulation use as their source.")),
+                        (_("Warning Table"), _("Lists warning level, line number, and message so the risky command can be found quickly.")),
+                    ]),
+                ],
+            },
+            "position": {
+                "title": _("Position"),
+                "intro": _("This section shows live machine coordinates and provides basic zeroing and recovery actions."),
+                "groups": [
+                    (_("Values"), [
+                        (_("Work"), _("Current work-coordinate position, usually relative to the selected WCS zero.")),
+                        (_("Machine"), _("Raw machine-coordinate position reported by the controller.")),
+                        (_("Limit"), _("Shows active limit inputs reported by the controller status.")),
+                    ]),
+                    (_("Controls"), [
+                        (_("X0 / Y0 / Z0"), _("Sets the current axis position as work zero for GRBL or FluidNC style controllers.")),
+                        (_("ZERO ALL"), _("Sets X, Y, and Z work zero together.")),
+                        (_("HOME"), _("Runs the controller homing command.")),
+                        (_("UNLOCK"), _("Clears an alarm or locked state when the controller allows it.")),
+                    ]),
+                ],
+            },
+            "jog": {
+                "title": _("Jog"),
+                "intro": _("Jog controls move the machine manually while the controller is connected and idle."),
+                "groups": [
+                    (_("Controls"), [
+                        (_("Step buttons"), _("Choose the distance for each jog button press.")),
+                        (_("Feed"), _("Sets the jog feed rate used by manual moves.")),
+                        (_("Y+ / Y- / X- / X+"), _("Moves the tool in the selected XY direction by the current step distance.")),
+                        (_("Z+ / Z-"), _("Moves the Z axis by the current step distance.")),
+                    ]),
+                    (_("Safety"), [
+                        (_("Idle only"), _("Jog buttons are disabled while streaming, probing, or when the controller is not Idle.")),
+                    ]),
+                ],
+            },
+            "probing_work_offset": {
+                "title": _("Job Setup / Zero"),
+                "intro": _("This section defines how the job is mapped into the physical work area before probing or cutting."),
+                "groups": [
+                    (_("Job Area"), [
+                        (_("Job W / Job H"), _("Physical work area size used for origin mapping and the live placement workspace rectangle.")),
+                        (_("Fit Size"), _("Sets the job size from the selected CNCJob bounds.")),
+                        (_("Origin"), _("Chooses which point of the work area is treated as the work origin.")),
+                        (_("Margin X / Margin Y"), _("Adds internal clearance from the work area edge when mapping the job.")),
+                        (_("Placement"), _("Hidden fixed mode. The job uses canvas position plus saved Live Placement changes.")),
+                    ]),
+                    (_("Zeroing"), [
+                        (_("Set XY Zero"), _("Sets the current X/Y position as the selected work offset zero.")),
+                        (_("Set Z Zero"), _("Sets the current Z position as work zero.")),
+                        (_("Set XYZ Zero"), _("Sets X, Y, and Z zero together.")),
+                    ]),
+                ],
+            },
+            "auto_level": {
+                "title": _("Auto Level"),
+                "intro": _("Auto Level probes the surface and applies a height map while streaming the job."),
+                "groups": [
+                    (_("Map Setup"), [
+                        (_("Use Map"), _("Enables the current height map during G-code streaming.")),
+                        (_("X Min / X Max"), _("X range covered by probing points.")),
+                        (_("Y Min / Y Max"), _("Y range covered by probing points.")),
+                        (_("Rows / Columns"), _("Probe grid density. More points can follow uneven material better but take longer.")),
+                        (_("Safe Z"), _("Clearance height used between probing and simulation moves.")),
+                        (_("Probe Z"), _("Maximum downward probe depth for G38.2 moves.")),
+                        (_("Probe Feed"), _("Feed rate for the first probing touch.")),
+                        (_("Slow 2nd F"), _("Optional feed rate for the second slow touch. Zero uses an automatic value.")),
+                        (_("Auto Zero Z after probe"), _("Sets Z zero at the reference point after probing so the map and work zero match.")),
+                    ]),
+                    (_("Controls"), [
+                        (_("Fit Area"), _("Copies the selected CNCJob mapped XY bounds into the probe area.")),
+                        (_("Probe Map"), _("Runs the probing cycle and builds the height map.")),
+                        (_("Stop"), _("Stops after the current probe move.")),
+                        (_("Clear"), _("Removes the current height map and disables map use.")),
+                        (_("3D Map"), _("Opens the measured height map in the 3D viewer.")),
+                        (_("Progress"), _("Shows probe progress while the map is being measured.")),
+                    ]),
+                ],
+            },
+            "overrides_system": {
+                "title": _("Overrides & System"),
+                "intro": _("This section shows live controller values and sends runtime override or system commands."),
+                "groups": [
+                    (_("Live Values"), [
+                        (_("Feed"), _("Current feed rate from controller status.")),
+                        (_("Spindle"), _("Current spindle RPM from controller status.")),
+                        (_("Feed %"), _("Current feed override percentage.")),
+                        (_("Rapid %"), _("Current rapid override percentage.")),
+                        (_("Spindle %"), _("Current spindle override percentage.")),
+                    ]),
+                    (_("Overrides"), [
+                        (_("RPM / SET RPM"), _("Sets a target spindle RPM using the active profile command.")),
+                        (_("FEED / SET"), _("Sets the feed override percentage.")),
+                        (_("SPINDLE % / SET"), _("Sets the spindle override percentage.")),
+                        (_("- / 100 / +"), _("Steps an override down, resets it to 100 percent, or steps it up.")),
+                    ]),
+                    (_("System"), [
+                        (_("INFO"), _("Requests controller information.")),
+                        (_("CFG"), _("Requests configuration details when supported.")),
+                        (_("RESET"), _("Sends the controller reset command.")),
+                        (_("HOLD"), _("Pauses active motion with feed hold.")),
+                        (_("RESUME"), _("Resumes from hold when the controller allows it.")),
+                        (_("LASER ON"), _("Toggles the profile's laser/spindle enable command.")),
+                    ]),
+                ],
+            },
+            "macros": {
+                "title": _("Saved Macros"),
+                "intro": _("Macros are reusable controller command blocks for common setup or recovery tasks."),
+                "groups": [
+                    (_("Controls"), [
+                        (_("Macro list"), _("Shows saved macros. Select one to run it from the CNC Control workflow.")),
+                        (_("Manage Macros"), _("Opens the macro editor to add, edit, delete, or reorder macros.")),
+                    ]),
+                ],
+            },
+            "terminal_simulation": {
+                "title": _("Terminal"),
+                "intro": _("The terminal logs controller traffic and lets you send manual commands."),
+                "groups": [
+                    (_("Options"), [
+                        (_("Poll status"), _("Periodically requests controller status so positions and gauges stay live.")),
+                        (_("Hide status reports"), _("Keeps repetitive status packets out of the terminal log.")),
+                    ]),
+                    (_("Console"), [
+                        (_("Terminal output"), _("Shows transmitted commands, controller replies, warnings, and errors.")),
+                        (_("Command entry"), _("Sends a typed G-code or controller command when Enter is pressed.")),
+                    ]),
+                ],
+            },
+        }
+
+    def help_group_html(self, title, rows):
+        escaped_title = html.escape(str(title))
+        row_html = []
+        for name, description in rows:
+            row_html.append(
+                "<tr><td>%s</td><td>%s</td></tr>" % (
+                    html.escape(str(name)),
+                    html.escape(str(description))
+                )
+            )
+        return "<h3>%s</h3><table>%s</table>" % (escaped_title, "".join(row_html))
+
+    def show_section_help(self, section_id):
+        help_data = self.section_help_data().get(section_id)
+        if not help_data:
+            return
+
+        dialog = QtWidgets.QDialog(self.container)
+        section_title = help_data.get("title", _("Help"))
+        dialog.setWindowTitle(_("%s Help") % section_title)
+        dialog.setModal(True)
+        dialog.setMinimumSize(640, 560)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        title = FCLabel(section_title)
+        title.setObjectName("cnc_panel_title")
+        layout.addWidget(title)
+
+        body_html = [
+            "<p>%s</p>" % html.escape(str(help_data.get("intro", "")))
+        ]
+        for group_title, rows in help_data.get("groups", []):
+            body_html.append(self.help_group_html(group_title, rows))
+
+        text = QtWidgets.QTextBrowser()
+        text.setOpenExternalLinks(False)
+        text.setReadOnly(True)
+        text.setHtml("""
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 10pt; }
+                h3 { margin: 12px 0 6px 0; }
+                table { border-collapse: collapse; width: 100%; }
+                td { vertical-align: top; padding: 6px 8px; border-bottom: 1px solid #d9e2ec; }
+                td:first-child { font-weight: 700; white-space: nowrap; width: 160px; }
+                p { margin: 4px 0 8px 0; }
+            </style>
+            %s
+        """.replace("%s", "".join(body_html)))
+        layout.addWidget(text, 1)
+
+        close_btn = FluidStyleButton(_("Close"), "#777777", "#666666")
+        self.setup_button(close_btn, None, _("Close this help window."))
+        close_btn.clicked.connect(dialog.accept)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(close_btn)
+        layout.addLayout(button_row)
+
+        dialog.exec()
 
     def connection_config(self):
         port = self.com_port.currentText().strip().split(" - ", 1)[0]
         return {
             "mode": self.connection_mode_combo.currentData(),
+            "profile": self.profile_combo.currentData(),
             "port": port,
             "baudrate": int(self.baudrate_combo.currentText()),
             "host": self.tcp_host.text().strip(),
@@ -1368,7 +1684,7 @@ class CNCControlUI:
             self.feed_plus, self.feed_minus, self.feed_reset, self.spindle_override_entry,
             self.spindle_override_set_btn, self.spindle_plus, self.spindle_minus, self.spindle_reset,
             self.spindle_rpm, self.spindle_set_btn, self.spindle_stop_btn, self.macro_laser,
-            self.autolevel_probe_btn, self.autolevel_stop_btn,
+            self.autolevel_probe_btn, self.autolevel_stop_btn, self.simulate_xy_btn,
             self.command_entry,
             self.files_refresh_btn, self.files_upload_btn, self.files_mkdir_btn,
             self.files_delete_btn, self.files_up_btn, self.files_root_btn

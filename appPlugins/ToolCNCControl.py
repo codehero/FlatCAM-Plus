@@ -20,6 +20,7 @@ from appPlugins.cnc_control.ui import CNCControlUI, CNCPreviewModal
 
 import builtins
 import gettext
+import json
 import logging
 import math
 import re
@@ -85,6 +86,7 @@ class ToolCNCControl(AppTool):
         self.last_jog_warning = 0.0
 
         self.is_streaming = False
+        self.stream_mode = "job"
         self.streaming_paused = False
         self.current_line_idx = 0
         self.gcode_lines = []
@@ -105,9 +107,12 @@ class ToolCNCControl(AppTool):
         self.live_rotation = 0.0
         self.live_placement_active = False
         self.live_edit_enabled = False
+        self.auto_connect_attempts = 2
+        self.auto_connect_retry_delay = 2.0
 
         self.ui = CNCControlUI(layout=self.layout, app=self.app)
         self.pluginName = self.ui.pluginName
+        self.load_connection_settings()
         self.active_profile_key = self.ui.profile_combo.currentData() or "fluidnc"
         self.load_macros()
         self.load_machine_profiles()
@@ -116,6 +121,7 @@ class ToolCNCControl(AppTool):
         self.register_toolbar_connection_handler()
         self.update_toolbar_connection_status(False, "")
         self.connect_project_workspace_signals()
+        QtCore.QTimer.singleShot(500, self.maybe_auto_connect_on_startup)
 
     def run(self, toggle=True):
         tab_exists = False
@@ -180,6 +186,9 @@ class ToolCNCControl(AppTool):
         self.ui.com_refresh.clicked.connect(self.on_refresh_ports)
         self.ui.connection_mode_combo.currentIndexChanged.connect(self.ui.on_connection_mode_changed)
         self.ui.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
+        if hasattr(self.ui, "auto_connect_cb"):
+            self.ui.auto_connect_cb.toggled.connect(self.on_auto_connect_changed)
+        self.connect_connection_setting_signals()
         self.ui.poll_status_cb.toggled.connect(self.on_poll_status_changed)
         self.ui.hide_status_reports_cb.toggled.connect(self.on_hide_status_reports_changed)
 
@@ -233,6 +242,8 @@ class ToolCNCControl(AppTool):
         self.ui.preview_refresh_btn.clicked.connect(self.on_preview_clicked)
         self.ui.preview_verify_btn.clicked.connect(self.on_verify_clicked)
         self.ui.live_placement_btn.clicked.connect(self.on_toggle_live_placement)
+        if hasattr(self.ui, "simulate_xy_btn"):
+            self.ui.simulate_xy_btn.clicked.connect(self.on_simulate_xy_clicked)
         self.ui.gcode_job_canvas.placement_changed.connect(self.on_live_placement_changed)
         self.ui.object_combo.currentIndexChanged.connect(
             lambda *_args: self.on_preview_refresh(refresh_jobs=False)
@@ -595,6 +606,213 @@ class ToolCNCControl(AppTool):
 
     def on_verify_clicked(self, *_args):
         self.on_preview_refresh(refresh_jobs=True, action=_("Verify"), announce=True)
+
+    def on_simulate_xy_clicked(self, *_args):
+        if not self.is_connected or not self.transport:
+            self.emit_preview_message(_("Controller is not connected."), "error")
+            return
+        if self.is_streaming:
+            self.emit_preview_message(_("A job is already streaming."), "warn")
+            return
+        if self.is_auto_leveling:
+            self.emit_preview_message(_("Simulation is disabled while auto-level probing is running."), "warn")
+            return
+
+        name, lines = self.selected_preview_job()
+        if not lines:
+            self.emit_preview_message(_("Select a CNCJob first."), "warn")
+            return
+
+        try:
+            simulation_lines = self.xy_simulation_gcode_lines(lines, name=name)
+        except Exception as err:
+            log.exception("XY simulation G-code generation failed")
+            self.emit_preview_message("%s: %s" % (_("Simulation failed"), err), "error")
+            return
+
+        if not simulation_lines:
+            self.emit_preview_message(_("No XY motion found to simulate."), "warn")
+            return
+
+        safe_z = self.simulation_safe_z_value()
+        self.is_streaming = True
+        self.stream_mode = "simulate"
+        self.streaming_paused = False
+        self.current_queue_idx = -1
+        self.current_line_idx = 0
+        self.ui.pause_btn.setText("PAUSE")
+        self.jog_controls_update_sig.emit()
+        self.update_progress_sig.emit(0.0, _("Simulation"))
+        threading.Thread(
+            target=self.xy_simulation_worker,
+            args=(name, simulation_lines, safe_z),
+            daemon=True
+        ).start()
+
+    def simulation_safe_z_value(self):
+        try:
+            safe_z = float(self.ui.autolevel_safe_z.value())
+        except Exception:
+            try:
+                safe_z = float(self.current_machine_profile().get("safe_z", 5.0))
+            except Exception:
+                safe_z = 5.0
+        if not math.isfinite(safe_z):
+            return 5.0
+        return safe_z
+
+    @staticmethod
+    def split_generated_gcode_lines(lines):
+        flat_lines = []
+        for line in lines:
+            flat_lines.extend(str(line or "").splitlines())
+        return flat_lines
+
+    def xy_simulation_gcode_lines(self, lines, name=None):
+        transformed_lines = self.transformed_gcode_lines(lines, name=name)
+        return self.xy_only_safe_motion_lines(self.split_generated_gcode_lines(transformed_lines))
+
+    def xy_only_safe_motion_lines(self, lines):
+        simulation_lines = []
+        current_motion = None
+        current_feed = None
+        current_units = None
+        absolute = True
+
+        for raw_line in lines:
+            clean_line = self.clean_gcode_line(raw_line)
+            if not clean_line:
+                continue
+
+            upper_line = clean_line.upper()
+            if upper_line.startswith("$"):
+                continue
+
+            raw_g_values = self.raw_g_code_values(upper_line)
+            if any(
+                    math.isclose(code, 10.0) or math.isclose(code, 28.0) or
+                    math.isclose(code, 30.0) or math.isclose(code, 38.2) or
+                    math.isclose(code, 53.0) or int(code) == 92
+                    for code in raw_g_values
+            ):
+                continue
+
+            words = self.gcode_words(upper_line)
+            g_codes = self.modal_g_codes(upper_line)
+
+            if 20 in g_codes and current_units != "inch":
+                current_units = "inch"
+                simulation_lines.append("G20")
+            if 21 in g_codes and current_units != "mm":
+                current_units = "mm"
+                simulation_lines.append("G21")
+            if 90 in g_codes and not absolute:
+                absolute = True
+                simulation_lines.append("G90")
+            if 91 in g_codes and absolute:
+                absolute = False
+                simulation_lines.append("G91")
+
+            for code in g_codes:
+                if code in (0, 1, 2, 3):
+                    current_motion = code
+
+            if "F" in words:
+                current_feed = words["F"]
+
+            has_xy = "X" in words or "Y" in words
+            has_full_circle_arc = current_motion in (2, 3) and ("I" in words or "J" in words)
+            if not has_xy and not has_full_circle_arc:
+                continue
+
+            motion = current_motion if current_motion in (0, 1, 2, 3) else 0
+            command_words = ["G%d" % motion]
+            for axis in ("X", "Y"):
+                if axis in words:
+                    command_words.append("%s%s" % (axis, self.format_gcode_number(words[axis])))
+            if motion in (2, 3):
+                for axis in ("I", "J", "R"):
+                    if axis in words:
+                        command_words.append("%s%s" % (axis, self.format_gcode_number(words[axis])))
+            if motion in (1, 2, 3) and current_feed is not None:
+                command_words.append("F%s" % self.format_gcode_number(current_feed))
+
+            simulation_lines.append(" ".join(command_words))
+
+        return simulation_lines
+
+    def spindle_stop_simulation_commands(self):
+        command = self.current_profile().get("spindle_stop", "M5")
+        if isinstance(command, bytes):
+            return []
+        commands = [line.strip() for line in str(command or "").splitlines() if line.strip()]
+        return commands or ["M5"]
+
+    def xy_simulation_worker(self, name, simulation_lines, safe_z):
+        wcs_label, _p_num = self.selected_work_offset()
+        safe_z_word = self.format_gcode_number(safe_z)
+        setup_commands = [
+            wcs_label,
+        ] + self.spindle_stop_simulation_commands() + [
+            "G21",
+            "G90",
+            "G0 Z%s" % safe_z_word,
+        ]
+        teardown_commands = self.spindle_stop_simulation_commands() + [
+            "G21",
+            "G90",
+            "G0 Z%s" % safe_z_word,
+        ]
+        stream_commands = setup_commands + simulation_lines + teardown_commands
+        total = len(stream_commands)
+        sent = 0
+        aborted = False
+
+        self.append_console_sig.emit(
+            _("XY simulation started for %s. Z is held at safe height %.3f mm; spindle/probe commands are skipped.") % (
+                name, safe_z
+            ),
+            "info"
+        )
+
+        try:
+            for index, command in enumerate(stream_commands):
+                if not self.is_streaming:
+                    aborted = True
+                    break
+
+                while self.streaming_paused and self.is_streaming:
+                    time.sleep(0.1)
+
+                if not str(command).strip():
+                    continue
+
+                self.current_line_idx = index
+                self.ok_received.clear()
+                self.last_controller_ack = ""
+                self.send_command(command, log=True)
+                if not self.wait_for_stream_ack(command, timeout=900.0, warn_after=5.0):
+                    aborted = True
+                    break
+
+                sent += 1
+                self.update_progress_sig.emit((sent / total * 100.0) if total else 0.0, command)
+        finally:
+            completed = self.is_streaming and not aborted
+            self.is_streaming = False
+            self.streaming_paused = False
+            self.current_queue_idx = -1
+            self.stream_mode = "job"
+            self.jog_controls_update_sig.emit()
+            self.update_progress_sig.emit(
+                100.0 if completed and total else 0.0,
+                _("Simulation done") if completed else _("Simulation stopped")
+            )
+            self.queue_update_sig.emit()
+            self.emit_preview_message(
+                _("XY simulation completed.") if completed else _("XY simulation stopped."),
+                "info" if completed else "warn"
+            )
 
     def emit_preview_message(self, message, level="info"):
         self.append_console_sig.emit(message, level)
@@ -971,8 +1189,116 @@ class ToolCNCControl(AppTool):
         if self.is_connected:
             self.on_refresh_files()
 
-    def on_profile_changed(self):
+    @staticmethod
+    def qsettings_bool(value, default=False):
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def load_connection_settings(self):
+        settings = QtCore.QSettings("Open Source", "FlatCAM_Plus")
+        config = {}
+        raw_config = settings.value("cnc_connection_config", "")
+        if raw_config:
+            try:
+                config = json.loads(str(raw_config))
+            except Exception:
+                config = {}
+
+        mode = config.get("mode")
+        if mode:
+            mode_idx = self.ui.connection_mode_combo.findData(mode)
+            if mode_idx >= 0:
+                self.ui.connection_mode_combo.setCurrentIndex(mode_idx)
+        self.ui.on_connection_mode_changed()
+
+        profile = config.get("profile")
+        if profile:
+            profile_idx = self.ui.profile_combo.findData(profile)
+            if profile_idx >= 0:
+                self.ui.profile_combo.setCurrentIndex(profile_idx)
+
+        port = str(config.get("port", "") or "").strip()
+        if port:
+            if self.ui.com_port.findText(port) < 0:
+                self.ui.com_port.addItem(port, port)
+            self.ui.com_port.setCurrentText(port)
+        baudrate = str(config.get("baudrate", "") or "").strip()
+        if baudrate:
+            self.ui.baudrate_combo.setCurrentText(baudrate)
+        if config.get("host"):
+            self.ui.tcp_host.setText(str(config.get("host", "")))
+        try:
+            self.ui.tcp_port.setValue(int(config.get("tcp_port", self.ui.tcp_port.value())))
+        except Exception:
+            pass
+        if config.get("web_url"):
+            self.ui.web_url.setText(str(config.get("web_url", "")))
+        self.ui.web_user.setText(str(config.get("user", "") or ""))
+        self.ui.web_password.setText(str(config.get("password", "") or ""))
+
+        auto_connect = self.qsettings_bool(settings.value("cnc_auto_connect", False))
+        if hasattr(self.ui, "auto_connect_cb"):
+            self.ui.auto_connect_cb.blockSignals(True)
+            self.ui.auto_connect_cb.setChecked(auto_connect)
+            self.ui.auto_connect_cb.blockSignals(False)
+
+    def save_connection_settings(self):
+        settings = QtCore.QSettings("Open Source", "FlatCAM_Plus")
+        auto_connect = bool(getattr(self.ui, "auto_connect_cb", None) and self.ui.auto_connect_cb.isChecked())
+        settings.setValue("cnc_auto_connect", auto_connect)
+        settings.setValue("cnc_connection_config", json.dumps(self.ui.connection_config()))
+
+    def connect_connection_setting_signals(self):
+        watched = [
+            self.ui.connection_mode_combo,
+            self.ui.profile_combo,
+            self.ui.com_port,
+            self.ui.baudrate_combo,
+        ]
+        for combo in watched:
+            try:
+                combo.currentTextChanged.connect(self.on_connection_settings_changed)
+            except Exception:
+                pass
+        for entry in [self.ui.tcp_host, self.ui.web_url, self.ui.web_user, self.ui.web_password]:
+            entry.textChanged.connect(self.on_connection_settings_changed)
+        self.ui.tcp_port.valueChanged.connect(self.on_connection_settings_changed)
+
+    def on_auto_connect_changed(self, _enabled=False):
+        self.save_connection_settings()
+
+    def on_connection_settings_changed(self, *_args):
+        if getattr(self.ui, "auto_connect_cb", None) and self.ui.auto_connect_cb.isChecked():
+            self.save_connection_settings()
+
+    def maybe_auto_connect_on_startup(self):
+        if self.is_connected:
+            return
+        auto_cb = getattr(self.ui, "auto_connect_cb", None)
+        if auto_cb is None or not auto_cb.isChecked():
+            return
+        config = self.ui.connection_config()
+        message = self.validate_connection_config(config)
+        if message:
+            self.append_console_sig.emit(
+                "%s: %s" % (_("Auto connect skipped"), message),
+                "warn"
+            )
+            return
+        self.ui.set_connection_actions_enabled(False)
+        self.append_console_sig.emit(_("Auto connecting to CNC..."), "info")
+        threading.Thread(
+            target=self._connect_worker,
+            args=(config, True, self.auto_connect_attempts),
+            daemon=True
+        ).start()
+
+    def on_profile_changed(self, *_args):
         self.active_profile_key = self.ui.profile_combo.currentData() or "fluidnc"
+        self.on_connection_settings_changed()
 
     def current_machine_profile(self):
         for profile in self.machine_profiles:
@@ -1071,11 +1397,15 @@ class ToolCNCControl(AppTool):
             self.append_console_sig.emit(message, "error")
             return
 
+        if getattr(self.ui, "auto_connect_cb", None) and self.ui.auto_connect_cb.isChecked():
+            self.save_connection_settings()
         self.ui.set_connection_actions_enabled(False)
         self.append_console_sig.emit(_("Connecting..."), "info")
-        threading.Thread(target=self._connect_worker, args=(config,), daemon=True).start()
+        threading.Thread(target=self._connect_worker, args=(config, False, 1), daemon=True).start()
 
     def validate_connection_config(self, config):
+        if config["mode"] == "serial" and not str(config.get("port", "")).strip():
+            return _("No COM port selected.")
         if config["mode"] == "serial" and config["port"] == "None":
             return _("No COM port selected.")
         if config["mode"] == "tcp" and not config["host"]:
@@ -1091,27 +1421,47 @@ class ToolCNCControl(AppTool):
             return TcpTransport(config["host"], config["tcp_port"])
         return HttpTransport(config["web_url"], config["user"], config["password"])
 
-    def _connect_worker(self, config):
-        try:
-            transport = self.build_transport(config)
-            transport.open()
-            with self.io_lock:
-                self.transport = transport
-                self.is_connected = True
-                self.stop_thread.clear()
+    def _connect_worker(self, config, auto=False, attempts=1):
+        attempts = max(1, int(attempts or 1))
+        last_error = None
 
-            self.connection_state_sig.emit(True, transport.description())
-            self.receiver_thread = threading.Thread(target=self.receive_loop, daemon=True)
-            self.receiver_thread.start()
+        for attempt in range(1, attempts + 1):
+            try:
+                transport = self.build_transport(config)
+                transport.open()
+                with self.io_lock:
+                    self.transport = transport
+                    self.is_connected = True
+                    self.stop_thread.clear()
 
-            if isinstance(transport, HttpTransport) and transport.info_text:
-                self.parse_controller_info(transport.info_text)
-            else:
-                self.send_profile_command("info", log=False)
-        except Exception as e:
-            log.error("CNC connection error: %s", e)
-            self.append_console_sig.emit(f"{_('Connection failed')}: {e}", "error")
-            self.connection_state_sig.emit(False, "")
+                self.connection_state_sig.emit(True, transport.description())
+                self.receiver_thread = threading.Thread(target=self.receive_loop, daemon=True)
+                self.receiver_thread.start()
+
+                if isinstance(transport, HttpTransport) and transport.info_text:
+                    self.parse_controller_info(transport.info_text)
+                else:
+                    self.send_profile_command("info", log=False)
+                return
+            except Exception as e:
+                last_error = e
+                log.error("CNC connection error: %s", e)
+                if not auto or attempt >= attempts:
+                    break
+                self.append_console_sig.emit(
+                    _("Auto connect failed (%d/%d). Retrying...") % (attempt, attempts),
+                    "warn"
+                )
+                time.sleep(self.auto_connect_retry_delay)
+
+        if auto:
+            self.append_console_sig.emit(
+                "%s: %s" % (_("Auto connect stopped"), last_error),
+                "warn"
+            )
+        else:
+            self.append_console_sig.emit(f"{_('Connection failed')}: {last_error}", "error")
+        self.connection_state_sig.emit(False, "")
 
     def on_connection_state_changed(self, connected, description):
         self.ui.set_connection_actions_enabled(True)
@@ -1187,6 +1537,8 @@ class ToolCNCControl(AppTool):
             self.append_console_sig.emit(message, "error")
             return
 
+        if getattr(self.ui, "auto_connect_cb", None) and self.ui.auto_connect_cb.isChecked():
+            self.save_connection_settings()
         self.ui.set_connection_actions_enabled(False)
         self.append_console_sig.emit(_("Testing connection..."), "info")
         threading.Thread(target=self._test_connection_worker, args=(config,), daemon=True).start()
@@ -3844,6 +4196,7 @@ class ToolCNCControl(AppTool):
         self.current_queue_idx = -1
         self.current_line_idx = 0
         self.is_streaming = True
+        self.stream_mode = "job"
         self.streaming_paused = False
         self.ui.pause_btn.setText("PAUSE")
         self.jog_controls_update_sig.emit()
@@ -3863,6 +4216,7 @@ class ToolCNCControl(AppTool):
 
     def on_stream_stop(self):
         self.is_streaming = False
+        self.stream_mode = "job"
         self.streaming_paused = False
         self.ui.pause_btn.setText("PAUSE")
         self.jog_controls_update_sig.emit()
@@ -3879,11 +4233,12 @@ class ToolCNCControl(AppTool):
 
         # 4. Lift Z to safe clearance height
         try:
-            # Try to get clearance Z from application options
-            safe_z = float(self.app.options.get("geometry_travelz", 5.0))
+            safe_z = self.simulation_safe_z_value()
             # Unlock if needed (some controllers require $X after soft-reset to allow movement)
             self.send_profile_command("unlock", log=False)
-            self.send_command(f"G0 Z{safe_z}")
+            self.send_command("G21", log=True)
+            self.send_command("G90", log=True)
+            self.send_command("G0 Z%s" % self.format_gcode_number(safe_z))
         except Exception:
             pass
 
@@ -4136,6 +4491,7 @@ class ToolCNCControl(AppTool):
         self.is_streaming = False
         self.streaming_paused = False
         self.current_queue_idx = -1
+        self.stream_mode = "job"
         self.jog_controls_update_sig.emit()
         self.update_progress_sig.emit(100.0 if completed and total else 0.0, _("Done") if completed else _("Stopped"))
         self.queue_update_sig.emit()

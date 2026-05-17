@@ -57,10 +57,13 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 - **Unified CNC-style workspace UI:** Preferences, the canvas tab area, the left sidebar, project trees, and selected Gerber/Excellon/CNCJob property panels now share the CNC Control visual language with clearer buttons and bordered panels.
 - **Canvas context tools:** The plot-area right-click menu includes Rotate for selected objects, matching the toolbar Rotate workflow.
 - **CNC toolbar connection access:** The toolbar CNC connection/settings action opens the CNC connection modal directly, with serial, WiFi/TCP GRBL, and FluidNC Web/HTTP modes.
+- **CNC auto connect:** The connection modal can remember the last selected transport settings and automatically try to reconnect in the background on the next CNC Control startup.
 - **Offline G-code validation:** The CNC dashboard Preview and Verify actions work without an active controller connection and report clear status, warnings, and empty-job feedback.
 - **Live Placement workflow:** CNCJob coordinates now start from their canvas position and can be adjusted in the Live Placement modal with exact X, Y, and Angle values before preview, probing, auto-leveling, or streaming.
 - **Workspace-bound job size:** Job W and Job H are bound to the project workspace size so the CNC preview, Live Placement modal, and probing area share the same material rectangle.
 - **Job-size preview canvas:** The G-code preview panel includes a 2D material canvas that draws the selected job inside the configured PCB/work area, including origin, grid, saved Live Placement transform, rapid moves, cutting moves, and outside-job warnings.
+- **Safe-height XY simulation:** G-Code Preview / Verification now includes a Simulate action that streams the transformed job path as XY-only motion at Safe Z, skipping Z plunges, probing, and spindle-on commands for dry-run validation.
+- **Section help modals:** CNC Control dashboard sections include inline help icons that explain the controls and live values inside that specific panel.
 - **Auto leveling:** CNC Control can probe a PCB height map and apply measured Z compensation while streaming a selected CNCJob.
 - **Safer streaming and jogging:** Queue streaming waits for controller `ok`/`error` acknowledgements, and jog commands are serialized and blocked during probing or streaming to avoid delayed motion conflicts.
 - **GRBL status visibility:** Homing state and active X/Y/Z limit inputs are normalized and shown in the CNC dashboard for clearer WiFi/TCP GRBL operation.
@@ -96,6 +99,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 FlatCAM Plus includes a built-in CNC control workflow for managing machine sessions without leaving the application.
 
 - **Connection dialog:** Serial, TCP/Telnet, and FluidNC Web/HTTP settings are managed from one modal.
+- **Auto Connect:** Users can enable Auto Connect after configuring the controller. On the next CNC Control startup, FlatCAM Plus tries the saved connection in the background and stops after a short retry sequence if the machine is offline.
 - **Controller profiles:** FluidNC, GRBL, Smoothieware, Marlin, and generic G-code profiles provide controller-specific commands.
 - **WiFi GRBL mode:** TCP/Telnet connections default to the GRBL profile, while Web/HTTP connections default to FluidNC.
 - **Connection testing:** Selected transports can be tested before opening an active machine session.
@@ -126,6 +130,7 @@ The CNC page is organized as a compact production dashboard:
 - **Job setup row:** Workspace-bound job size, origin, Live Placement, and XY/Z/XYZ zero buttons sit next to G-Code Preview / Verification.
 - **Preview row:** G-Code Preview / Verification displays the material canvas, selected job statistics, transformed G-code, and warnings before sending.
 - **Terminal console:** Manual commands, TX/RX messages, warnings, errors, and polling controls are grouped below the machine controls with a taller console for longer GRBL sessions.
+- **Context help:** Each main dashboard section has a header help icon with a focused modal explaining only that section's parameters and actions.
 
 ### Machine Profiles
 
@@ -181,6 +186,7 @@ The CNC page is organized as a compact production dashboard:
 - **G-Code Preview / Verification:** Selected jobs show line counts, motion statistics, bounds, estimated runtime, and safety warnings.
 - **Material canvas preview:** The preview panel draws the selected CNCJob inside the configured job size, including grid, origin crosshair, saved Live Placement transform, rapid/cut paths, path bounds, and outside-job warnings.
 - **Mapped coordinate preview:** Preview and Verify analyze the transformed G-code used for streaming, not only the original plot-area coordinates.
+- **XY-only simulation:** The Simulate button uses the same transformed G-code chain as streaming, but sends only safe-height XY moves so the user can confirm the real machine path before engraving.
 - **Offline preview refresh:** Preview and Verify refresh the CNCJob list, read generated G-code from multiple CNCJob sources, and confirm successful analysis in the terminal even when no CNC is connected.
 - **Verification checks:** The verifier flags missing units or positioning mode, cutting before spindle/feed setup, rapid XY motion below Z zero, pause commands, and X/Y/Z travel limit risks from the active machine profile.
 - **Machine profile export notes:** G-code exports include the active profile name, travel limits, safe Z, and max spindle RPM as comments for traceability; controller firmware limits such as GRBL `$130/$131/$132` remain controller settings and are not overwritten by job files.
