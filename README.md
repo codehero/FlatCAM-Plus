@@ -1,14 +1,69 @@
-<img width="1376" height="768" alt="splash" src="https://github.com/user-attachments/assets/b4707bd9-e9cb-45d9-be65-253b034f5bd6" />
+<p align="center">
+  <img width="1376" height="768" alt="FlatCAM Plus splash" src="https://github.com/user-attachments/assets/b4707bd9-e9cb-45d9-be65-253b034f5bd6" />
+</p>
 
+<h1 align="center">FlatCAM Plus</h1>
+<h3 align="center">PCB CAM, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
 
-# FlatCAM Plus v1.0.6 (BETA) (c) 2026 - by Sadri ERCAN
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.6%20beta-31b0d5" />
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" />
+  <img alt="PyQt" src="https://img.shields.io/badge/UI-PyQt6-41cd52" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey?logo=windows" />
+  <img alt="CNC" src="https://img.shields.io/badge/CNC-GRBL%20%7C%20FluidNC%20%7C%20Serial%20%7C%20TCP-orange" />
+</p>
 
-**FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
+<p align="center">
+  <strong>Modern PCB manufacturing from CAM import to machine motion.</strong><br>
+  Import Gerber and Excellon files, generate PCB milling toolpaths, verify mapped G-code, simulate the real XY machine path, probe the board surface, and stream jobs directly to CNC controllers.
+</p>
 
-**Current version:** `1.0.6` beta, released `2026/05/17`, updated `2026/05/17`.
+<p align="center">
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#key-improvements">Key Improvements</a> |
+  <a href="#new-features">New Features</a> |
+  <a href="#installation-and-setup">Installation</a> |
+  <a href="#contributors">Contributors</a>
+</p>
 
-Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
-Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
+---
+
+## Features
+
+| Feature | Description |
+| --- | --- |
+| PCB CAM Workflow | Import Gerber and Excellon files, prepare Geometry objects, generate CNCJob output, and keep board layers aligned from CAM export to machine path. |
+| Integrated CNC Control | Connect over Serial, TCP/Telnet, or FluidNC Web/HTTP with live DRO, jogging, work zeroing, macros, SD jobs, terminal commands, and queued streaming. |
+| Live Placement | Place the job exactly on the workspace using canvas position plus saved X/Y/Angle adjustments before preview, probing, simulation, or engraving. |
+| Safe XY Simulation | Run the transformed toolpath as XY-only motion at Safe Z, skipping Z plunges, probe moves, and spindle-on commands before the real cut. |
+| Auto-Level Probing | Probe a PCB surface, build a height map, segment arcs and long moves, and apply mapped Z compensation during streaming. |
+| G-Code Verification | Preview and Verify analyze the same mapped coordinates used by streaming, including bounds, warnings, travel limits, feed/spindle issues, and estimated runtime. |
+| Machine Profiles | Store Safe Z, jog feed, probe feed, spindle max RPM, and X/Y/Z travel limits for repeatable machine setup. |
+| Project Workspace | Start from a project splash, organize files in a tree, inspect properties in a right sidebar, and work inside a CNC-style manufacturing UI. |
+| 3D CNC Preview | Render CNCJob output in a dedicated 3D preview plugin with PCB-style board visualization and engraved Z-depth channels. |
+| AI Assistant | Use a project-aware assistant with OpenAI-compatible, local, Gemini, and Claude providers for CAM and CNC workflow analysis. |
+| Android CNC Companion | Test the beta Android CNC controller app for mobile FluidNC, TCP/Telnet, and USB Serial sessions. |
+| Modular Architecture | CNC Control is split into focused modules for profiles, transports, widgets, dialogs, machine profiles, and dashboard sections. |
+
+## Why This Fork
+
+- **Machine-first workflow:** The CNC dashboard is built around what the operator needs before motion: connection, position, origin, placement, preview, simulation, probing, and streaming.
+- **Preview equals stream:** Preview, Verify, Simulate, probing, auto-leveling, and queue streaming share the same mapped coordinate chain.
+- **Safer first cuts:** The Simulate button runs the transformed job path as XY-only motion at Safe Z, so the machine path can be checked before the cutter touches the PCB.
+- **Modern FlatCAM base:** FlatCAM Plus keeps the proven FlatCAM CAM foundation while modernizing the UI, project model, runtime, and CNC workflow.
+
+## Quick Start
+
+1. Create a project and set the PCB/workspace size.
+2. Import Gerber and Excellon files, then generate Geometry and CNCJob outputs.
+3. Open **CNC Control**, connect over Serial, TCP/Telnet, or FluidNC Web/HTTP.
+4. Use **Live Placement** to put the job exactly where it should run.
+5. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
+6. Probe the board if needed, set work zero, and run the queue.
+
+**Current release:** `1.0.6` beta, released `2026/05/17`, updated `2026/05/17`.
+
+FlatCAM Plus is forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019 and based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
 ---
 
