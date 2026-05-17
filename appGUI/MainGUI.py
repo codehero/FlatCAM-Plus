@@ -820,7 +820,7 @@ class MainGUI(QtWidgets.QMainWindow):
         location_row.setSpacing(6)
 
         location_entry = FCEntry()
-        location_entry.setText(self.app.get_last_save_folder())
+        location_entry.setText(self.app.default_project_folder())
         browse_btn = QtWidgets.QPushButton(_("Choose"))
         browse_btn.setMinimumWidth(68)
 

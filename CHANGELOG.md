@@ -39,6 +39,7 @@ CHANGELOG for FlatCAM Plus beta
 - Stream logs now report that canvas XY and saved Live Placement are being applied.
 - CNC dashboard section headers with help icons now align consistently with the other panel headers.
 - Auto Connect performs a short bounded retry sequence and stops if the controller is offline.
+- New project creation now defaults to the user's Desktop folder, with Documents/Home fallback if Desktop is unavailable.
 - Windows installer script default AppVersion now points to `1.0.6` for release builds.
 
 ### Fixed
@@ -51,6 +52,7 @@ CHANGELOG for FlatCAM Plus beta
 - Fixed stream/probe coordinate mismatches after saving Live Placement.
 - Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
 - Fixed the CNC help modal crash caused by CSS percent signs being interpreted as Python string formatting placeholders.
+- Fixed version updates starting with an empty Tools Database by copying valid existing tool presets forward into the current version DB.
 - Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks [@ecp2022](https://github.com/ecp2022).
 - Fixed Geometry Editor shape deletion iteration. Thanks [@ecp2022](https://github.com/ecp2022).
 

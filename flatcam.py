@@ -216,10 +216,15 @@ class StartupProjectLauncher(QtWidgets.QDialog):
             self.move(screen.availableGeometry().center() - self.rect().center())
 
     def default_project_folder(self):
-        folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
-        if not folder:
-            folder = os.path.expanduser("~")
-        return folder
+        for location in (
+            QStandardPaths.StandardLocation.DesktopLocation,
+            QStandardPaths.StandardLocation.DocumentsLocation,
+            QStandardPaths.StandardLocation.HomeLocation
+        ):
+            folder = QStandardPaths.writableLocation(location)
+            if folder:
+                return folder
+        return os.path.expanduser("~")
 
     def load_recent_projects(self):
         recent_path = os.path.join(self.data_path, "recent_projects.json")

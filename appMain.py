@@ -10,6 +10,7 @@
 from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import QSettings, pyqtSlot
 from PyQt6.QtCore import Qt, pyqtSignal, QMetaObject
+from PyQt6.QtCore import QStandardPaths
 from PyQt6.QtGui import QAction
 
 import os.path
@@ -524,17 +525,8 @@ class App(QtCore.QObject):
             os.makedirs(self.preprocessorpaths)
             self.log.debug('Created preprocessors folder: ' + self.preprocessorpaths)
 
-        # create tools_db.FlatDB file if there is none
-        db_path = self.tools_database_path()
-
-        try:
-            f = open(db_path)
-            f.close()
-        except IOError:
-            self.log.debug('Creating empty tools_db.FlatDB')
-            f = open(db_path, 'w')
-            json.dump({}, f)
-            f.close()
+        # create or migrate the Tools DB file if there is none
+        self.ensure_tools_database()
 
         # create current_defaults.FlatConfig file if there is none
         def_path = self.defaults_path()
@@ -1567,6 +1559,86 @@ class App(QtCore.QObject):
 
     def tools_database_path(self):
         return os.path.join(self.data_path, 'tools_db_%s.FlatDB' % str(self.version))
+
+    def ensure_tools_database(self):
+        """
+        Ensure the versioned Tools DB exists without dropping user presets on updates.
+
+        The DB filename includes the application version. When the version changes the
+        new filename can be missing, or may already have been created as an empty DB on
+        a previous launch. In both cases prefer a valid non-empty DB from an earlier
+        version and copy it forward.
+        """
+        db_path = self.tools_database_path()
+
+        if os.path.exists(db_path) and self.tools_database_has_records(db_path):
+            return db_path
+
+        migrated_from = self.migrate_tools_database(db_path)
+        if migrated_from:
+            self.log.debug('Copied Tools DB from previous version: %s' % migrated_from)
+            return db_path
+
+        if os.path.exists(db_path):
+            return db_path
+
+        self.log.debug('Creating empty tools_db.FlatDB')
+        with open(db_path, 'w', encoding='utf-8') as f:
+            json.dump({}, f)
+
+        return db_path
+
+    def migrate_tools_database(self, db_path):
+        source_path = self.find_previous_tools_database(db_path)
+        if not source_path:
+            return None
+
+        try:
+            shutil.copy2(source_path, db_path)
+            return source_path
+        except Exception as e:
+            self.log.error('Could not migrate Tools DB from previous version: %s' % str(e))
+            return None
+
+    def find_previous_tools_database(self, db_path):
+        try:
+            candidates = []
+            for file_name in os.listdir(self.data_path):
+                if file_name == 'tools_db.FlatDB' or \
+                        (file_name.startswith('tools_db_') and file_name.endswith('.FlatDB')):
+                    candidate = os.path.join(self.data_path, file_name)
+                    if os.path.abspath(candidate) == os.path.abspath(db_path):
+                        continue
+                    if not os.path.isfile(candidate) or not self.tools_database_is_valid(candidate):
+                        continue
+                    candidates.append(candidate)
+        except OSError:
+            return None
+
+        non_empty_candidates = [path for path in candidates if self.tools_database_has_records(path)]
+        candidates = non_empty_candidates if non_empty_candidates else candidates
+        candidates.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+        return candidates[0] if candidates else None
+
+    @staticmethod
+    def tools_database_is_valid(filename):
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return False
+
+        return isinstance(data, dict)
+
+    @staticmethod
+    def tools_database_has_records(filename):
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return False
+
+        return isinstance(data, dict) and bool(data)
 
     def defaults_path(self):
         return os.path.join(self.data_path, 'current_defaults_%s.FlatConfig' % str(self.version))
@@ -2740,11 +2812,23 @@ class App(QtCore.QObject):
         :return: String, last saved folder path
         """
         loc = self.options["global_last_save_folder"]
-        if loc is None:
+        if not loc:
             loc = self.options["global_last_folder"]
-        if loc is None:
-            loc = os.path.dirname(__file__)
+        if not loc:
+            loc = self.default_project_folder()
         return loc
+
+    @staticmethod
+    def default_project_folder():
+        for location in (
+            QStandardPaths.StandardLocation.DesktopLocation,
+            QStandardPaths.StandardLocation.DocumentsLocation,
+            QStandardPaths.StandardLocation.HomeLocation
+        ):
+            folder = QStandardPaths.writableLocation(location)
+            if folder:
+                return folder
+        return os.path.expanduser("~")
 
     @QtCore.pyqtSlot(str)
     @QtCore.pyqtSlot(str, bool)
