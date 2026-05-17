@@ -298,6 +298,13 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 
 ---
 
+## Contributors
+
+- **Sadri ERCAN** - FlatCAM Plus maintainer and project modernization.
+- **@ecp2022** - Geometry Editor fixes for unselected line display and safer shape deletion.
+
+---
+
 ## License
 
 FlatCAM base code and MIT-licensed project components are covered by the root `LICENSE` file.
