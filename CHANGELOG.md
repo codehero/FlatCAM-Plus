@@ -1,4 +1,4 @@
-FlatCAM Plus v1.0.5 BETA (c) 2026 - by Sadri ERCAN
+FlatCAM Plus v1.0.6 BETA (c) 2026 - by Sadri ERCAN
 
 Based on FlatCAM: 
 2D Computer-Aided PCB Manufacturing by (c) 2014-2016 Juan Pablo Caram
@@ -8,7 +8,7 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
-## 2026/05/17 - v1.0.5 CNC Control Live Placement Update
+## 2026/05/17 - v1.0.6 CNC Control Live Placement and Simulation Update
 
 ### Highlights
 
@@ -39,7 +39,7 @@ CHANGELOG for FlatCAM Plus beta
 - Stream logs now report that canvas XY and saved Live Placement are being applied.
 - CNC dashboard section headers with help icons now align consistently with the other panel headers.
 - Auto Connect performs a short bounded retry sequence and stops if the controller is offline.
-- Windows installer script default AppVersion now points to `1.0.5` for release builds.
+- Windows installer script default AppVersion now points to `1.0.6` for release builds.
 
 ### Fixed
 

@@ -1,11 +1,11 @@
 <img width="1376" height="768" alt="splash" src="https://github.com/user-attachments/assets/b4707bd9-e9cb-45d9-be65-253b034f5bd6" />
 
 
-# FlatCAM Plus v1.0.5 (BETA) (c) 2026 - by Sadri ERCAN
+# FlatCAM Plus v1.0.6 (BETA) (c) 2026 - by Sadri ERCAN
 
 **FlatCAM Plus** is a modernized fork of FlatCAM, a program for preparing CNC jobs for making PCBs on a CNC router. It takes Gerber files and creates G-Code for isolation routing, drilling, and more.
 
-**Current version:** `1.0.5` beta, released `2026/05/17`, updated `2026/05/17`.
+**Current version:** `1.0.6` beta, released `2026/05/17`, updated `2026/05/17`.
 
 Forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019.
 Based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
