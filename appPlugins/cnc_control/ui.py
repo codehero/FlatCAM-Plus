@@ -1195,6 +1195,9 @@ class CNCControlUI:
         action_lay.addWidget(self.preview_source_label, 1)
         action_lay.addWidget(self.preview_refresh_btn)
         action_lay.addWidget(self.preview_verify_btn)
+        self.live_placement_btn = FluidStyleButton(_("Live Placement"), "#ff6900", "#e65c00")
+        self.setup_button(self.live_placement_btn, "edit16.png", _("Interactive mode to drag/rotate the job."))
+        action_lay.addWidget(self.live_placement_btn)
         body.addWidget(action_frame)
 
         stats_grid = QtWidgets.QGridLayout()
@@ -1225,27 +1228,37 @@ class CNCControlUI:
         stats_grid.setColumnStretch(3, 1)
         stats_grid.setColumnStretch(5, 1)
 
-        self.gcode_job_canvas = GCodeJobCanvas()
-        body.addWidget(self.gcode_job_canvas, 2)
+        preview_split_lay = QtWidgets.QHBoxLayout()
+        preview_split_lay.setContentsMargins(0, 0, 0, 0)
+        preview_split_lay.setSpacing(8)
+        body.addLayout(preview_split_lay, 2)
 
-        split_lay = QtWidgets.QHBoxLayout()
-        split_lay.setContentsMargins(0, 0, 0, 0)
-        split_lay.setSpacing(8)
-        body.addLayout(split_lay, 1)
+        self.gcode_job_canvas = GCodeJobCanvas()
+        self.gcode_job_canvas.setMinimumHeight(300)
+        self.gcode_job_canvas.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        preview_split_lay.addWidget(self.gcode_job_canvas, 1)
+
+        preview_detail_lay = QtWidgets.QVBoxLayout()
+        preview_detail_lay.setContentsMargins(0, 0, 0, 0)
+        preview_detail_lay.setSpacing(8)
+        preview_split_lay.addLayout(preview_detail_lay, 1)
 
         self.gcode_preview_text = QtWidgets.QTextEdit()
         self.gcode_preview_text.setObjectName("cnc_console")
         self.gcode_preview_text.setReadOnly(True)
-        self.gcode_preview_text.setMinimumHeight(220)
+        self.gcode_preview_text.setMinimumHeight(190)
         self.gcode_preview_text.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
-        split_lay.addWidget(self.gcode_preview_text, 2)
+        preview_detail_lay.addWidget(self.gcode_preview_text, 2)
 
         self.gcode_warning_table = FCTable()
         self.gcode_warning_table.setColumnCount(3)
         self.gcode_warning_table.setHorizontalHeaderLabels([_("Level"), _("Line"), _("Message")])
         self.gcode_warning_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.gcode_warning_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.gcode_warning_table.setMinimumHeight(220)
+        self.gcode_warning_table.setMinimumHeight(120)
         self.gcode_warning_table.verticalHeader().hide()
         self.gcode_warning_table.horizontalHeader().setSectionResizeMode(
             0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
@@ -1254,7 +1267,7 @@ class CNCControlUI:
             1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
         self.gcode_warning_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        split_lay.addWidget(self.gcode_warning_table, 1)
+        preview_detail_lay.addWidget(self.gcode_warning_table, 1)
 
     def build_terminal_console(self, body):
         options = QtWidgets.QHBoxLayout()
@@ -1270,7 +1283,7 @@ class CNCControlUI:
         self.console = QtWidgets.QTextEdit()
         self.console.setObjectName("cnc_console")
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(520)
+        self.console.setMinimumHeight(360)
         self.console.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding
@@ -1279,7 +1292,7 @@ class CNCControlUI:
 
         terminal_panel = body.parentWidget()
         if terminal_panel is not None:
-            terminal_panel.setMinimumHeight(610)
+            terminal_panel.setMinimumHeight(450)
 
         command_lay = QtWidgets.QHBoxLayout()
         self.command_entry = FCEntry()
@@ -1355,7 +1368,6 @@ class CNCControlUI:
             self.feed_plus, self.feed_minus, self.feed_reset, self.spindle_override_entry,
             self.spindle_override_set_btn, self.spindle_plus, self.spindle_minus, self.spindle_reset,
             self.spindle_rpm, self.spindle_set_btn, self.spindle_stop_btn, self.macro_laser,
-            self.set_xy_zero_btn, self.set_z_zero_btn, self.set_xyz_zero_btn,
             self.autolevel_probe_btn, self.autolevel_stop_btn,
             self.command_entry,
             self.files_refresh_btn, self.files_upload_btn, self.files_mkdir_btn,
@@ -1498,25 +1510,82 @@ class CNCControlUI:
 
 
 class CNCPreviewModal(QtWidgets.QDialog):
+    placement_changed = QtCore.pyqtSignal(float, float, float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(_('CNC Live Simulation - Full Screen'))
-        self.setMinimumSize(1000, 800)
+        self.setWindowTitle(_('CNC Live Placement & Simulation'))
+        self.setMinimumSize(1200, 900)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
-        
+        self._syncing_placement = False
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        
+
         self.canvas = GCodeJobCanvas()
         self.canvas.enable_fs_button = False  # No recursive full screen
+        self.canvas.placement_changed.connect(self.on_canvas_placement_changed)
         layout.addWidget(self.canvas)
-        
+
         bottom_lay = QtWidgets.QHBoxLayout()
+
+        def placement_spinner(minimum, maximum, decimals, step, suffix=""):
+            spinner = QtWidgets.QDoubleSpinBox()
+            spinner.setRange(minimum, maximum)
+            spinner.setDecimals(decimals)
+            spinner.setSingleStep(step)
+            spinner.setSuffix(suffix)
+            spinner.setKeyboardTracking(False)
+            spinner.setFixedWidth(118)
+            spinner.valueChanged.connect(self.on_placement_input_changed)
+            return spinner
+
+        self.place_x_spin = placement_spinner(-100000.0, 100000.0, 3, 0.1, " mm")
+        self.place_y_spin = placement_spinner(-100000.0, 100000.0, 3, 0.1, " mm")
+        self.place_rotation_spin = placement_spinner(-3600.0, 3600.0, 2, 1.0, " deg")
+
+        bottom_lay.addWidget(FCLabel(_("X"), bold=True))
+        bottom_lay.addWidget(self.place_x_spin)
+        bottom_lay.addWidget(FCLabel(_("Y"), bold=True))
+        bottom_lay.addWidget(self.place_y_spin)
+        bottom_lay.addWidget(FCLabel(_("Angle"), bold=True))
+        bottom_lay.addWidget(self.place_rotation_spin)
+
+        self.save_btn = FluidStyleButton(_("SAVE PLACEMENT"), "#ff6900", "#e65c00")
+        self.save_btn.clicked.connect(self.accept)
+
         close_btn = FluidStyleButton(_("Close"), "#777777", "#666666")
-        close_btn.clicked.connect(self.accept)
+        close_btn.clicked.connect(self.reject)
+
         bottom_lay.addStretch()
+        bottom_lay.addWidget(self.save_btn)
         bottom_lay.addWidget(close_btn)
         layout.addLayout(bottom_lay)
 
     def set_preview(self, preview):
         self.canvas.set_preview(preview)
+
+    def set_placement(self, dx, dy, rotation, emit=False):
+        self._syncing_placement = True
+        try:
+            self.place_x_spin.setValue(float(dx or 0.0))
+            self.place_y_spin.setValue(float(dy or 0.0))
+            self.place_rotation_spin.setValue(float(rotation or 0.0))
+            self.canvas.sync_placement(dx, dy, rotation)
+        finally:
+            self._syncing_placement = False
+        if emit:
+            self.placement_changed.emit(float(dx or 0.0), float(dy or 0.0), float(rotation or 0.0))
+
+    def on_canvas_placement_changed(self, dx, dy, rotation):
+        self.set_placement(dx, dy, rotation, emit=False)
+        self.placement_changed.emit(dx, dy, rotation)
+
+    def on_placement_input_changed(self, *_args):
+        if self._syncing_placement:
+            return
+        dx = float(self.place_x_spin.value())
+        dy = float(self.place_y_spin.value())
+        rotation = float(self.place_rotation_spin.value())
+        self.canvas.sync_placement(dx, dy, rotation)
+        self.placement_changed.emit(dx, dy, rotation)

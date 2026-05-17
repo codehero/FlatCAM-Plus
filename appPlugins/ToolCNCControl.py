@@ -51,6 +51,7 @@ class ToolCNCControl(AppTool):
     queue_update_sig = pyqtSignal()
     preview_update_sig = pyqtSignal(dict)
     auto_level_update_sig = pyqtSignal(dict)
+    jog_controls_update_sig = pyqtSignal()
 
     def __init__(self, app):
         self.app = app
@@ -77,6 +78,11 @@ class ToolCNCControl(AppTool):
         self.status_poll_enabled = True
         self.hide_status_reports = True
         self.active_limit_pins = ""
+        self.controller_state = "Offline"
+        self.jog_in_flight = False
+        self.jog_motion_seen = False
+        self.jog_lock = threading.Lock()
+        self.last_jog_warning = 0.0
 
         self.is_streaming = False
         self.streaming_paused = False
@@ -94,6 +100,11 @@ class ToolCNCControl(AppTool):
         self.tool_length_offset = [0.0, 0.0, 0.0]
         self.last_wco = None
         self.probe_coordinate_mode = None
+        self.live_offset_x = 0.0
+        self.live_offset_y = 0.0
+        self.live_rotation = 0.0
+        self.live_placement_active = False
+        self.live_edit_enabled = False
 
         self.ui = CNCControlUI(layout=self.layout, app=self.app)
         self.pluginName = self.ui.pluginName
@@ -104,6 +115,7 @@ class ToolCNCControl(AppTool):
         self.ui.set_connected(False)
         self.register_toolbar_connection_handler()
         self.update_toolbar_connection_status(False, "")
+        self.connect_project_workspace_signals()
 
     def run(self, toggle=True):
         tab_exists = False
@@ -121,9 +133,45 @@ class ToolCNCControl(AppTool):
             self.app.ui.plot_tab_area.setCurrentIndex(self.app.ui.plot_tab_area.count() - 1)
 
         self.on_refresh_ports()
+        self.init_job_size()
         self.update_tool_list()
         self.load_macros()
         self.load_machine_profiles()
+
+    def init_job_size(self):
+        bounds = self.project_workspace_bounds("mm")
+        if bounds:
+            width = bounds[1] - bounds[0]
+            height = bounds[3] - bounds[2]
+
+            def set_silent(widget, value):
+                widget.blockSignals(True)
+                try:
+                    widget.set_value(value)
+                finally:
+                    widget.blockSignals(False)
+
+            if hasattr(self.ui, 'job_size_x'):
+                set_silent(self.ui.job_size_x, width)
+            if hasattr(self.ui, 'job_size_y'):
+                set_silent(self.ui.job_size_y, height)
+
+    def connect_project_workspace_signals(self):
+        try:
+            self.app.file_opened.connect(self.on_project_workspace_changed)
+        except Exception:
+            pass
+        try:
+            self.app.new_project_signal.connect(self.on_project_workspace_changed)
+        except Exception:
+            pass
+
+    def on_project_workspace_changed(self, kind=None, *_args):
+        if kind is not None and str(kind).lower() != "project":
+            return
+        self.init_job_size()
+        if hasattr(self.ui, "gcode_preview_text"):
+            self.on_preview_refresh(refresh_jobs=False)
 
     def connect_signals_at_init(self):
         self.ui.connect_btn.clicked.connect(self.on_connect_clicked)
@@ -162,10 +210,12 @@ class ToolCNCControl(AppTool):
         self.ui.spindle_stop_btn.clicked.connect(lambda: self.send_profile_command("spindle_stop"))
 
         self.ui.macro_laser.clicked.connect(self.on_toggle_laser)
-        self.ui.set_xy_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y")))
-        self.ui.set_z_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("Z",)))
-        self.ui.set_xyz_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y", "Z")))
-
+        if hasattr(self.ui, "set_xy_zero_btn"):
+            self.ui.set_xy_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y")))
+        if hasattr(self.ui, "set_z_zero_btn"):
+            self.ui.set_z_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("Z",)))
+        if hasattr(self.ui, "set_xyz_zero_btn"):
+            self.ui.set_xyz_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y", "Z")))
         self.ui.jog_up.clicked.connect(lambda: self.send_jog("Y", 1))
         self.ui.jog_down.clicked.connect(lambda: self.send_jog("Y", -1))
         self.ui.jog_left.clicked.connect(lambda: self.send_jog("X", -1))
@@ -182,20 +232,29 @@ class ToolCNCControl(AppTool):
         self.ui.queue_down_btn.clicked.connect(lambda: self.on_queue_move(1))
         self.ui.preview_refresh_btn.clicked.connect(self.on_preview_clicked)
         self.ui.preview_verify_btn.clicked.connect(self.on_verify_clicked)
+        self.ui.live_placement_btn.clicked.connect(self.on_toggle_live_placement)
+        self.ui.gcode_job_canvas.placement_changed.connect(self.on_live_placement_changed)
         self.ui.object_combo.currentIndexChanged.connect(
             lambda *_args: self.on_preview_refresh(refresh_jobs=False)
         )
-        self.ui.job_origin_combo.currentIndexChanged.connect(
-            lambda *_args: self.on_preview_refresh(refresh_jobs=False)
-        )
-        self.ui.job_placement_combo.currentIndexChanged.connect(
-            lambda *_args: self.on_preview_refresh(refresh_jobs=False)
-        )
-        self.ui.job_size_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
-        self.ui.job_size_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
-        self.ui.job_margin_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
-        self.ui.job_margin_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
-        self.ui.fit_job_size_btn.clicked.connect(self.on_fit_job_size_clicked)
+        if hasattr(self.ui, "job_origin_combo"):
+            self.ui.job_origin_combo.currentIndexChanged.connect(
+                lambda *_args: self.on_preview_refresh(refresh_jobs=False)
+            )
+        if hasattr(self.ui, "job_placement_combo"):
+            self.ui.job_placement_combo.currentIndexChanged.connect(
+                lambda *_args: self.on_preview_refresh(refresh_jobs=False)
+            )
+        if hasattr(self.ui, "job_size_x"):
+            self.ui.job_size_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        if hasattr(self.ui, "job_size_y"):
+            self.ui.job_size_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        if hasattr(self.ui, "job_margin_x"):
+            self.ui.job_margin_x.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        if hasattr(self.ui, "job_margin_y"):
+            self.ui.job_margin_y.valueChanged.connect(lambda *_args: self.on_preview_refresh(refresh_jobs=False))
+        if hasattr(self.ui, "fit_job_size_btn"):
+            self.ui.fit_job_size_btn.clicked.connect(self.on_fit_job_size_clicked)
         self.ui.autolevel_fit_btn.clicked.connect(self.on_auto_level_fit_area)
         self.ui.autolevel_probe_btn.clicked.connect(self.on_auto_level_probe_clicked)
         self.ui.autolevel_stop_btn.clicked.connect(self.on_auto_level_stop)
@@ -240,6 +299,7 @@ class ToolCNCControl(AppTool):
         self.queue_update_sig.connect(self.update_queue_table)
         self.preview_update_sig.connect(self.update_preview_ui)
         self.auto_level_update_sig.connect(self.update_auto_level_ui)
+        self.jog_controls_update_sig.connect(self.update_jog_controls_enabled)
 
     def update_tool_list(self, *_args, preserve_selection=True, refresh_preview=True):
         current_name = self.ui.object_combo.currentText().strip() if preserve_selection else ""
@@ -276,10 +336,30 @@ class ToolCNCControl(AppTool):
             return "\n".join(str(line) for line in source)
         return str(source)
 
+    @staticmethod
+    def with_start_code(source, start_code):
+        source_text = ToolCNCControl.gcode_text_from_source(source)
+        start_text = ToolCNCControl.gcode_text_from_source(start_code)
+        if not source_text.strip() or not start_text.strip():
+            return source_text
+
+        if source_text.lstrip().startswith(start_text.strip()):
+            return source_text
+
+        source_has_units = re.search(r"(?im)^\s*G\s*(20|21)\b", source_text)
+        source_has_positioning = re.search(r"(?im)^\s*G\s*(90|91)\b", source_text)
+        start_has_units = re.search(r"(?im)^\s*G\s*(20|21)\b", start_text)
+        start_has_positioning = re.search(r"(?im)^\s*G\s*(90|91)\b", start_text)
+
+        if (start_has_units and not source_has_units) or (start_has_positioning and not source_has_positioning):
+            return start_text.rstrip() + "\n" + source_text.lstrip()
+
+        return source_text
+
     def cncjob_gcode_text(self, obj):
         source = self.gcode_text_from_source(getattr(obj, "source_file", ""))
         if source.strip():
-            return source
+            return self.with_start_code(source, getattr(obj, "gc_start", ""))
 
         exporter = getattr(obj, "export_gcode", None)
         if callable(exporter):
@@ -326,6 +406,32 @@ class ToolCNCControl(AppTool):
 
         source = self.cncjob_gcode_text(obj)
         return [line.strip() for line in source.splitlines() if line.strip()]
+
+    def cncjob_object_xy_bounds(self, name):
+        obj = self.app.collection.get_by_name(name)
+        if obj is None:
+            return None
+
+        options = getattr(obj, "obj_options", {}) or {}
+        try:
+            bounds = [
+                float(options["xmin"]),
+                float(options["xmax"]),
+                float(options["ymin"]),
+                float(options["ymax"]),
+            ]
+        except (KeyError, TypeError, ValueError):
+            try:
+                xmin, ymin, xmax, ymax = obj.bounds()
+                bounds = [float(xmin), float(xmax), float(ymin), float(ymax)]
+            except Exception:
+                return None
+
+        if not all(math.isfinite(value) for value in bounds):
+            return None
+        if math.isclose(bounds[0], bounds[1]) or math.isclose(bounds[2], bounds[3]):
+            return None
+        return bounds
 
     def on_queue_add(self):
         name = self.ui.object_combo.currentText().strip()
@@ -418,6 +524,72 @@ class ToolCNCControl(AppTool):
             return "", []
         return name, self.cncjob_lines(name)
 
+    def on_toggle_live_placement(self, *_args):
+        # Open the large modal for placement
+        if not hasattr(self, 'preview_modal'):
+            self.preview_modal = CNCPreviewModal(self.app.ui)
+
+        # Prepare modal canvas
+        self.preview_modal.canvas.edit_mode = True
+        self.preview_modal.set_placement(self.live_offset_x, self.live_offset_y, self.live_rotation)
+
+        # Get preview data with workspace bounds
+        name, lines = self.selected_preview_job()
+        if not lines:
+            self.emit_preview_message(_("Select a CNCJob first."), "warn")
+            return
+
+        old_offset_x = self.live_offset_x
+        old_offset_y = self.live_offset_y
+        old_rotation = self.live_rotation
+        old_live_active = self.live_placement_active
+        old_live_edit = self.live_edit_enabled
+        self.live_edit_enabled = True
+        try:
+            # The modal canvas applies the live transform visually while dragging.
+            # Keep the generated G-code preview at its base placement to avoid double-offsetting.
+            preview_lines = self.transformed_gcode_lines(lines, name=name, apply_live_placement=False)
+            canvas_preview = self.build_job_canvas_preview(name, lines, preview_lines, apply_live_placement=False)
+        finally:
+            self.live_edit_enabled = old_live_edit
+
+        self.preview_modal.set_preview(canvas_preview)
+
+        # Connect signals
+        try:
+            self.preview_modal.placement_changed.disconnect(self.on_live_placement_changed)
+        except:
+            pass
+        self.preview_modal.placement_changed.connect(self.on_live_placement_changed)
+
+        # Execute modal
+        if self.preview_modal.exec():
+            # Save clicked
+            self.live_placement_active = self.live_placement_has_transform()
+            self.emit_preview_message(
+                _("Live Placement saved: X%.3f Y%.3f R%.2f deg") % (
+                    self.live_offset_x, self.live_offset_y, self.live_rotation
+                ),
+                "success"
+            )
+            # Refresh inline preview
+            self.preview_modal.canvas.edit_mode = False
+            self.on_preview_refresh(refresh_jobs=False)
+            if hasattr(self.ui, "autolevel_x_min"):
+                self.on_auto_level_fit_area()
+        else:
+            self.live_offset_x = old_offset_x
+            self.live_offset_y = old_offset_y
+            self.live_rotation = old_rotation
+            self.live_placement_active = old_live_active
+            self.preview_modal.set_placement(old_offset_x, old_offset_y, old_rotation)
+            self.preview_modal.canvas.edit_mode = False
+
+    def on_live_placement_changed(self, dx, dy, rotation):
+        self.live_offset_x = dx
+        self.live_offset_y = dy
+        self.live_rotation = rotation
+
     def on_preview_clicked(self, *_args):
         self.on_preview_refresh(refresh_jobs=True, action=_("Preview"), announce=True)
 
@@ -446,7 +618,7 @@ class ToolCNCControl(AppTool):
             job_count = self.update_tool_list(refresh_preview=False)
 
         name, lines = self.selected_preview_job()
-        preview_lines = self.transformed_gcode_lines(lines)
+        preview_lines = self.transformed_gcode_lines(lines, name=name)
         canvas_preview = self.build_job_canvas_preview(name, lines, preview_lines)
         try:
             result = self.analyze_gcode(name, preview_lines)
@@ -513,6 +685,29 @@ class ToolCNCControl(AppTool):
             for key, value in re.findall(r"([A-Za-z])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", line)
         }
 
+    @staticmethod
+    def modal_g_codes(line):
+        values = []
+        for value in re.findall(r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", line):
+            try:
+                number = float(value)
+            except ValueError:
+                continue
+            nearest = int(round(number))
+            if abs(number - nearest) < 1e-9:
+                values.append(nearest)
+        return values
+
+    @staticmethod
+    def raw_g_code_values(line):
+        values = []
+        for value in re.findall(r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", line):
+            try:
+                values.append(float(value))
+            except ValueError:
+                pass
+        return values
+
     def analyze_gcode(self, name, lines):
         warnings = []
         preview_limit = 500
@@ -544,9 +739,7 @@ class ToolCNCControl(AppTool):
             clean_lines.append((index, raw_line.rstrip()))
             upper_line = clean_line.upper()
             words = self.gcode_words(upper_line)
-            g_codes = [int(float(value)) for value in re.findall(
-                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
-            )]
+            g_codes = self.modal_g_codes(upper_line)
             m_codes = [int(float(value)) for value in re.findall(
                 r"\bM\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
             )]
@@ -724,11 +917,16 @@ class ToolCNCControl(AppTool):
         self.ui.preview_warnings_value.setText(str(len(warnings)))
         self.ui.gcode_preview_text.setPlainText(result.get("preview", ""))
         if hasattr(self.ui, 'gcode_job_canvas'):
+            self.ui.gcode_job_canvas.edit_mode = False
+            self.ui.gcode_job_canvas.sync_placement(0.0, 0.0, 0.0)
             self.ui.gcode_job_canvas.set_preview(result.get('canvas', {}))
         if hasattr(self.ui, 'live_simulation_canvas'):
+            self.ui.live_simulation_canvas.sync_placement(0.0, 0.0, 0.0)
             self.ui.live_simulation_canvas.set_preview(result.get('canvas', {}))
         if hasattr(self, 'preview_modal') and self.preview_modal.isVisible():
-            self.preview_modal.set_preview(result.get('canvas', {}))
+            if not self.preview_modal.canvas.edit_mode:
+                self.preview_modal.set_placement(0.0, 0.0, 0.0)
+                self.preview_modal.set_preview(result.get('canvas', {}))
 
         table = self.ui.gcode_warning_table
         table.setRowCount(len(warnings))
@@ -917,7 +1115,12 @@ class ToolCNCControl(AppTool):
 
     def on_connection_state_changed(self, connected, description):
         self.ui.set_connection_actions_enabled(True)
+        self.controller_state = "Idle" if connected else "Offline"
+        if not connected:
+            self.jog_in_flight = False
+            self.jog_motion_seen = False
         self.ui.set_connected(connected)
+        self.jog_controls_update_sig.emit()
         self.update_toolbar_connection_status(connected, description)
         if connected:
             self.append_console_sig.emit(f"{_('Connected')}: {description}", "info")
@@ -945,8 +1148,15 @@ class ToolCNCControl(AppTool):
         else:
             self.macros = [
                 {"name": "Home & Zero", "content": "G28\nG10 L20 P1 X0 Y0 Z0"},
-                {"name": "Probe Z", "content": "G38.2 Z-50 F100\nG92 Z0"}
+                {"name": "Probe Z", "content": "G38.2 Z-50 F100\nG10 L20 P1 Z0"}
             ]
+
+        # Migrate the old default Probe Z macro away from G92. G92 is temporary and
+        # can stack with WCS + auto-level corrections if it is not explicitly cleared.
+        for macro in self.macros:
+            if macro.get("name") == "Probe Z" and "G92 Z0" in str(macro.get("content", "")).upper():
+                macro["content"] = str(macro["content"]).replace("G92 Z0", "G10 L20 P1 Z0")
+                self.save_macros_to_storage()
 
         # Only update an inline macro list if a future CNC subplugin provides one.
         if hasattr(self, 'ui') and self.ui and hasattr(self.ui, "macro_list"):
@@ -1020,6 +1230,11 @@ class ToolCNCControl(AppTool):
             transport = self.transport
             self.transport = None
             self.is_connected = False
+
+        self.controller_state = "Offline"
+        self.jog_in_flight = False
+        self.jog_motion_seen = False
+        self.jog_controls_update_sig.emit()
 
         if transport:
             try:
@@ -1142,9 +1357,129 @@ class ToolCNCControl(AppTool):
             feed = 1000
 
         template = self.current_profile().get("jog", "")
+        if not template:
+            self.append_console_sig.emit(_("Jog is not supported by selected profile."), "warn")
+            return
+        if not self.can_start_jog():
+            return
+
         distance = step * direction
-        command = template.format(axis=axis, distance=distance, feed=feed)
-        self.queue_commands(command.splitlines())
+        try:
+            command = template.format(axis=axis, distance=distance, feed=feed)
+        except Exception as err:
+            self.append_console_sig.emit("%s: %s" % (_("Jog command could not be created"), err), "error")
+            self.finish_jog()
+            return
+
+        commands = [line.strip() for line in str(command).splitlines() if line.strip()]
+        if not commands:
+            self.finish_jog()
+            return
+
+        estimated_seconds = max(0.15, abs(float(distance)) / max(1.0, float(feed)) * 60.0)
+        threading.Thread(
+            target=self._send_jog_worker,
+            args=(commands, estimated_seconds),
+            daemon=True
+        ).start()
+
+    def can_start_jog(self):
+        if not self.is_connected or not self.transport:
+            self.warn_jog_blocked(_("Controller is not connected."))
+            return False
+        if self.is_streaming:
+            self.warn_jog_blocked(_("Jog is disabled while a job is streaming. Stop the job before jogging."))
+            return False
+        if self.is_auto_leveling:
+            self.warn_jog_blocked(_("Jog is disabled while auto-level probing is running."))
+            return False
+
+        state = self.normalized_controller_state(getattr(self, "controller_state", "Idle"))
+        if state != "Idle":
+            self.warn_jog_blocked(_("Jog is allowed only while the controller is Idle. Current state: %s") % state)
+            return False
+
+        with self.jog_lock:
+            if self.jog_in_flight:
+                self.warn_jog_blocked(_("Previous jog is still active; wait for the controller to become Idle."))
+                return False
+            self.jog_in_flight = True
+            self.jog_motion_seen = False
+        self.jog_controls_update_sig.emit()
+        return True
+
+    def warn_jog_blocked(self, message):
+        now = time.time()
+        if now - self.last_jog_warning < 0.8:
+            return
+        self.last_jog_warning = now
+        self.append_console_sig.emit(message, "warn")
+
+    def finish_jog(self):
+        changed = False
+        with self.jog_lock:
+            if self.jog_in_flight:
+                self.jog_in_flight = False
+                self.jog_motion_seen = False
+                changed = True
+        if changed:
+            self.jog_controls_update_sig.emit()
+
+    def _send_jog_worker(self, commands, estimated_seconds):
+        try:
+            for command in commands:
+                self.ok_received.clear()
+                self.last_controller_ack = ""
+                self.send_command(command, log=True)
+                if not self.ok_received.wait(timeout=4.0):
+                    self.append_console_sig.emit(
+                        "%s: %s" % (_("Jog command was not acknowledged"), command),
+                        "warn"
+                    )
+                    return
+                if str(self.last_controller_ack).lower().startswith("error"):
+                    self.append_console_sig.emit(
+                        "%s: %s" % (_("Controller rejected jog command"), command),
+                        "error"
+                    )
+                    return
+
+            self.wait_for_jog_motion_done(estimated_seconds)
+        finally:
+            self.finish_jog()
+
+    def wait_for_jog_motion_done(self, estimated_seconds):
+        started = time.time()
+        motion_seen = False
+        minimum_hold = min(max(float(estimated_seconds or 0.15), 0.15), 30.0)
+        deadline = started + max(minimum_hold + 2.0, 0.75)
+
+        while self.is_connected and time.time() < deadline:
+            state = self.normalized_controller_state(getattr(self, "controller_state", "Idle"))
+            if state in {"Jog", "Run"}:
+                motion_seen = True
+            if state == "Idle":
+                if motion_seen or time.time() - started >= minimum_hold:
+                    return True
+            time.sleep(0.05)
+        return False
+
+    def update_jog_controls_enabled(self):
+        if not hasattr(self.ui, "jog_up"):
+            return
+        state = self.normalized_controller_state(getattr(self, "controller_state", "Idle"))
+        enabled = (
+            self.is_connected and
+            not self.is_streaming and
+            not self.is_auto_leveling and
+            not self.jog_in_flight and
+            state == "Idle"
+        )
+        for button in [
+                self.ui.jog_up, self.ui.jog_down, self.ui.jog_left,
+                self.ui.jog_right, self.ui.jog_z_up, self.ui.jog_z_down
+        ]:
+            button.setEnabled(enabled)
 
     def on_set_spindle_rpm(self):
         try:
@@ -1298,18 +1633,18 @@ class ToolCNCControl(AppTool):
         return combo.currentData() or "top_left"
 
     def selected_job_placement_mode(self):
-        combo = getattr(self.ui, "job_placement_combo", None)
-        if combo is None:
-            return "origin"
-        return combo.currentData() or "origin"
+        return "canvas"
 
     def selected_job_size(self, raw_width, raw_height, units):
+        units = self.normalized_units(units)
+        size_x = getattr(self.ui, "job_size_x", None)
+        size_y = getattr(self.ui, "job_size_y", None)
         try:
-            job_width = float(self.ui.job_size_x.value())
+            job_width = float(size_x.value()) if size_x is not None else 0.0
         except Exception:
             job_width = 0.0
         try:
-            job_height = float(self.ui.job_size_y.value())
+            job_height = float(size_y.value()) if size_y is not None else 0.0
         except Exception:
             job_height = 0.0
 
@@ -1324,12 +1659,15 @@ class ToolCNCControl(AppTool):
         return max(0.0, job_width), max(0.0, job_height)
 
     def selected_job_margin(self, units):
+        units = self.normalized_units(units)
+        margin_x_widget = getattr(self.ui, "job_margin_x", None)
+        margin_y_widget = getattr(self.ui, "job_margin_y", None)
         try:
-            margin_x = float(self.ui.job_margin_x.value())
+            margin_x = float(margin_x_widget.value()) if margin_x_widget is not None else 0.0
         except Exception:
             margin_x = 0.0
         try:
-            margin_y = float(self.ui.job_margin_y.value())
+            margin_y = float(margin_y_widget.value()) if margin_y_widget is not None else 0.0
         except Exception:
             margin_y = 0.0
 
@@ -1337,6 +1675,153 @@ class ToolCNCControl(AppTool):
             margin_x /= 25.4
             margin_y /= 25.4
         return max(0.0, margin_x), max(0.0, margin_y)
+
+    def live_placement_has_transform(self):
+        return (
+            abs(float(self.live_offset_x or 0.0)) > 1e-9 or
+            abs(float(self.live_offset_y or 0.0)) > 1e-9 or
+            abs(float(self.live_rotation or 0.0)) > 1e-9
+        )
+
+    @staticmethod
+    def normalized_units(units, default="mm"):
+        text = str(units or default).strip().lower()
+        if text in {"in", "inch", "inches"}:
+            return "inch"
+        return "mm"
+
+    def project_workspace_bounds(self, units):
+        if not self.app.options.get('global_workspace', False):
+            return None
+
+        dimensions = None
+        try:
+            dimensions_fcn = getattr(self.app.plotcanvas, "workspace_dimensions", None)
+            if callable(dimensions_fcn):
+                dimensions = dimensions_fcn(self.app.options.get('global_workspaceT', 'A4'))
+        except Exception as err:
+            log.debug("ToolCNCControl.project_workspace_bounds() -> %s", err)
+
+        if not dimensions:
+            return None
+
+        width, height = dimensions
+        app_units = "inch" if str(getattr(self.app, "app_units", "MM")).upper() == "IN" else "mm"
+        target_units = self.normalized_units(units, app_units)
+        if app_units == "mm" and target_units == "inch":
+            width /= 25.4
+            height /= 25.4
+        elif app_units == "inch" and target_units == "mm":
+            width *= 25.4
+            height *= 25.4
+
+        return [0.0, width, 0.0, height]
+
+    def project_workspace_material_bounds(self, units, mode):
+        bounds = self.project_workspace_bounds(units)
+        if not bounds:
+            return None
+        width = max(0.0, float(bounds[1]) - float(bounds[0]))
+        height = max(0.0, float(bounds[3]) - float(bounds[2]))
+        if mode in {"absolute", "canvas"}:
+            return bounds
+        return self.material_bounds_for_origin(mode, width, height)
+
+    @staticmethod
+    def copy_target_bounds(bounds):
+        if not bounds:
+            return None
+        try:
+            return {
+                "X": [float(bounds["X"][0]), float(bounds["X"][1])],
+                "Y": [float(bounds["Y"][0]), float(bounds["Y"][1])],
+            }
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def transformed_bounds_for_live(base_bounds, dx, dy, rotation):
+        bounds = ToolCNCControl.copy_target_bounds(base_bounds)
+        if not bounds:
+            return None
+
+        x0, x1 = bounds["X"]
+        y0, y1 = bounds["Y"]
+        cx = (x0 + x1) / 2.0
+        cy = (y0 + y1) / 2.0
+        rad = math.radians(float(rotation or 0.0))
+        cos_r = math.cos(rad)
+        sin_r = math.sin(rad)
+        points = []
+        for x_value, y_value in ((x0, y0), (x0, y1), (x1, y0), (x1, y1)):
+            tx = x_value - cx
+            ty = y_value - cy
+            points.append((
+                (tx * cos_r) - (ty * sin_r) + cx + dx,
+                (tx * sin_r) + (ty * cos_r) + cy + dy,
+            ))
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        return {"X": [min(xs), max(xs)], "Y": [min(ys), max(ys)]}
+
+    def apply_live_placement_to_context(self, context, apply_live_placement=True):
+        units = self.effective_gcode_units(context.get("units"))
+        factor = 25.4 if units == "inch" else 1.0
+        live_enabled = bool(apply_live_placement and (self.live_edit_enabled or self.live_placement_active))
+        dx = (float(self.live_offset_x or 0.0) / factor) if live_enabled else 0.0
+        dy = (float(self.live_offset_y or 0.0) / factor) if live_enabled else 0.0
+        rotation = float(self.live_rotation or 0.0) if live_enabled else 0.0
+
+        base_bounds = self.copy_target_bounds(context.get("target_bounds"))
+        if base_bounds:
+            context["base_target_bounds"] = base_bounds
+            if live_enabled:
+                live_bounds = self.transformed_bounds_for_live(base_bounds, dx, dy, rotation)
+                if live_bounds:
+                    context["target_bounds"] = live_bounds
+
+        context["live_placement_enabled"] = live_enabled
+        context["live_offset_x"] = dx
+        context["live_offset_y"] = dy
+        context["live_rotation"] = rotation
+        return context
+
+    @staticmethod
+    def live_rotation_active(context):
+        return bool(
+            context.get("live_placement_enabled") and
+            abs(float(context.get("live_rotation", 0.0) or 0.0)) > 1e-9
+        )
+
+    def mapped_job_xy(self, context, x_value, y_value, controller_x_offset=0.0, controller_y_offset=0.0):
+        x_pos = (
+            float(x_value) -
+            float(context.get("x_anchor", 0.0) or 0.0) -
+            float(controller_x_offset or 0.0)
+        )
+        y_pos = (
+            float(y_value) -
+            float(context.get("y_anchor", 0.0) or 0.0) -
+            float(controller_y_offset or 0.0)
+        )
+
+        if context.get("live_placement_enabled"):
+            rotation = float(context.get("live_rotation", 0.0) or 0.0)
+            bounds = self.copy_target_bounds(
+                context.get("base_target_bounds") or context.get("target_bounds")
+            )
+            if bounds and abs(rotation) > 1e-9:
+                cx = (bounds["X"][0] + bounds["X"][1]) / 2.0
+                cy = (bounds["Y"][0] + bounds["Y"][1]) / 2.0
+                rad = math.radians(rotation)
+                tx = x_pos - cx
+                ty = y_pos - cy
+                x_pos = (tx * math.cos(rad)) - (ty * math.sin(rad)) + cx
+                y_pos = (tx * math.sin(rad)) + (ty * math.cos(rad)) + cy
+            x_pos += float(context.get("live_offset_x", 0.0) or 0.0)
+            y_pos += float(context.get("live_offset_y", 0.0) or 0.0)
+
+        return x_pos, y_pos
 
     @staticmethod
     def material_bounds_for_origin(mode, job_width, job_height):
@@ -1381,6 +1866,7 @@ class ToolCNCControl(AppTool):
     def job_placement_label(placement):
         labels = {
             "origin": _("Same as Origin"),
+            "canvas": _("Live Placement"),
             "bottom_left": _("Bottom-Left"),
             "bottom_center": _("Bottom-Center"),
             "bottom_right": _("Bottom-Right"),
@@ -1400,7 +1886,6 @@ class ToolCNCControl(AppTool):
         inner_x_max = x_max - margin_x
         inner_y_min = y_min + margin_y
         inner_y_max = y_max - margin_y
-
         if inner_x_max < inner_x_min:
             midpoint = (x_min + x_max) / 2.0
             inner_x_min = midpoint
@@ -1457,12 +1942,14 @@ class ToolCNCControl(AppTool):
 
         width = bounds["X"][1] - bounds["X"][0]
         height = bounds["Y"][1] - bounds["Y"][0]
-        if units == "inch":
+        if self.effective_gcode_units(units) == "inch":
             width *= 25.4
             height *= 25.4
 
-        self.ui.job_size_x.set_value(width)
-        self.ui.job_size_y.set_value(height)
+        if hasattr(self.ui, "job_size_x"):
+            self.ui.job_size_x.set_value(width)
+        if hasattr(self.ui, "job_size_y"):
+            self.ui.job_size_y.set_value(height)
         self.append_console_sig.emit(
             _("Job size fitted from %s: X%.3f Y%.3f mm") % (name, width, height),
             "info"
@@ -1515,8 +2002,26 @@ class ToolCNCControl(AppTool):
             "safe_z": double_value("autolevel_safe_z", 5.0),
             "probe_depth": probe_depth,
             "probe_feed": max(1, int_value("autolevel_probe_feed", 120)),
+            "slow_probe_feed": int_value("autolevel_slow_probe_feed", 0),
             "auto_zero_z": bool_value("autolevel_auto_zero", True),
         }
+
+    @staticmethod
+    def auto_level_slow_probe_gcode(settings):
+        """
+        Second G38.2 pass after micro-retract (same for grid and Auto Zero Z).
+        If slow_probe_feed > 0 in settings, use it (mm/min); else scale from probe_feed.
+        """
+        try:
+            manual = int(settings.get("slow_probe_feed") or 0)
+        except (TypeError, ValueError):
+            manual = 0
+        if manual > 0:
+            slow_f = max(4, min(120, manual))
+            return "G38.2 Z-2.5 F%d" % slow_f
+        fast = max(1, int(settings.get("probe_feed", 120)))
+        slow_f = max(12, min(45, fast // 4))
+        return "G38.2 Z-2.5 F%d" % slow_f
 
     @staticmethod
     def auto_level_range_values(start, stop, count):
@@ -1528,8 +2033,19 @@ class ToolCNCControl(AppTool):
         x_values = self.auto_level_range_values(settings["x_min"], settings["x_max"], settings["columns"])
         y_values = self.auto_level_range_values(settings["y_min"], settings["y_max"], settings["rows"])
         points = []
-        for row, y_value in enumerate(y_values):
-            columns = range(len(x_values)) if row % 2 == 0 else range(len(x_values) - 1, -1, -1)
+
+        row_indices = list(range(len(y_values)))
+        if len(y_values) > 1 and abs(y_values[-1]) < abs(y_values[0]):
+            row_indices.reverse()
+
+        forward_columns = list(range(len(x_values)))
+        if len(x_values) > 1 and abs(x_values[-1]) < abs(x_values[0]):
+            forward_columns.reverse()
+        reverse_columns = list(reversed(forward_columns))
+
+        for order_index, row in enumerate(row_indices):
+            y_value = y_values[row]
+            columns = forward_columns if order_index % 2 == 0 else reverse_columns
             for column in columns:
                 points.append({
                     "row": row,
@@ -1538,6 +2054,13 @@ class ToolCNCControl(AppTool):
                     "y": y_value,
                 })
         return x_values, y_values, points
+
+    def project_xy_to_controller_xy(self, x_value, y_value, wcs_label, x_anchor=0.0, y_anchor=0.0):
+        offset = self.combined_work_offset(wcs_label)
+        return (
+            float(x_value) - float(x_anchor or 0.0) - float(offset[0]),
+            float(y_value) - float(y_anchor or 0.0) - float(offset[1]),
+        )
 
     @staticmethod
     def auto_level_reference_point(x_values, y_values, measurements):
@@ -1555,23 +2078,89 @@ class ToolCNCControl(AppTool):
                     }
         return best or {"x": 0.0, "y": 0.0, "z": 0.0, "distance": 0.0}
 
+    def normalize_auto_level_grid_density(self, width_mm, height_mm):
+        def adjust(widget_name, size_mm):
+            widget = getattr(self.ui, widget_name, None)
+            if widget is None or size_mm <= 0:
+                return None
+            try:
+                current = max(2, int(widget.value()))
+            except Exception:
+                return None
+            current_step = size_mm / float(current - 1)
+            if current_step >= 2.0:
+                return None
+
+            desired = max(2, min(25, int(math.ceil(size_mm / 10.0)) + 1))
+            try:
+                widget.setValue(desired)
+            except Exception:
+                return None
+            desired_step = size_mm / float(desired - 1) if desired > 1 else size_mm
+            return current, current_step, desired, desired_step
+
+        col_change = adjust("autolevel_columns", width_mm)
+        row_change = adjust("autolevel_rows", height_mm)
+        if col_change or row_change:
+            details = []
+            if col_change:
+                details.append(
+                    _("columns %d (%.3f mm) -> %d (%.3f mm)") % col_change
+                )
+            if row_change:
+                details.append(
+                    _("rows %d (%.3f mm) -> %d (%.3f mm)") % row_change
+                )
+            self.append_console_sig.emit(
+                _("Auto level grid was too dense after Fit Area; adjusted %s.") % ", ".join(details),
+                "info"
+            )
+
     def on_auto_level_fit_area(self, *_args):
         name, lines = self.selected_preview_job()
         if not lines:
             self.append_console_sig.emit(_("No CNCJob object selected."), "error")
             return
 
-        transform_context = self.stream_transform_context(lines)
+        transform_context = self.stream_transform_context(lines, name=name)
         units = self.effective_gcode_units(transform_context.get("units"))
+        app_units = "inch" if str(getattr(self.app, "app_units", "MM")).upper() == "IN" else "mm"
         bounds = None
-        preview_lines = [self.transform_stream_command(line, transform_context) for line in lines]
-        _segments, path_bounds, _start_point = self.gcode_preview_segments(preview_lines)
-        if path_bounds:
-            bounds = path_bounds
-        else:
+        bounds_units = units
+        bounds_source = _("mapped CNCJob area")
+        target_bounds = transform_context.get("target_bounds")
+        if target_bounds and (transform_context.get("enabled") or transform_context.get("live_placement_enabled")):
+            bounds = [
+                target_bounds["X"][0],
+                target_bounds["X"][1],
+                target_bounds["Y"][0],
+                target_bounds["Y"][1],
+            ]
+
+        if bounds is None:
+            bounds = self.cncjob_object_xy_bounds(name)
+            bounds_units = app_units
+            bounds_source = _("CNCJob object")
+
+        if bounds is None:
+            if target_bounds:
+                bounds = [
+                    target_bounds["X"][0],
+                    target_bounds["X"][1],
+                    target_bounds["Y"][0],
+                    target_bounds["Y"][1],
+                ]
+                bounds_units = units
+                bounds_source = _("cutting bounds")
+
+        if bounds is None:
+            preview_lines = [self.transform_stream_command(line, transform_context) for line in lines]
             gcode_bounds, units = self.gcode_bounds(preview_lines, cutting_only=True)
             if gcode_bounds["X"][0] is None or gcode_bounds["Y"][0] is None:
                 gcode_bounds, units = self.gcode_bounds(preview_lines)
+                bounds_source = _("G-code bounds")
+            else:
+                bounds_source = _("cutting bounds")
             if gcode_bounds["X"][0] is not None and gcode_bounds["Y"][0] is not None:
                 bounds = [
                     gcode_bounds["X"][0],
@@ -1579,21 +2168,33 @@ class ToolCNCControl(AppTool):
                     gcode_bounds["Y"][0],
                     gcode_bounds["Y"][1],
                 ]
+                bounds_units = self.effective_gcode_units(units)
 
         if not bounds:
             self.append_console_sig.emit(_("Selected CNCJob has no usable XY bounds."), "error")
             return
 
-        units = self.effective_gcode_units(units)
-        factor = 25.4 if units == "inch" else 1.0
-        self.ui.autolevel_x_min.set_value(bounds[0] * factor)
-        self.ui.autolevel_x_max.set_value(bounds[1] * factor)
-        self.ui.autolevel_y_min.set_value(bounds[2] * factor)
-        self.ui.autolevel_y_max.set_value(bounds[3] * factor)
+        ui_factor = self.units_scale(bounds_units, app_units)
+        mm_factor = self.units_scale(bounds_units, "mm")
+        bounds_mm = [
+            bounds[0] * mm_factor,
+            bounds[1] * mm_factor,
+            bounds[2] * mm_factor,
+            bounds[3] * mm_factor,
+        ]
+        self.ui.autolevel_x_min.set_value(bounds[0] * ui_factor)
+        self.ui.autolevel_x_max.set_value(bounds[1] * ui_factor)
+        self.ui.autolevel_y_min.set_value(bounds[2] * ui_factor)
+        self.ui.autolevel_y_max.set_value(bounds[3] * ui_factor)
+        self.normalize_auto_level_grid_density(
+            abs(bounds_mm[1] - bounds_mm[0]),
+            abs(bounds_mm[3] - bounds_mm[2])
+        )
         self.ui.autolevel_status.setText(_("Area fitted from %s") % (name or _("CNCJob")))
         self.append_console_sig.emit(
-            _("Auto level area fitted from toolpath: X%.3f..%.3f  Y%.3f..%.3f mm") % (
-                bounds[0] * factor, bounds[1] * factor, bounds[2] * factor, bounds[3] * factor
+            _("Auto level area fitted from %s: X%.3f..%.3f  Y%.3f..%.3f mm") % (
+                bounds_source,
+                bounds_mm[0], bounds_mm[1], bounds_mm[2], bounds_mm[3]
             ),
             "info"
         )
@@ -1603,9 +2204,31 @@ class ToolCNCControl(AppTool):
         if not lines:
             return None
 
-        context = self.stream_transform_context(lines)
+        context = self.stream_transform_context(lines, name=_name)
         units = self.effective_gcode_units(context.get("units"))
         factor = 25.4 if units == "inch" else 1.0
+        target_bounds = context.get("target_bounds")
+        if target_bounds and (context.get("enabled") or context.get("live_placement_enabled")):
+            return [
+                target_bounds["X"][0] * factor,
+                target_bounds["X"][1] * factor,
+                target_bounds["Y"][0] * factor,
+                target_bounds["Y"][1] * factor,
+            ]
+
+        bounds = self.cncjob_object_xy_bounds(_name)
+        if bounds is not None:
+            factor = 25.4 if str(getattr(self.app, "app_units", "MM")).upper() == "IN" else 1.0
+            return [value * factor for value in bounds]
+
+        if target_bounds:
+            return [
+                target_bounds["X"][0] * factor,
+                target_bounds["X"][1] * factor,
+                target_bounds["Y"][0] * factor,
+                target_bounds["Y"][1] * factor,
+            ]
+
         material_bounds = context.get("material_bounds")
         if material_bounds:
             return [value * factor for value in material_bounds]
@@ -1653,6 +2276,27 @@ class ToolCNCControl(AppTool):
             self.append_console_sig.emit(_("Auto level area is empty."), "error")
             return
 
+        job_bounds_for_refit = self.current_auto_level_job_bounds_mm()
+        if job_bounds_for_refit:
+            area_width = abs(settings["x_max"] - settings["x_min"])
+            area_height = abs(settings["y_max"] - settings["y_min"])
+            job_width = abs(job_bounds_for_refit[1] - job_bounds_for_refit[0])
+            job_height = abs(job_bounds_for_refit[3] - job_bounds_for_refit[2])
+            x_step = area_width / float(max(1, settings["columns"] - 1))
+            y_step = area_height / float(max(1, settings["rows"] - 1))
+            area_is_tiny = (
+                (job_width > 0 and area_width < (job_width * 0.25)) or
+                (job_height > 0 and area_height < (job_height * 0.25))
+            )
+            if area_is_tiny and min(x_step, y_step) < 2.0:
+                self.append_console_sig.emit(
+                    _("Auto level area is much smaller than the selected CNCJob and the probe step is below 2 mm; "
+                      "refitting area from the CNCJob object."),
+                    "warn"
+                )
+                self.on_auto_level_fit_area()
+                settings = self.auto_level_settings()
+
         inside_job, job_bounds = self.auto_level_area_is_inside_job(settings)
         if not inside_job:
             self.append_console_sig.emit(
@@ -1668,11 +2312,29 @@ class ToolCNCControl(AppTool):
         if not points:
             self.append_console_sig.emit(_("No probing points generated."), "error")
             return
+        if len(x_values) > 1 and len(y_values) > 1:
+            x_step = abs(x_values[1] - x_values[0])
+            y_step = abs(y_values[1] - y_values[0])
+            self.append_console_sig.emit(
+                _("Auto level probe grid: X%.3f..%.3f (%d columns, %.3f mm step), "
+                  "Y%.3f..%.3f (%d rows, %.3f mm step)") % (
+                    x_values[0], x_values[-1], len(x_values), x_step,
+                    y_values[0], y_values[-1], len(y_values), y_step,
+                ),
+                "info"
+            )
+            if min(x_step, y_step) < 2.0:
+                self.append_console_sig.emit(
+                    _("Auto level probe spacing is below 2 mm. Click Fit Area for the selected CNCJob "
+                      "or reduce Rows/Columns if this is not intentional."),
+                    "warn"
+                )
 
-        wcs_label, _p_num = self.selected_work_offset()
+        wcs_label, p_num = self.selected_work_offset()
         spindle_stop = self.current_profile().get("spindle_stop", "M5")
         self.is_auto_leveling = True
         self.auto_level_cancel.clear()
+        self.jog_controls_update_sig.emit()
         self.auto_level_update_sig.emit({
             "busy": True,
             "progress": 0,
@@ -1680,7 +2342,7 @@ class ToolCNCControl(AppTool):
         })
         threading.Thread(
             target=self.auto_level_probe_worker,
-            args=(settings, x_values, y_values, points, wcs_label, spindle_stop),
+            args=(settings, x_values, y_values, points, wcs_label, p_num, spindle_stop),
             daemon=True
         ).start()
 
@@ -1714,7 +2376,7 @@ class ToolCNCControl(AppTool):
         self.send_command(command, log=True)
         return self.ok_received.wait(timeout=timeout)
 
-    def auto_level_probe_worker(self, settings, x_values, y_values, points, wcs_label, spindle_stop):
+    def auto_level_probe_worker(self, settings, x_values, y_values, points, wcs_label, p_num, spindle_stop):
         previous_poll = self.status_poll_enabled
         measurements = [[None for _ in x_values] for _ in y_values]
         total = len(points)
@@ -1727,6 +2389,8 @@ class ToolCNCControl(AppTool):
             setup_commands.extend([
                 "G21",
                 "G90",
+                "G92.1",
+                "G49",
                 "G0 Z%s" % self.format_gcode_number(settings["safe_z"]),
             ])
             for command in setup_commands:
@@ -1741,6 +2405,16 @@ class ToolCNCControl(AppTool):
             self.probe_coordinate_mode = None
             if not self.send_command_and_wait("$#", timeout=8.0):
                 raise RuntimeError(_("Controller did not acknowledge: %s") % "$#")
+
+            if points:
+                sample = points[0]
+                self.append_console_sig.emit(
+                    _("Auto level probe XY uses selected %s work coordinates: first point X%.3f Y%.3f.") % (
+                        wcs_label,
+                        sample["x"], sample["y"],
+                    ),
+                    "info"
+                )
 
             probe_timeout = max(10.0, (abs(settings["probe_depth"]) / settings["probe_feed"] * 60.0) + 5.0)
             for index, point in enumerate(points, start=1):
@@ -1790,14 +2464,16 @@ class ToolCNCControl(AppTool):
                 self.probe_result_event.clear()
                 self.ok_received.clear()
 
-                # Slow touch: descend at F10 for high precision
-                slow_probe_cmd = "G38.2 Z-2.5 F10"
+                # Slow touch: second pass for repeatability (feed from auto_level_slow_probe_gcode)
+                slow_probe_cmd = self.auto_level_slow_probe_gcode(settings)
                 self.send_command(slow_probe_cmd, log=True)
                 probe_success = self.probe_result_event.wait(timeout=15.0)
                 
                 # IMMEDIATE RETRACT: Move to safe Z before doing any Python processing
-                self.send_command("G90") # Back to absolute
-                self.send_command("G0 Z%s" % self.format_gcode_number(settings["safe_z"]))
+                if not self.send_command_and_wait("G90", timeout=3.0):
+                    raise RuntimeError(_("Controller did not acknowledge: G90"))
+                if not self.send_command_and_wait("G0 Z%s" % self.format_gcode_number(settings["safe_z"]), timeout=10.0):
+                    raise RuntimeError(_("Controller did not acknowledge retract to safe Z"))
                 
                 if not probe_success:
                     raise RuntimeError(_("Slow probe result timed out."))
@@ -1846,85 +2522,64 @@ class ToolCNCControl(AppTool):
             }
             self.auto_level_map = auto_map
 
-            # Auto Zero Z: move to reference point and set G92 Z0 there.
-            # Like 3D printer auto bed leveling — the probe map defines its own Z=0.
-            # This means the user only needs to physically touch the bit to the PCB
-            # surface (no manual Set Z Zero needed before probing).
+            # Auto Zero Z: use the grid reference cell's machine Z only (same touch as the map).
+            # Avoids a second slow probe that can disagree slightly with the stored height map.
+            #
+            # Important: persist the zero in the selected WCS with G10 L20 instead of G92.
+            # G92 is a temporary offset that survives until explicitly cleared and can stack
+            # with the selected WCS + auto-level correction, causing random-looking air cuts
+            # or over-deep cuts in later jobs.
             if settings.get("auto_zero_z", True):
-                self.append_console_sig.emit(
-                    _("Auto Zero Z: moving to X%.3f Y%.3f and probing surface to set Z=0...") % (
-                        reference["x"], reference["y"]
-                    ), "info"
-                )
-                # Step 1: move to reference XY (already at safe Z from last retract)
-                move_ref = "G0 X%s Y%s" % (
-                    self.format_gcode_number(reference["x"]),
-                    self.format_gcode_number(reference["y"]),
-                )
-                if not self.send_command_and_wait(move_ref, timeout=12.0):
-                    self.append_console_sig.emit(
-                        _("Auto Zero Z: move to reference point failed."), "warn"
-                    )
+                ref_z = reference.get("z")
+                if ref_z is None:
+                    self.append_console_sig.emit(_("Auto Zero Z: skipped (no reference Z from grid)."), "warn")
                 else:
-                    # Step 2: probe the surface again using Fast Seek + Slow Touch
-                    # This stops exactly when the bit touches the PCB — no G0 to raw machine Z.
-                    probe_timeout = max(20.0, (abs(settings["probe_depth"]) / settings["probe_feed"] * 60.0) + 10.0)
-                    self.last_probe_result = None
-                    self.probe_result_event.clear()
-                    self.ok_received.clear()
-                    
-                    # --- STAGE 1: Fast Seek ---
-                    zero_probe_cmd = "G38.2 Z%s F%d" % (
-                        self.format_gcode_number(settings["probe_depth"]),
-                        int(settings["probe_feed"]),
+                    self.append_console_sig.emit(
+                        _("Auto Zero Z: moving to reference X%.3f Y%.3f; Z=0 synced to grid touch...") % (
+                            reference["x"], reference["y"],
+                        ),
+                        "info",
                     )
-                    self.send_command(zero_probe_cmd, log=True)
-                    fast_hit = self.probe_result_event.wait(timeout=probe_timeout)
-                    self.ok_received.wait(timeout=2.0)
-
-                    probe_hit = False
-                    if fast_hit and self.last_probe_result and self.last_probe_result.get("success"):
-                        # --- STAGE 2: Micro Retract and Slow Touch ---
-                        # Retract 1.5mm from contact point to clear any board flex
-                        for cmd in ["G91", "G0 Z1.5"]:
-                            cmd_timeout = 5.0 if "Z" in cmd else 2.0
-                            self.send_command_and_wait(cmd, timeout=cmd_timeout)
-
-                        self.last_probe_result = None
-                        self.probe_result_event.clear()
-                        self.ok_received.clear()
-                        
-                        # Slow touch for precision
-                        slow_probe_cmd = "G38.2 Z-2.5 F10"
-                        self.send_command(slow_probe_cmd, log=True)
-                        probe_hit = self.probe_result_event.wait(timeout=15.0)
-                        self.ok_received.wait(timeout=2.0)
-                        
-                        # Immediate Pull-up
-                        self.send_command("G90")
-                        self.send_command("G0 Z%s" % self.format_gcode_number(settings["safe_z"]))
-
-                    if probe_hit and self.last_probe_result and self.last_probe_result.get("success"):
-                        trigger_z = self.last_probe_result.get("z", 0.0)
-                        move_trigger_cmd = "G90 G53 G1 Z%.4f F%d" % (trigger_z, max(10, int(settings["probe_feed"]) // 2))
-                        self.send_command_and_wait(move_trigger_cmd, timeout=5.0)
-                        if self.send_command_and_wait("G92 Z0", timeout=5.0):
-                            # Step 4: retract to safe Z
+                    move_ref = "G0 X%s Y%s" % (
+                        self.format_gcode_number(reference["x"]),
+                        self.format_gcode_number(reference["y"]),
+                    )
+                    if not self.send_command_and_wait(move_ref, timeout=12.0):
+                        self.append_console_sig.emit(
+                            _("Auto Zero Z: move to reference point failed."), "warn"
+                        )
+                    else:
+                        feed_z = max(10, int(settings["probe_feed"]) // 2)
+                        move_trigger_cmd = "G90 G53 G1 Z%s F%d" % (
+                            self.format_gcode_number(float(ref_z)),
+                            feed_z,
+                        )
+                        if not self.send_command_and_wait(move_trigger_cmd, timeout=25.0):
+                            self.append_console_sig.emit(
+                                _("Auto Zero Z: move to grid touch height failed or not acknowledged."), "warn"
+                            )
+                            if not self.send_command_and_wait("G90", timeout=3.0):
+                                pass
+                            self.send_command_and_wait(
+                                "G0 Z%s" % self.format_gcode_number(settings["safe_z"]), timeout=10.0
+                            )
+                        elif self.send_command_and_wait("G90", timeout=3.0) and self.send_command_and_wait(
+                            "%s" % wcs_label, timeout=3.0
+                        ) and self.send_command_and_wait("G10 L20 P%d Z0" % p_num, timeout=5.0):
                             retract = "G0 Z%s" % self.format_gcode_number(settings["safe_z"])
                             self.send_command_and_wait(retract, timeout=10.0)
                             self.append_console_sig.emit(
-                                _("Auto Zero Z complete: Z=0 set at PCB surface (reference point)."), "info"
+                                _("Auto Zero Z complete: selected WCS Z=0 matches grid reference (single measurement)."), "info"
                             )
                         else:
                             self.append_console_sig.emit(
-                                _("Auto Zero Z: G92 Z0 not acknowledged."), "warn"
+                                _("Auto Zero Z: WCS Z0 command was not acknowledged."), "warn"
                             )
-                    else:
-                        self.append_console_sig.emit(
-                            _("Auto Zero Z: surface probe did not trigger. Check Probe Z depth setting."), "warn"
-                        )
-                        # Retract to safety even on failure
-                        self.send_command_and_wait("G0 Z%s" % self.format_gcode_number(settings["safe_z"]), timeout=10.0)
+                            if not self.send_command_and_wait("G90", timeout=3.0):
+                                pass
+                            self.send_command_and_wait(
+                                "G0 Z%s" % self.format_gcode_number(settings["safe_z"]), timeout=10.0
+                            )
             self.auto_level_update_sig.emit({
                 "busy": False,
                 "enabled": True,
@@ -1951,6 +2606,7 @@ class ToolCNCControl(AppTool):
         finally:
             self.status_poll_enabled = previous_poll
             self.is_auto_leveling = False
+            self.jog_controls_update_sig.emit()
             self.auto_level_update_sig.emit({"busy": False})
 
     def update_auto_level_ui(self, data):
@@ -1979,7 +2635,6 @@ class ToolCNCControl(AppTool):
         absolute = True
         units = None
         current_motion = None
-        has_seen_z = False
 
         for raw_line in lines:
             clean_line = self.clean_gcode_line(raw_line)
@@ -1988,9 +2643,7 @@ class ToolCNCControl(AppTool):
 
             upper_line = clean_line.upper()
             words = self.gcode_words(upper_line)
-            g_codes = [int(float(value)) for value in re.findall(
-                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
-            )]
+            g_codes = self.modal_g_codes(upper_line)
 
             if 20 in g_codes:
                 units = "inch"
@@ -2020,10 +2673,9 @@ class ToolCNCControl(AppTool):
             if not has_axis:
                 continue
 
-            line_has_z = "Z" in words
             include_bounds = not cutting_only
             if cutting_only and motion in [1, 2, 3]:
-                include_bounds = not has_seen_z or position["Z"] < 0 or next_position["Z"] < 0
+                include_bounds = position["Z"] < 0 or next_position["Z"] < 0
 
             if include_bounds:
                 for point in [position, next_position]:
@@ -2035,8 +2687,6 @@ class ToolCNCControl(AppTool):
                             bounds[axis][1] = value
 
             position = next_position
-            if line_has_z:
-                has_seen_z = True
 
         return bounds, units
 
@@ -2044,6 +2694,16 @@ class ToolCNCControl(AppTool):
         if units in {"inch", "mm"}:
             return units
         return "inch" if str(getattr(self.app, "app_units", "MM")).upper() == "IN" else "mm"
+
+    @staticmethod
+    def units_scale(from_units, to_units):
+        if from_units == to_units:
+            return 1.0
+        if from_units == "inch" and to_units == "mm":
+            return 25.4
+        if from_units == "mm" and to_units == "inch":
+            return 1.0 / 25.4
+        return 1.0
 
     def gcode_preview_segments(self, lines):
         position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
@@ -2088,9 +2748,7 @@ class ToolCNCControl(AppTool):
 
             upper_line = clean_line.upper()
             words = self.gcode_words(upper_line)
-            g_codes = [int(float(value)) for value in re.findall(
-                r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
-            )]
+            g_codes = self.modal_g_codes(upper_line)
 
             if 90 in g_codes:
                 absolute = True
@@ -2162,11 +2820,11 @@ class ToolCNCControl(AppTool):
     def scaled_point(point, factor):
         return [point[0] * factor, point[1] * factor]
 
-    def build_job_canvas_preview(self, name, raw_lines, preview_lines):
+    def build_job_canvas_preview(self, name, raw_lines, preview_lines, apply_live_placement=True):
         if not raw_lines:
             return {}
 
-        context = self.stream_transform_context(raw_lines)
+        context = self.stream_transform_context(raw_lines, name=name, apply_live_placement=apply_live_placement)
         units = self.effective_gcode_units(context.get("units"))
         factor = 25.4 if units == "inch" else 1.0
         mode = context.get("mode", self.selected_job_origin_mode())
@@ -2174,9 +2832,31 @@ class ToolCNCControl(AppTool):
             "placement",
             self.resolved_job_placement(mode, self.selected_job_placement_mode())
         )
-        job_width = float(context.get("job_width", 0.0) or 0.0)
-        job_height = float(context.get("job_height", 0.0) or 0.0)
         material_bounds = context.get("material_bounds")
+        try:
+            job_width = float(context.get("job_width", 0.0) or 0.0)
+            job_height = float(context.get("job_height", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            job_width = 0.0
+            job_height = 0.0
+        if material_bounds:
+            try:
+                job_width = float(material_bounds[1]) - float(material_bounds[0])
+                job_height = float(material_bounds[3]) - float(material_bounds[2])
+            except (TypeError, ValueError, IndexError):
+                job_width = 0.0
+                job_height = 0.0
+
+        has_live = self.live_offset_x != 0 or self.live_offset_y != 0 or self.live_rotation != 0
+        if self.live_edit_enabled or has_live:
+            # Keep the editor's workspace rectangle in the same coordinate system as
+            # the selected origin. Back-Left uses negative Y, Canvas/Absolute keeps
+            # the original project-canvas 0..H bounds.
+            workspace_bounds = self.project_workspace_material_bounds(units, mode)
+            material_bounds = workspace_bounds or material_bounds
+            if material_bounds:
+                job_width = material_bounds[1] - material_bounds[0]
+                job_height = material_bounds[3] - material_bounds[2]
 
         if job_width <= 0 or job_height <= 0:
             preview_bounds, preview_units = self.gcode_bounds(preview_lines)
@@ -2211,7 +2891,16 @@ class ToolCNCControl(AppTool):
 
         margin_guides = self.margin_guides_for_bounds(material_bounds, margin_x, margin_y, factor)
         scaled_job_bounds = [value * factor for value in material_bounds]
-        scaled_path_bounds = [value * factor for value in path_bounds] if path_bounds else None
+
+        # Ensure path_bounds is not zero-sized to prevent VisPy Singular Matrix error
+        if path_bounds:
+            pb = list(path_bounds)
+            if pb[1] - pb[0] < 0.001: pb[1] = pb[0] + 0.1
+            if pb[3] - pb[2] < 0.001: pb[3] = pb[2] + 0.1
+            scaled_path_bounds = [v * factor for v in pb]
+        else:
+            scaled_path_bounds = None
+
         scaled_start = self.scaled_point(start_point, factor) if start_point else None
         tolerance = 0.001
         outside = False
@@ -2223,14 +2912,29 @@ class ToolCNCControl(AppTool):
                 scaled_path_bounds[3] > scaled_job_bounds[3] + tolerance
             )
 
+        label = _("%s | Job %.1f x %.1f mm | Origin: %s | Place: %s") % (
+            name or _("CNCJob"),
+            job_width * factor,
+            job_height * factor,
+            origin_label,
+            self.job_placement_label(placement),
+        )
+        if mode == "absolute":
+            if placement == "canvas":
+                label = _("%s | Workspace %.1f x %.1f mm | Live Placement") % (
+                    name or _("CNCJob"),
+                    job_width * factor,
+                    job_height * factor,
+                )
+            else:
+                label = _("%s | Workspace %.1f x %.1f mm | Absolute XY") % (
+                    name or _("CNCJob"),
+                    job_width * factor,
+                    job_height * factor,
+                )
+
         return {
-            "label": _("%s | Job %.1f x %.1f mm | Origin: %s | Place: %s") % (
-                name or _("CNCJob"),
-                job_width * factor,
-                job_height * factor,
-                origin_label,
-                self.job_placement_label(placement),
-            ),
+            "label": label,
             "job_bounds": scaled_job_bounds,
             "segments": scaled_segments,
             "path_bounds": scaled_path_bounds,
@@ -2240,50 +2944,112 @@ class ToolCNCControl(AppTool):
             "outside": outside,
         }
 
-    def stream_transform_context(self, lines):
+    def stream_transform_context(self, lines, name=None, apply_live_placement=True):
         mode = self.selected_job_origin_mode()
         bounds, units = self.gcode_bounds(lines, cutting_only=True)
         if bounds["X"][0] is None or bounds["Y"][0] is None:
             bounds, units = self.gcode_bounds(lines)
         units = self.effective_gcode_units(units)
-        x_min = bounds.get("X", [None, None])[0]
-        x_max = bounds.get("X", [None, None])[1]
-        y_bounds = bounds.get("Y", [None, None])
-        y_min = y_bounds[0]
-        y_max = y_bounds[1]
-        if x_min is None or x_max is None or y_min is None or y_max is None:
-            return {
+        has_xy_bounds = (
+            bounds["X"][0] is not None and bounds["X"][1] is not None and
+            bounds["Y"][0] is not None and bounds["Y"][1] is not None
+        )
+        if not has_xy_bounds:
+            material_bounds = (
+                self.project_workspace_material_bounds(units, mode) or
+                self.material_bounds_for_origin(mode, 1.0, 1.0)
+            )
+            context = {
                 "mode": mode,
                 "enabled": False,
+                "x_anchor": 0.0,
+                "y_anchor": 0.0,
+                "job_width": material_bounds[1] - material_bounds[0],
+                "job_height": material_bounds[3] - material_bounds[2],
+                "margin_x": 0.0,
+                "margin_y": 0.0,
+                "material_bounds": material_bounds,
+                "placement": self.resolved_job_placement(mode, self.selected_job_placement_mode()),
+                "target_bounds": {"X": [0.0, 0.0], "Y": [0.0, 0.0]},
                 "absolute": True,
                 "units": units,
             }
+            return self.apply_live_placement_to_context(context, apply_live_placement)
 
-        raw_width = x_max - x_min
-        raw_height = y_max - y_min
+        x_min = bounds.get("X", [0.0, 1.0])[0]
+        x_max = bounds.get("X", [0.0, 1.0])[1]
+        y_bounds = bounds.get("Y", [0.0, 1.0])
+        y_min = y_bounds[0]
+        y_max = y_bounds[1]
+
+        # Ensure valid numeric values and a minimum width/height of 1.0 to prevent VisPy Singular Matrix errors
+        raw_width = max(1.0, (x_max or 1.0) - (x_min or 0.0))
+        raw_height = max(1.0, (y_max or 1.0) - (y_min or 0.0))
+
+        selected_placement = self.selected_job_placement_mode()
+        if selected_placement == "canvas":
+            # CNCJob objects in FlatCAM already have the canvas offset applied. Keep
+            # that placement, but express it in the selected work-origin system.
+            if mode == "absolute":
+                material_bounds = self.project_workspace_bounds(units) or [x_min, x_max, y_min, y_max]
+                x_anchor = 0.0
+                y_anchor = 0.0
+                context_mode = "absolute"
+            else:
+                job_width, job_height = self.selected_job_size(raw_width, raw_height, units)
+                material_bounds = (
+                    self.project_workspace_material_bounds(units, mode) or
+                    self.material_bounds_for_origin(mode, job_width, job_height)
+                )
+                x_anchor = -float(material_bounds[0])
+                y_anchor = -float(material_bounds[2])
+                context_mode = mode
+            context = {
+                "mode": context_mode,
+                "enabled": True,
+                "x_anchor": x_anchor,
+                "y_anchor": y_anchor,
+                "job_width": material_bounds[1] - material_bounds[0],
+                "job_height": material_bounds[3] - material_bounds[2],
+                "margin_x": 0.0,
+                "margin_y": 0.0,
+                "material_bounds": material_bounds,
+                "placement": "canvas",
+                "target_bounds": {
+                    "X": [x_min - x_anchor, x_max - x_anchor],
+                    "Y": [y_min - y_anchor, y_max - y_anchor],
+                },
+                "absolute": True,
+                "units": units,
+            }
+            return self.apply_live_placement_to_context(context, apply_live_placement)
+
+        if mode == "absolute":
+            material_bounds = self.project_workspace_bounds(units) or [x_min, x_max, y_min, y_max]
+            context = {
+                "mode": mode,
+                "enabled": False,
+                "x_anchor": 0.0,
+                "y_anchor": 0.0,
+                "job_width": material_bounds[1] - material_bounds[0],
+                "job_height": material_bounds[3] - material_bounds[2],
+                "margin_x": 0.0,
+                "margin_y": 0.0,
+                "material_bounds": material_bounds,
+                "placement": "bottom_left",
+                "target_bounds": {
+                    "X": [x_min, x_max],
+                    "Y": [y_min, y_max],
+                },
+                "absolute": True,
+                "units": units,
+            }
+            return self.apply_live_placement_to_context(context, apply_live_placement)
+
         job_width, job_height = self.selected_job_size(raw_width, raw_height, units)
         margin_x, margin_y = self.selected_job_margin(units)
         material_bounds = self.material_bounds_for_origin(mode, job_width, job_height)
-        selected_placement = self.selected_job_placement_mode()
         placement = self.resolved_job_placement(mode, selected_placement)
-
-        if mode == "absolute":
-            x_anchor = -margin_x
-            y_anchor = -margin_y
-            return {
-                "mode": mode,
-                "enabled": (margin_x != 0.0 or margin_y != 0.0),
-                "x_anchor": x_anchor,
-                "y_anchor": y_anchor,
-                "job_width": job_width,
-                "job_height": job_height,
-                "margin_x": margin_x,
-                "margin_y": margin_y,
-                "material_bounds": material_bounds,
-                "placement": placement,
-                "absolute": True,
-                "units": units,
-            }
 
         target_bounds = self.target_bounds_for_placement(
             material_bounds, raw_width, raw_height, margin_x, margin_y, placement
@@ -2291,7 +3057,7 @@ class ToolCNCControl(AppTool):
         x_anchor = x_min - target_bounds["X"][0]
         y_anchor = y_min - target_bounds["Y"][0]
 
-        return {
+        context = {
             "mode": mode,
             "enabled": True,
             "x_anchor": x_anchor,
@@ -2306,6 +3072,7 @@ class ToolCNCControl(AppTool):
             "absolute": True,
             "units": units,
         }
+        return self.apply_live_placement_to_context(context, apply_live_placement)
 
     @staticmethod
     def format_gcode_number(value):
@@ -2409,9 +3176,8 @@ class ToolCNCControl(AppTool):
         units = self.effective_gcode_units(context.get("units"))
         factor = 25.4 if units == "inch" else 1.0
         
-        # Translate project (unanchored) coordinates to physical (map) coordinates
-        x_phys = x_value - context.get("x_anchor", 0.0)
-        y_phys = y_value - context.get("y_anchor", 0.0)
+        # Translate project (unanchored) coordinates to the same work XY used by the probed map.
+        x_phys, y_phys = self.mapped_job_xy(context, x_value, y_value)
         
         # z_values are already normalized: reference point = 0.0, other points = delta.
         # surface_z is therefore the Z correction to apply (positive = surface is higher).
@@ -2432,9 +3198,8 @@ class ToolCNCControl(AppTool):
 
         upper_line = clean_line.upper()
         words = self.gcode_words(upper_line)
-        g_codes = [int(float(value)) for value in re.findall(
-            r"\bG\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", upper_line
-        )]
+        g_code_values = self.raw_g_code_values(upper_line)
+        g_codes = self.modal_g_codes(upper_line)
         if 20 in g_codes:
             context["units"] = "inch"
         if 21 in g_codes:
@@ -2444,25 +3209,73 @@ class ToolCNCControl(AppTool):
         if 91 in g_codes:
             context["absolute"] = False
 
-        if upper_line.startswith("$") or any(code in g_codes for code in [10, 53, 92]):
+        if upper_line.startswith("$") or any(
+                math.isclose(code, 10.0) or math.isclose(code, 53.0) or int(code) == 92
+                for code in g_code_values
+        ):
             return command
 
         x_anchor = float(context.get("x_anchor", 0.0))
         y_anchor = float(context.get("y_anchor", 0.0))
+        controller_wcs_offset = context.get("controller_wcs_offset") or [0.0, 0.0]
+        try:
+            controller_x_offset = float(controller_wcs_offset[0])
+            controller_y_offset = float(controller_wcs_offset[1])
+        except (TypeError, ValueError, IndexError):
+            controller_x_offset = 0.0
+            controller_y_offset = 0.0
         absolute = bool(context.get("absolute", True))
         transformed = clean_line
         modified = False
         axis_values = {}
+        position = context.setdefault("position", {"X": 0.0, "Y": 0.0, "Z": 0.0})
 
-        if context.get("enabled"):
-            for axis, anchor in [("X", x_anchor), ("Y", y_anchor)]:
-                if axis in words:
-                    new_value = words[axis] - anchor if absolute else words[axis]
-                    axis_values[axis] = new_value
-                    transformed = self.replace_axis_word(transformed, axis, new_value)
+        if context.get("enabled") or context.get("apply_controller_wcs") or context.get("live_placement_enabled"):
+            l_rot = context.get("live_rotation", 0.0) if context.get("live_placement_enabled") else 0.0
+            force_coupled_xy = abs(float(l_rot or 0.0)) > 1e-9
+
+            # 1. Handle X and Y
+            new_x = words.get("X")
+            new_y = words.get("Y")
+
+            if new_x is not None or new_y is not None:
+                # Fill missing values with current tracked position
+                curr_x = new_x if new_x is not None else position.get("X", 0.0)
+                curr_y = new_y if new_y is not None else position.get("Y", 0.0)
+
+                if absolute:
+                    curr_x, curr_y = self.mapped_job_xy(
+                        context, curr_x, curr_y, controller_x_offset, controller_y_offset
+                    )
+                else:
+                    # Incremental: Only rotate the delta vector
+                    if l_rot != 0:
+                        rad = math.radians(l_rot)
+                        tx, ty = curr_x, curr_y
+                        curr_x = tx * math.cos(rad) - ty * math.sin(rad)
+                        curr_y = tx * math.sin(rad) + ty * math.cos(rad)
+
+                if new_x is not None or force_coupled_xy:
+                    axis_values["X"] = curr_x
+                    transformed = self.replace_axis_word(transformed, "X", curr_x)
+                    modified = True
+                if new_y is not None or force_coupled_xy:
+                    axis_values["Y"] = curr_y
+                    transformed = self.replace_axis_word(transformed, "Y", curr_y)
                     modified = True
 
-        position = context.setdefault("position", {"X": 0.0, "Y": 0.0, "Z": 0.0})
+            # 2. Handle I and J (Arc centers - always relative deltas)
+            if l_rot != 0 and ("I" in words or "J" in words):
+                rad = math.radians(l_rot)
+                i_val = words.get("I", 0.0)
+                j_val = words.get("J", 0.0)
+                new_i = i_val * math.cos(rad) - j_val * math.sin(rad)
+                new_j = i_val * math.sin(rad) + j_val * math.cos(rad)
+
+                transformed = self.replace_axis_word(transformed, "I", new_i)
+                transformed = self.replace_axis_word(transformed, "J", new_j)
+                modified = True
+
         next_position = dict(position)
         for axis in "XYZ":
             if axis in words:
@@ -2482,7 +3295,8 @@ class ToolCNCControl(AppTool):
         has_z = "Z" in words
         program_z = next_position.get("Z", position.get("Z", 0.0))
         if context.get("autolevel_enabled") and (has_xy or has_z):
-            if has_xy and absolute and motion in [0, 1, 2, 3]:
+            # Segment long XY moves for leveling in both G90 and G91 (incremental) modes.
+            if has_xy and motion in [0, 1, 2, 3]:
                 start_x = position.get("X", 0.0)
                 start_y = position.get("Y", 0.0)
                 start_z = position.get("Z", 0.0)
@@ -2532,10 +3346,11 @@ class ToolCNCControl(AppTool):
                         # auto_level_offset_at expects UNANCHORED coordinates
                         z_offset = self.auto_level_offset_at(context, sub_x, sub_y)
                         adj_z = sub_z + z_offset
-                        
-                        # The CNC machine expects ANCHORED coordinates
-                        phys_sub_x = sub_x - context.get("x_anchor", 0.0) if absolute else sub_x
-                        phys_sub_y = sub_y - context.get("y_anchor", 0.0) if absolute else sub_y
+
+                        # Machine/work coordinates for the sender after job anchoring and live placement.
+                        phys_sub_x, phys_sub_y = self.mapped_job_xy(
+                            context, sub_x, sub_y, controller_x_offset, controller_y_offset
+                        )
                         
                         cmd_motion = 1 if motion in [2, 3] else motion
                         if i == 1:
@@ -2543,34 +3358,71 @@ class ToolCNCControl(AppTool):
                             if motion in [2, 3]:
                                 sub_cmd = re.sub(r'G0?[23]', 'G1', sub_cmd)
                                 sub_cmd = re.sub(r'[IJ]\s*[-+]?[0-9]*\.?[0-9]*', '', sub_cmd)
-                            if "X" in words: sub_cmd = self.replace_axis_word(sub_cmd, "X", phys_sub_x)
-                            if "Y" in words: sub_cmd = self.replace_axis_word(sub_cmd, "Y", phys_sub_y)
+                            if "X" in words or self.live_rotation_active(context):
+                                sub_cmd = self.replace_axis_word(sub_cmd, "X", phys_sub_x)
+                            if "Y" in words or self.live_rotation_active(context):
+                                sub_cmd = self.replace_axis_word(sub_cmd, "Y", phys_sub_y)
                             sub_cmd = self.replace_axis_word(sub_cmd, "Z", adj_z)
                             # Cleanup multiple spaces left by I/J removal
                             sub_cmd = re.sub(r'\s+', ' ', sub_cmd).strip()
                         else:
                             sub_cmd = "G%02d X%.4f Y%.4f Z%.4f" % (cmd_motion, phys_sub_x, phys_sub_y, adj_z)
                         sub_lines.append(sub_cmd)
-                    
+
                     context["position"] = next_position
+                    if not absolute:
+                        # Emitted segments are absolute XY; restore G91 if the source line was incremental.
+                        sub_lines[0] = "G90 " + re.sub(r"(?i)^G\s*91(?![\d.])\s+", "", sub_lines[0]).strip()
+                        sub_lines.append("G91")
                     return "\n".join(sub_lines)
 
             # Apply offset to maintain surface following
             z_offset = self.auto_level_offset_at(context, next_position["X"], next_position["Y"])
             adjusted_z = program_z + z_offset
+
+            if not absolute:
+                inc_transformed = transformed
+                if re.search(r"(?i)\bG\s*91(?![\d.])", inc_transformed):
+                    inc_transformed = re.sub(r"(?i)\bG\s*91(?![\d.])", "G90", inc_transformed, count=1)
+                elif not re.search(r"(?i)\bG\s*90(?![\d.])", inc_transformed):
+                    inc_transformed = "G90 " + inc_transformed
+
+                mapped_x, mapped_y = self.mapped_job_xy(
+                    context, next_position["X"], next_position["Y"],
+                    controller_x_offset, controller_y_offset
+                )
+                force_xy = self.live_rotation_active(context)
+                if "X" in words or force_xy:
+                    inc_transformed = self.replace_axis_word(
+                        inc_transformed,
+                        "X",
+                        mapped_x
+                    )
+                if "Y" in words or force_xy:
+                    inc_transformed = self.replace_axis_word(
+                        inc_transformed,
+                        "Y",
+                        mapped_y
+                    )
+                inc_transformed = self.replace_axis_word(inc_transformed, "Z", adjusted_z)
+                context["position"] = next_position
+                return inc_transformed + "\nG91"
+
             transformed = self.replace_axis_word(transformed, "Z", adjusted_z)
             modified = True
             
             # Print Z-plunge transformations to console for debugging air-cutting issues
-            if program_z < 0.0:
+            if program_z < 0.0 and bool(self.app.options.get("cnc_debug_autolevel", False)):
                 msg = "[DEBUG-AL] G-code Z: %.3f | Offset: %+.3f | Adjusted Z: %.3f" % (program_z, z_offset, adjusted_z)
                 self.append_console_sig.emit(msg, "info")
 
         context["position"] = next_position
         return transformed if modified else command
 
-    def transformed_gcode_lines(self, lines, apply_auto_level=True):
-        context = self.stream_transform_context(lines)
+    def transformed_gcode_lines(self, lines, name=None, apply_auto_level=True, apply_live_placement=True):
+        if not lines:
+            return []
+        context = self.stream_transform_context(lines, name=name, apply_live_placement=apply_live_placement)
         if apply_auto_level:
             self.attach_auto_level_context(context)
         return [self.transform_stream_command(line, context) for line in lines]
@@ -2802,11 +3654,27 @@ class ToolCNCControl(AppTool):
             return
 
         data = {"state": parts[0]}
+        self.set_controller_state(parts[0])
         for part in parts[1:]:
             if ":" in part:
                 key, value = part.split(":", 1)
                 data[key] = value
         self.update_status_sig.emit(data)
+
+    def set_controller_state(self, state):
+        new_state = self.normalized_controller_state(state)
+        old_state = getattr(self, "controller_state", "Offline")
+        self.controller_state = new_state
+
+        with self.jog_lock:
+            if self.jog_in_flight and new_state in {"Jog", "Run"}:
+                self.jog_motion_seen = True
+            should_finish_jog = self.jog_in_flight and self.jog_motion_seen and new_state == "Idle"
+
+        if should_finish_jog:
+            self.finish_jog()
+        elif old_state != new_state:
+            self.jog_controls_update_sig.emit()
 
     @staticmethod
     def normalized_controller_state(state):
@@ -2840,6 +3708,7 @@ class ToolCNCControl(AppTool):
             "state": "Idle",
             "WPos": "{},{},{}".format(matches.get("X", "0"), matches.get("Y", "0"), matches.get("Z", "0"))
         })
+        self.set_controller_state("Idle")
         return True
 
     def parse_sd_listing(self, line):
@@ -2878,6 +3747,7 @@ class ToolCNCControl(AppTool):
 
     def update_status_display(self, data):
         state = self.normalized_controller_state(data.get("state", "Idle"))
+        self.set_controller_state(state)
         self.ui.state_label.setText(state.upper())
         self.update_toolbar_connection_status(True, self.ui.connection_desc.text(), state=state)
 
@@ -2976,6 +3846,7 @@ class ToolCNCControl(AppTool):
         self.is_streaming = True
         self.streaming_paused = False
         self.ui.pause_btn.setText("PAUSE")
+        self.jog_controls_update_sig.emit()
         self.queue_update_sig.emit()
         threading.Thread(target=self.stream_worker, daemon=True).start()
 
@@ -2994,6 +3865,28 @@ class ToolCNCControl(AppTool):
         self.is_streaming = False
         self.streaming_paused = False
         self.ui.pause_btn.setText("PAUSE")
+        self.jog_controls_update_sig.emit()
+
+        # 1. Immediate motion stop (Feed Hold)
+        self.send_profile_command("hold")
+
+        # 2. Reset controller to clear internal hardware buffer
+        # (Necessary for GRBL/FluidNC to abort queued moves)
+        self.send_profile_command("reset")
+
+        # 3. Stop spindle
+        self.send_profile_command("spindle_stop")
+
+        # 4. Lift Z to safe clearance height
+        try:
+            # Try to get clearance Z from application options
+            safe_z = float(self.app.options.get("geometry_travelz", 5.0))
+            # Unlock if needed (some controllers require $X after soft-reset to allow movement)
+            self.send_profile_command("unlock", log=False)
+            self.send_command(f"G0 Z{safe_z}")
+        except Exception:
+            pass
+
         if 0 <= self.current_queue_idx < len(self.job_queue):
             self.job_queue[self.current_queue_idx]["status"] = _("Stopped")
             self.queue_update_sig.emit()
@@ -3044,11 +3937,44 @@ class ToolCNCControl(AppTool):
 
             lines = item.get("lines", [])
 
-            # Pre-compute transform context and stream lines BEFORE sending any commands.
-            # This ensures G-code is ready to send immediately after WCS ack, preventing
-            # any delay that could cause the CNC head to hit the table.
-            transform_context = self.stream_transform_context(lines)
+            wcs_label, _p_num = self.selected_work_offset()
+            transform_context = self.stream_transform_context(lines, name=item.get("name"))
             self.attach_auto_level_context(transform_context)
+            wcs_ready = False
+
+            if transform_context.get("autolevel_enabled"):
+                setup_commands = ["G90", "G92.1", "G49", wcs_label]
+                self.work_offsets = {}
+                self.g92_offset = [0.0, 0.0, 0.0]
+                self.tool_length_offset = [0.0, 0.0, 0.0]
+
+                for setup_command in setup_commands:
+                    self.ok_received.clear()
+                    self.last_controller_ack = ""
+                    self.send_command(setup_command, log=True)
+                    if not self.wait_for_stream_ack(setup_command, timeout=10.0):
+                        item["status"] = _("Stopped")
+                        self.queue_update_sig.emit()
+                        stream_aborted = True
+                        break
+
+                if stream_aborted:
+                    break
+
+                self.ok_received.clear()
+                self.last_controller_ack = ""
+                self.send_command("$#", log=True)
+                if not self.wait_for_stream_ack("$#", timeout=10.0):
+                    item["status"] = _("Stopped")
+                    self.queue_update_sig.emit()
+                    stream_aborted = True
+                    break
+
+                wcs_ready = True
+                self.append_console_sig.emit(
+                    _("Auto level XY uses selected %s work coordinates.") % wcs_label,
+                    "info"
+                )
             
             # Initialize position to unanchored coordinates so the first move starts from the correct physical spot
             x_anc = transform_context.get("x_anchor", 0.0)
@@ -3085,10 +4011,16 @@ class ToolCNCControl(AppTool):
                 }
                 mode_label = mode_labels.get(transform_context.get("mode"), _("Job Origin"))
                 placement_label = self.job_placement_label(transform_context.get("placement"))
-                self.append_console_sig.emit(
-                    _("Zeroed XY is mapped to CNCJob %s; placement is %s.") % (mode_label, placement_label),
-                    "info"
-                )
+                if transform_context.get("placement") == "canvas":
+                    self.append_console_sig.emit(
+                        _("CNCJob uses its canvas XY; saved Live Placement offset/rotation is applied."),
+                        "info"
+                    )
+                else:
+                    self.append_console_sig.emit(
+                        _("Zeroed XY is mapped to CNCJob %s; placement is %s.") % (mode_label, placement_label),
+                        "info"
+                    )
                 target_bounds = transform_context.get("target_bounds")
                 if target_bounds:
                     self.append_console_sig.emit(
@@ -3111,6 +4043,12 @@ class ToolCNCControl(AppTool):
                 height_map = transform_context.get("autolevel_map", {})
                 z_values = self.auto_level_map_z_values(height_map)
                 mode_label = height_map.get("probe_coordinate_mode") or _("unknown")
+                if any(abs(float(value or 0.0)) > 0.0005 for value in (self.g92_offset or [])):
+                    self.append_console_sig.emit(
+                        _("Warning: G92 temporary offset is active while auto-level is enabled. "
+                          "Clear G92 or re-probe before engraving if Z depth looks wrong."),
+                        "warn"
+                    )
                 if z_values:
                     self.append_console_sig.emit(
                         _("Auto level map is active: %d points. Z range %.4f..%.4f mm; probe mode: %s.") % (
@@ -3126,16 +4064,42 @@ class ToolCNCControl(AppTool):
                         _("Auto level map is active: %d points.") % int(height_map.get("point_count", 0) or 0),
                         "info"
                     )
+                tb = transform_context.get("target_bounds")
+                xv = height_map.get("x_values") or []
+                yv = height_map.get("y_values") or []
+                if tb and xv and yv:
+                    mx0, mx1 = min(xv), max(xv)
+                    my0, my1 = min(yv), max(yv)
+                    jx0, jx1 = tb["X"][0], tb["X"][1]
+                    jy0, jy1 = tb["Y"][0], tb["Y"][1]
+                    tol = 0.05
+                    covers = (
+                        mx0 <= jx0 + tol and mx1 >= jx1 - tol and
+                        my0 <= jy0 + tol and my1 >= jy1 - tol
+                    )
+                    if covers:
+                        self.append_console_sig.emit(
+                            _("Auto level: probe map XY covers the mapped job."), "info"
+                        )
+                    else:
+                        self.append_console_sig.emit(
+                            _("Auto level: map X%.3f..%.3f Y%.3f..%.3f may be smaller than job X%.3f..%.3f Y%.3f..%.3f — re-run Fit Area if needed.") % (
+                                mx0, mx1, my0, my1, jx0, jx1, jy0, jy1
+                            ),
+                            "warn"
+                        )
 
-            # Send WCS select command and wait for ack immediately — stream_lines is already ready.
-            wcs_label, _p_num = self.selected_work_offset()
-            self.ok_received.clear()
-            self.last_controller_ack = ""
-            self.send_command(wcs_label, log=True)
-            if not self.wait_for_stream_ack(wcs_label, timeout=10.0):
-                item["status"] = _("Stopped")
-                self.queue_update_sig.emit()
-                stream_aborted = True
+            # Non-leveled jobs only need the selected work offset before streaming.
+            if not wcs_ready:
+                self.ok_received.clear()
+                self.last_controller_ack = ""
+                self.send_command(wcs_label, log=True)
+                if not self.wait_for_stream_ack(wcs_label, timeout=10.0):
+                    item["status"] = _("Stopped")
+                    self.queue_update_sig.emit()
+                    stream_aborted = True
+
+            if stream_aborted:
                 break
 
             for line_idx, sent_command in enumerate(stream_lines):
@@ -3153,7 +4117,7 @@ class ToolCNCControl(AppTool):
                     continue
                 self.last_controller_ack = ""
                 self.send_command(sent_command, log=True)
-                if not self.wait_for_stream_ack(sent_command, timeout=None, warn_after=None):
+                if not self.wait_for_stream_ack(sent_command, timeout=900.0, warn_after=5.0):
                     item["status"] = _("Stopped")
                     self.queue_update_sig.emit()
                     stream_aborted = True
@@ -3172,6 +4136,7 @@ class ToolCNCControl(AppTool):
         self.is_streaming = False
         self.streaming_paused = False
         self.current_queue_idx = -1
+        self.jog_controls_update_sig.emit()
         self.update_progress_sig.emit(100.0 if completed and total else 0.0, _("Done") if completed else _("Stopped"))
         self.queue_update_sig.emit()
 
@@ -3322,9 +4287,11 @@ class ToolCNCControl(AppTool):
         
         # Get current preview data
         name, lines = self.selected_preview_job()
-        preview_lines = self.transformed_gcode_lines(lines)
+        preview_lines = self.transformed_gcode_lines(lines, name=name)
         canvas_preview = self.build_job_canvas_preview(name, lines, preview_lines)
-        
+
+        self.preview_modal.canvas.edit_mode = False
+        self.preview_modal.set_placement(0.0, 0.0, 0.0)
         self.preview_modal.set_preview(canvas_preview)
         self.preview_modal.show()
 

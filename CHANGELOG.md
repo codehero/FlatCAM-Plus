@@ -8,6 +8,55 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
+## 2026/05/17 - v1.0.4 CNC Control Live Placement Update
+
+### Highlights
+
+- Reworked CNC Control job placement around **Live Placement** as the default workflow.
+- CNC jobs now start from their existing canvas position, and saved Live Placement offset/rotation is applied consistently to preview, probing, auto-leveling, and streamed G-code.
+- The old Placement dropdown is now hidden to avoid conflicting placement modes.
+
+### Added
+
+- Added a Live Placement modal with manual X, Y, and Angle fields for exact positioning and rotation.
+- Added persistent Live Placement state so saved offsets and rotations are used during verification, probing, and engraving.
+- Added workspace-size binding for Job W and Job H from the project workspace.
+- Added controller-state-aware jog handling so jog commands are serialized and blocked while probing or streaming.
+
+### Changed
+
+- CNC Control now treats Live Placement as the single placement source.
+- Initial job placement uses the CNCJob canvas XY by default.
+- Live Placement respects the selected Origin mode:
+  - Back-Left uses a `Y=-H..0` workspace.
+  - Bottom-Left uses a `Y=0..H` workspace.
+  - Center uses a centered workspace.
+- Saving Live Placement refreshes the auto-level/probe area from the mapped job bounds.
+- Preview and full-screen Live Placement now use the same coordinate mapping and workspace rectangle.
+- Stream logs now report that canvas XY and saved Live Placement are being applied.
+
+### Fixed
+
+- Fixed a crash in G-code preview caused by `job_width` being referenced before assignment.
+- Fixed a crash in stream transform context when selected jobs had missing XY bounds.
+- Fixed Back-Left origin preview drift where the modal and inline preview used different origin assumptions.
+- Fixed Live Placement double-offset behavior in the modal preview.
+- Fixed live preview travel/dotted lines so start and end points line up with the same mapped object position.
+- Fixed stream/probe coordinate mismatches after saving Live Placement.
+- Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
+
+### Validation
+
+- Ran Python bytecode checks for:
+  - `appPlugins/ToolCNCControl.py`
+  - `appPlugins/cnc_control/sections.py`
+  - `appPlugins/cnc_control/ui.py`
+  - `appPlugins/cnc_control/widgets.py`
+- Ran `git diff --check` for the CNC Control changes.
+- Verified synthetic G-code mapping for Back-Left, Bottom-Left, Center, Absolute XY, and saved Live Placement offsets.
+
+=================================================
+
 2026/05/14 - v1.0.4
 
 - added High-Precision Probing: Implemented a dual-stage "Fast Seek + Slow Touch" probing cycle (Candle-style) to prevent PCB surface deformation.

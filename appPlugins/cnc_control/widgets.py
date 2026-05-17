@@ -22,6 +22,7 @@ class FluidStyleButton(QtWidgets.QToolButton):
 
 class GCodeJobCanvas(QtWidgets.QWidget):
     full_screen_requested = QtCore.pyqtSignal()
+    placement_changed = QtCore.pyqtSignal(float, float, float) # dx, dy, rotation
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -37,11 +38,26 @@ class GCodeJobCanvas(QtWidgets.QWidget):
         self.is_panning = False
         self.enable_fs_button = True
 
+        # Live Placement state
+        self.edit_mode = False
+        self.live_offset = QtCore.QPointF(0, 0)
+        self.live_rotation = 0.0
+        self.is_dragging_object = False
+        self.is_rotating_object = False
+        self.drag_start_pos = None
+        self.rotation_handle_rect = QtCore.QRectF()
+
     def set_preview(self, preview):
         self.preview = preview or {}
-        # Reset pan/zoom on new preview load
-        self.offset = QtCore.QPointF(0, 0)
-        self.zoom = 1.0
+        # Reset pan/zoom only if not in edit mode or if it's a completely different job
+        # For now, let's just keep them to allow seamless editing
+        # self.offset = QtCore.QPointF(0, 0)
+        # self.zoom = 1.0
+        self.update()
+
+    def sync_placement(self, dx, dy, rotation):
+        self.live_offset = QtCore.QPointF(dx, dy)
+        self.live_rotation = rotation
         self.update()
 
     @staticmethod
@@ -53,6 +69,69 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             step = multiplier * magnitude
             if raw_step <= step: return step
         return 10 * magnitude
+
+    def job_bounds_values(self):
+        bounds = self.preview.get("job_bounds") or [0, 100, 0, 100]
+        try:
+            x_min, x_max, y_min, y_max = [float(v) for v in bounds]
+        except (TypeError, ValueError):
+            x_min, x_max, y_min, y_max = 0.0, 100.0, 0.0, 100.0
+        if abs(x_max - x_min) < 1e-9:
+            x_max = x_min + 0.1
+        if abs(y_max - y_min) < 1e-9:
+            y_max = y_min + 0.1
+        return x_min, x_max, y_min, y_max
+
+    def object_bounds_values(self):
+        bounds = self.preview.get("path_bounds") or self.preview.get("object_bounds")
+        if bounds:
+            try:
+                x_min, x_max, y_min, y_max = [float(v) for v in bounds]
+                if abs(x_max - x_min) >= 1e-9 and abs(y_max - y_min) >= 1e-9:
+                    return x_min, x_max, y_min, y_max
+            except (TypeError, ValueError):
+                pass
+        return self.job_bounds_values()
+
+    def canvas_transform(self):
+        canvas_rect = self.rect().adjusted(4, 4, -4, -4)
+        x_min, x_max, y_min, y_max = self.job_bounds_values()
+        span_x = max(0.1, x_max - x_min)
+        span_y = max(0.1, y_max - y_min)
+        base_scale = min(canvas_rect.width() / span_x, canvas_rect.height() / span_y) * 0.9
+        return canvas_rect, x_min, x_max, y_min, y_max, max(1e-9, base_scale * self.zoom)
+
+    def world_to_canvas(self, x, y):
+        canvas_rect, x_min, x_max, y_min, y_max, total_scale = self.canvas_transform()
+        px = canvas_rect.center().x() + (float(x) - (x_min + x_max) / 2) * total_scale + self.offset.x()
+        py = canvas_rect.center().y() - (float(y) - (y_min + y_max) / 2) * total_scale + self.offset.y()
+        return QtCore.QPointF(px, py)
+
+    def live_object_xy(self, x, y):
+        obj_x_min, obj_x_max, obj_y_min, obj_y_max = self.object_bounds_values()
+        cx, cy = (obj_x_min + obj_x_max) / 2.0, (obj_y_min + obj_y_max) / 2.0
+        rx, ry = float(x), float(y)
+
+        if self.live_rotation != 0:
+            rad = math.radians(self.live_rotation)
+            tx, ty = rx - cx, ry - cy
+            rx = tx * math.cos(rad) - ty * math.sin(rad) + cx
+            ry = tx * math.sin(rad) + ty * math.cos(rad) + cy
+
+        return rx + self.live_offset.x(), ry + self.live_offset.y()
+
+    def object_to_canvas(self, x, y):
+        return self.world_to_canvas(*self.live_object_xy(x, y))
+
+    @staticmethod
+    def points_are_close(point_a, point_b, tolerance=0.001):
+        try:
+            return (
+                abs(float(point_a[0]) - float(point_b[0])) <= tolerance and
+                abs(float(point_a[1]) - float(point_b[1])) <= tolerance
+            )
+        except (TypeError, ValueError, IndexError):
+            return False
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -104,22 +183,24 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             ])
 
         # Bounds calculation
-        job_bounds = self.preview.get("job_bounds") # material size [x_min, x_max, y_min, y_max]
-        if job_bounds:
-            x_min, x_max, y_min, y_max = [float(v) for v in job_bounds]
-        else:
-            x_min, x_max, y_min, y_max = 0.0, 100.0, 0.0, 100.0
-
+        x_min, x_max, y_min, y_max = self.job_bounds_values()
+        obj_x_min, obj_x_max, obj_y_min, obj_y_max = self.object_bounds_values()
         span_x = max(0.1, x_max - x_min)
         span_y = max(0.1, y_max - y_min)
-        
-        base_scale = min(canvas_rect.width() / span_x, canvas_rect.height() / span_y) * 0.9
-        total_scale = base_scale * self.zoom
+        total_scale = self.canvas_transform()[5]
 
         def to_canvas(x, y):
-            px = canvas_rect.center().x() + (float(x) - (x_min + x_max) / 2) * total_scale + self.offset.x()
-            py = canvas_rect.center().y() - (float(y) - (y_min + y_max) / 2) * total_scale + self.offset.y()
-            return QtCore.QPointF(px, py)
+            return self.world_to_canvas(x, y)
+
+        def to_object_canvas(x, y):
+            return self.object_to_canvas(x, y)
+
+        origin_xy = self.preview.get("origin") or [0.0, 0.0]
+
+        def to_segment_canvas(point, rapid=False):
+            if self.edit_mode and rapid and self.points_are_close(point, origin_xy):
+                return to_canvas(point[0], point[1])
+            return to_object_canvas(point[0], point[1])
 
         painter.setClipRect(canvas_rect)
 
@@ -129,7 +210,7 @@ class GCodeJobCanvas(QtWidgets.QWidget):
         painter.setBrush(QtGui.QColor("#fcfdfd") if text_color.lightness() > 128 else QtGui.QColor("#252525"))
         p_bl = to_canvas(x_min, y_min)
         p_tr = to_canvas(x_max, y_max)
-        painter.drawRect(QtCore.QRectF(p_bl, p_tr))
+        painter.drawRect(QtCore.QRectF(p_bl, p_tr).normalized())
 
         # 2. Draw Margin Guides (Origin/Placement Guides)
         margin_guides = self.preview.get("margin_guides", [])
@@ -162,16 +243,20 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             if path_bounds:
                 painter.setPen(QtGui.QPen(QtGui.QColor("#d9534f"), 1, Qt.PenStyle.DotLine))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                p_bl = to_canvas(path_bounds[0], path_bounds[2])
-                p_tr = to_canvas(path_bounds[1], path_bounds[3])
-                painter.drawRect(QtCore.QRectF(p_bl, p_tr))
+                p_bl = to_object_canvas(path_bounds[0], path_bounds[2])
+                p_tr = to_object_canvas(path_bounds[1], path_bounds[3])
+                painter.drawRect(QtCore.QRectF(p_bl, p_tr).normalized())
 
         # 5. Draw G-Code Segments
         rapid_pen = QtGui.QPen(QtGui.QColor("#9aa6b5"), 1, Qt.PenStyle.DashLine)
         cut_pen = QtGui.QPen(QtGui.QColor("#3156d9"), max(2.0, total_scale * 0.1), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         for seg in self.preview.get("segments", []):
-            painter.setPen(rapid_pen if seg.get("rapid") else cut_pen)
-            painter.drawLine(to_canvas(seg["start"][0], seg["start"][1]), to_canvas(seg["end"][0], seg["end"][1]))
+            is_rapid = bool(seg.get("rapid"))
+            painter.setPen(rapid_pen if is_rapid else cut_pen)
+            painter.drawLine(
+                to_segment_canvas(seg["start"], is_rapid),
+                to_segment_canvas(seg["end"], is_rapid)
+            )
 
         # 6. Origin Marker (0,0 of Work CS)
         origin_pt = to_canvas(0, 0)
@@ -195,11 +280,38 @@ class GCodeJobCanvas(QtWidgets.QWidget):
 
         painter.setClipping(False)
 
+        # 8. Draw Rotation Handle and Bounding Box if editing
+        if self.edit_mode:
+            # Draw a bounding box for the object being placed
+            p1 = to_object_canvas(obj_x_min, obj_y_min)
+            p2 = to_object_canvas(obj_x_max, obj_y_max)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#ff6900"), 1, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(QtCore.QRectF(p1, p2).normalized())
+
+            # Handle is above the object
+            obj_span_y = max(0.1, obj_y_max - obj_y_min)
+            handle_center = (obj_x_min + obj_x_max) / 2, obj_y_max + max(2.0, obj_span_y * 0.1)
+            handle_pt = to_object_canvas(*handle_center)
+            self.rotation_handle_rect = QtCore.QRectF(handle_pt.x() - 10, handle_pt.y() - 10, 20, 20)
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#ff6900"), 2))
+            painter.setBrush(QtGui.QColor("#ffffff"))
+            painter.drawEllipse(self.rotation_handle_rect)
+            painter.setBrush(QtGui.QColor("#ff6900"))
+            painter.drawEllipse(handle_pt, 3, 3)
+
+            # Line to object
+            painter.drawLine(handle_pt, to_object_canvas((obj_x_min + obj_x_max) / 2, obj_y_max))
+
         # Draw Info Label at Top Left
         label = self.preview.get("label", "")
+        if self.edit_mode:
+            label = "[LIVE PLACEMENT MODE] " + (label or "Job")
+
         if label:
-            painter.setPen(text_color)
-            painter.setFont(QtGui.QFont("Segoe UI", 9))
+            painter.setPen(QtGui.QColor("#ff6900") if self.edit_mode else text_color)
+            painter.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Weight.Bold if self.edit_mode else QtGui.QFont.Weight.Normal))
             painter.drawText(canvas_rect.adjusted(6, 4, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, label)
 
     def wheelEvent(self, event):
@@ -211,12 +323,25 @@ class GCodeJobCanvas(QtWidgets.QWidget):
         event.accept()
 
     def mousePressEvent(self, event):
+        pos_f = QtCore.QPointF(event.pos())
         if event.button() == Qt.MouseButton.LeftButton:
             outer = self.rect()
             fs_rect = QtCore.QRect(outer.right() - 28, outer.top() + 8, 20, 18)
             if self.enable_fs_button and fs_rect.contains(event.pos()):
                 self.full_screen_requested.emit()
                 return
+
+            if self.edit_mode:
+                if hasattr(self, 'rotation_handle_rect') and self.rotation_handle_rect.contains(pos_f):
+                    self.is_rotating_object = True
+                    self.last_mouse_pos = event.pos()
+                    return
+
+                self.is_dragging_object = True
+                self.drag_start_pos = event.pos()
+                self.last_mouse_pos = event.pos()
+                return
+
             self.is_panning = True
             self.last_mouse_pos = event.pos()
         super().mousePressEvent(event)
@@ -227,11 +352,40 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             self.offset += QtCore.QPointF(delta)
             self.last_mouse_pos = event.pos()
             self.update()
+        elif self.is_rotating_object and self.last_mouse_pos:
+            obj_x_min, obj_x_max, obj_y_min, obj_y_max = self.object_bounds_values()
+            center_world = (obj_x_min + obj_x_max) / 2.0, (obj_y_min + obj_y_max) / 2.0
+            center_pt = self.object_to_canvas(*center_world)
+            p1 = QtCore.QPointF(self.last_mouse_pos) - center_pt
+            p2 = QtCore.QPointF(event.pos()) - center_pt
+            angle1 = math.atan2(p1.y(), p1.x())
+            angle2 = math.atan2(p2.y(), p2.x())
+            diff = math.degrees(angle2 - angle1)
+            self.live_rotation += diff
+            self.last_mouse_pos = event.pos()
+            self.placement_changed.emit(self.live_offset.x(), self.live_offset.y(), self.live_rotation)
+            self.update()
+        elif self.is_dragging_object and self.last_mouse_pos:
+            delta = event.pos() - self.last_mouse_pos
+            job_bounds = self.preview.get("job_bounds") or [0, 100, 0, 100]
+            span_x = max(0.1, float(job_bounds[1]) - float(job_bounds[0]))
+            span_y = max(0.1, float(job_bounds[3]) - float(job_bounds[2]))
+            canvas_rect = self.rect().adjusted(4, 4, -4, -4)
+            base_scale = min(canvas_rect.width() / span_x, canvas_rect.height() / span_y) * 0.9
+            total_scale = max(1e-9, base_scale * self.zoom)
+            dx = delta.x() / total_scale
+            dy = -delta.y() / total_scale
+            self.live_offset += QtCore.QPointF(dx, dy)
+            self.last_mouse_pos = event.pos()
+            self.placement_changed.emit(self.live_offset.x(), self.live_offset.y(), self.live_rotation)
+            self.update()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_panning = False
+            self.is_dragging_object = False
+            self.is_rotating_object = False
             self.last_mouse_pos = None
         super().mouseReleaseEvent(event)
 

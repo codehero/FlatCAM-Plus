@@ -9,7 +9,7 @@ from PyQt6 import QtWidgets
 
 from appGUI.GUIElements import FCCheckBox, FCComboBox, FCDoubleSpinner, FCLabel, FCSpinner
 
-from .widgets import DashboardGauge, FluidStyleButton, GCodeJobCanvas
+from .widgets import DashboardGauge, FluidStyleButton
 
 import appTranslation as fcTranslate
 
@@ -184,17 +184,10 @@ class ProbingWorkOffsetSection(CNCSectionPlugin):
 
         ui.job_placement_combo = FCComboBox()
         setup_job_input(ui.job_placement_combo)
-        ui.job_placement_combo.addItem(_("Place: Same as Origin"), "origin")
-        ui.job_placement_combo.addItem(_("Place: Center"), "center")
-        ui.job_placement_combo.addItem(_("Place: Bottom-Left"), "bottom_left")
-        ui.job_placement_combo.addItem(_("Place: Bottom-Center"), "bottom_center")
-        ui.job_placement_combo.addItem(_("Place: Bottom-Right"), "bottom_right")
-        ui.job_placement_combo.addItem(_("Place: Center-Left"), "center_left")
-        ui.job_placement_combo.addItem(_("Place: Center-Right"), "center_right")
-        ui.job_placement_combo.addItem(_("Place: Back-Left"), "top_left")
-        ui.job_placement_combo.addItem(_("Place: Back-Center"), "top_center")
-        ui.job_placement_combo.addItem(_("Place: Back-Right"), "top_right")
-        ui.job_placement_combo.setToolTip(_("Where the selected CNCJob is placed inside the job/material size."))
+        ui.job_placement_combo.addItem(_("Live Placement"), "canvas")
+        ui.job_placement_combo.setCurrentIndex(0)
+        ui.job_placement_combo.setToolTip(_("CNCJob uses its canvas position; Live Placement can move or rotate it."))
+        ui.job_placement_combo.setVisible(False)
 
         job_grid.addWidget(FCLabel(_("Job W"), bold=True), 0, 0)
         job_grid.addWidget(ui.job_size_x, 0, 1)
@@ -203,7 +196,9 @@ class ProbingWorkOffsetSection(CNCSectionPlugin):
         job_grid.addWidget(ui.fit_job_size_btn, 0, 4)
         job_grid.addWidget(FCLabel(_("Origin"), bold=True), 1, 0)
         job_grid.addWidget(ui.job_origin_combo, 1, 1, 1, 4)
-        job_grid.addWidget(FCLabel(_("Placement"), bold=True), 2, 0)
+        ui.job_placement_label = FCLabel(_("Placement"), bold=True)
+        ui.job_placement_label.setVisible(False)
+        job_grid.addWidget(ui.job_placement_label, 2, 0)
         job_grid.addWidget(ui.job_placement_combo, 2, 1, 1, 4)
         job_grid.addWidget(FCLabel(_("Margin X"), bold=True), 3, 0)
         job_grid.addWidget(ui.job_margin_x, 3, 1)
@@ -287,13 +282,18 @@ class AutoLevelSection(CNCSectionPlugin):
         ui.autolevel_safe_z = double_input(5.0, -100000.0, 100000.0, 0.1)
         ui.autolevel_probe_depth = double_input(-1.0, -100000.0, 0.0, 0.1)
         ui.autolevel_probe_feed = int_input(120, 1, 60000, " mm/min")
+        ui.autolevel_slow_probe_feed = int_input(0, 0, 60000, " mm/min")
+        ui.autolevel_slow_probe_feed.setToolTip(
+            _("Feedrate for the second (slow) G38.2 touch after micro-retract.\n"
+              "0 = automatic from Probe Feed. Typical manual values: 12–40 mm/min.")
+        )
 
         rows = [
             (_("X Min"), ui.autolevel_x_min, _("X Max"), ui.autolevel_x_max),
             (_("Y Min"), ui.autolevel_y_min, _("Y Max"), ui.autolevel_y_max),
             (_("Rows"), ui.autolevel_rows, _("Columns"), ui.autolevel_columns),
             (_("Safe Z"), ui.autolevel_safe_z, _("Probe Z"), ui.autolevel_probe_depth),
-            (_("Probe Feed"), ui.autolevel_probe_feed, "", None),
+            (_("Probe Feed"), ui.autolevel_probe_feed, _("Slow 2nd F"), ui.autolevel_slow_probe_feed),
         ]
         for row, (label_a, widget_a, label_b, widget_b) in enumerate(rows):
             grid.addWidget(FCLabel(label_a, bold=True), row, 0)
@@ -303,15 +303,14 @@ class AutoLevelSection(CNCSectionPlugin):
                 grid.addWidget(widget_b, row, 3)
 
         # Auto Zero Z — like 3D printer auto bed leveling:
-        # After probing, automatically move to reference point and set G92 Z0 there.
+        # After probing, automatically move to reference point and set the selected WCS Z zero there.
         # User only needs to touch the bit to the PCB once (no manual Set Z Zero needed).
         ui.autolevel_auto_zero = FCCheckBox(_("Auto Zero Z after probe"))
         ui.autolevel_auto_zero.set_value(True)
         ui.autolevel_auto_zero.setToolTip(
-            _("After probing completes, automatically move to the reference point\n"
-              "and set Z=0 there (G92 Z0). This means you do NOT need to manually\n"
-              "set Z=0 before probing — just touch the bit to the PCB at origin.\n"
-              "Works like 3D printer auto bed leveling.")
+            _("After the grid probe, move to the reference XY and set Z=0 (G10 L20)\n"
+              "using the same machine Z as the grid touch at that cell — no second probe,\n"
+              "so the height map and work Z zero stay matched.")
         )
         grid.addWidget(ui.autolevel_auto_zero, len(rows), 0, 1, 4)
 
@@ -376,30 +375,10 @@ class MacroSection(CNCSectionPlugin):
 
 class TerminalSection(CNCSectionPlugin):
     section_id = "terminal_simulation"
-    title = _("Terminal & Live Simulation")
+    title = _("Terminal")
 
     def build(self, ui, body):
-        main_split = QtWidgets.QHBoxLayout()
-        main_split.setContentsMargins(0, 0, 0, 0)
-        main_split.setSpacing(12)
-        body.addLayout(main_split)
-
-        # Left: Terminal
-        term_container = QtWidgets.QVBoxLayout()
-        ui.build_terminal_console(term_container)
-        main_split.addLayout(term_container, 1)
-
-        # Right: Simulation
-        sim_container = QtWidgets.QVBoxLayout()
-        sim_header = QtWidgets.QHBoxLayout()
-        sim_header.addWidget(FCLabel(_("Live Path Simulation"), bold=True))
-        sim_header.addStretch()
-        sim_container.addLayout(sim_header)
-
-        ui.live_simulation_canvas = GCodeJobCanvas()
-        ui.live_simulation_canvas.setMinimumHeight(450)
-        sim_container.addWidget(ui.live_simulation_canvas)
-        main_split.addLayout(sim_container, 1)
+        ui.build_terminal_console(body)
 
 
 class ModalActionsSection:
