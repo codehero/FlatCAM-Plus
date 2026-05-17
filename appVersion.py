@@ -5,8 +5,8 @@
 # ##########################################################
 
 APP_NAME = "FlatCAM Plus"
-APP_VERSION = "1.0.4"
-APP_VERSION_DATE = "2026.05.14"
+APP_VERSION = "1.0.5"
+APP_VERSION_DATE = "2026.05.17"
 APP_RELEASE_CHANNEL = "beta"
 APP_BETA = True
 
