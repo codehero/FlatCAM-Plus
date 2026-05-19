@@ -6,7 +6,7 @@
 <h3 align="center">PCB CAM, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.6%20beta-31b0d5" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.7%20beta-31b0d5" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" />
   <img alt="PyQt" src="https://img.shields.io/badge/UI-PyQt6-41cd52" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey?logo=windows" />
@@ -63,7 +63,7 @@
 5. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
 6. Probe the board if needed, set work zero, and run the queue.
 
-**Current release:** `1.0.6` beta, released `2026/05/17`, updated `2026/05/17`.
+**Current release:** `1.0.7` beta, released `2026/05/19`, updated `2026/05/19`.
 
 FlatCAM Plus is forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019 and based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
@@ -251,7 +251,7 @@ The CNC page is organized as a compact production dashboard:
 | Job size | Job W and Job H follow the project workspace size so preview, Live Placement, probing, and streaming all use the same material dimensions. |
 | Origin selection | Choose the physical point to zero on the machine: Back-Left, Bottom-Left, Center, or raw absolute G-code XY. |
 | Live Placement | Placement is always handled through Live Placement. Jobs open at their canvas position by default, then the **Live Placement** modal can save exact X, Y, and Angle adjustments. |
-| Coordinate consistency | Preview, Verify, probing, auto-leveling, and streamed G-code use the same origin-aware Live Placement transform, including Back-Left `Y=-H..0`, Bottom-Left `Y=0..H`, and centered workspace modes. |
+| Coordinate consistency | Preview, Verify, probing, auto-leveling, and streamed G-code use the same origin-aware Live Placement transform, including Back-Left `Y=0..H`, Bottom-Left `Y=-H..0`, and centered workspace modes. |
 | Work zeroing | XY, Z, or XYZ work zero can be set with `G10 L20`; supported GRBL/FluidNC workflows activate `G54` automatically before zeroing and before queue streaming. |
 | Transformed streaming | `START QUEUE` streams the same transformed coordinates shown in preview, so the controller receives the job already mapped to the configured origin and saved Live Placement transform. |
 | Mapped bounds logging | Before each streamed job, the terminal reports the mapped XY bounds so the operator can confirm placement numerically. |

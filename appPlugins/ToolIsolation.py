@@ -811,11 +811,100 @@ class ToolIsolation(Gerber, AppTool):
         self.form_to_storage()
 
     def ui_update_v_shape(self, tool_type_txt):
-        if tool_type_txt == 5:  # 'V'
+        if self.tool_shape_is_v(tool_type_txt):
             self.ui.v_frame.show()
             self.on_update_tool_dia()
             return
         self.ui.v_frame.hide()
+
+    @staticmethod
+    def tool_shape_is_v(value):
+        try:
+            return int(value) == 5
+        except (TypeError, ValueError):
+            return str(value or "").strip().upper() == "V"
+
+    def current_vbit_parameters(self):
+        if not self.tool_shape_is_v(self.ui.tool_shape_combo.get_value()):
+            return None
+
+        try:
+            tip_dia = float(self.ui.tipdia_entry.get_value() or 0.0)
+            tip_angle = float(self.ui.tipangle_entry.get_value() or 0.0)
+            cut_z = float(self.ui.cutz_entry.get_value() or 0.0)
+        except (TypeError, ValueError):
+            return None
+
+        if tip_dia <= 0 or tip_angle <= 0:
+            return None
+
+        half_vangle = tip_angle / 2.0
+        cut_depth = abs(cut_z)
+        try:
+            effective_dia = tip_dia + (2.0 * cut_depth * math.tan(math.radians(half_vangle)))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+        return {
+            "tool_shape": self.ui.tool_shape_combo.get_value(),
+            "tip_dia": tip_dia,
+            "tip_angle": tip_angle,
+            "cut_z": cut_z,
+            "effective_dia": effective_dia,
+        }
+
+    def apply_vbit_parameters_to_data(self, data, params, tool_dia):
+        data['tools_mill_tool_shape'] = params["tool_shape"]
+        data['tools_mill_cutz'] = params["cut_z"]
+        data['tools_mill_vtipdia'] = params["tip_dia"]
+        data['tools_mill_vtipangle'] = params["tip_angle"]
+        data['tools_mill_tooldia'] = tool_dia
+        data['tools_iso_tooldia'] = tool_dia
+        data['tools_iso_cutz'] = params["cut_z"]
+        data['tools_iso_vtipdia'] = params["tip_dia"]
+        data['tools_iso_vtipangle'] = params["tip_angle"]
+
+    def apply_current_vbit_tool_dia(self, rows=None, measured_dia=None):
+        params = self.current_vbit_parameters()
+        if not params:
+            return None
+
+        if rows is None:
+            rows = self.selected_tool_rows()
+
+        last_tooldia = None
+        for row in rows:
+            tooluid_item = self.ui.tools_table.item(row, 3)
+            if tooluid_item is None:
+                continue
+            tooluid = int(tooluid_item.text())
+            if tooluid not in self.iso_tools:
+                continue
+
+            tool_dia = float(params["effective_dia"])
+            if measured_dia is not None:
+                try:
+                    tool_dia = max(tool_dia, float(measured_dia))
+                except (TypeError, ValueError):
+                    pass
+            else:
+                try:
+                    tool_dia = max(tool_dia, float(self.iso_tools[tooluid].get('tooldia', 0.0)))
+                except (TypeError, ValueError):
+                    pass
+
+            new_tooldia = self.app.dec_format(tool_dia, self.decimals)
+            self.iso_tools[tooluid]['tooldia'] = new_tooldia
+            self.apply_vbit_parameters_to_data(self.iso_tools[tooluid]['data'], params, new_tooldia)
+
+            dia_item = self.ui.tools_table.item(row, 1)
+            if dia_item is not None:
+                dia_item.setText(str(new_tooldia))
+            last_tooldia = new_tooldia
+
+        if last_tooldia is not None:
+            self.ui.new_tooldia_entry.set_value(last_tooldia)
+        return last_tooldia
 
     def on_update_tool_dia(self):
         self.ui_disconnect()
@@ -827,35 +916,7 @@ class ToolIsolation(Gerber, AppTool):
                 "tools_mill_vtipangle",
             ])
 
-            if not self.ui.v_frame.isVisible():
-                return
-
-            vdia = float(self.ui.tipdia_entry.get_value())
-            half_vangle = float(self.ui.tipangle_entry.get_value()) / 2
-            cut_z = self.ui.cutz_entry.get_value()
-            cut_z = -cut_z if cut_z < 0 else cut_z  # cut_z param has to have a positive value here
-
-            new_tooldia = vdia + (2 * cut_z * math.tan(math.radians(half_vangle)))
-            f_new_tool_dia = self.app.dec_format(new_tooldia, self.decimals)
-
-            # V-bit: update the selected tool's diameter to the calculated effective
-            # cutting width so that isolation offsets are computed correctly.
-            rows = self.selected_tool_rows()
-            for row in rows:
-                tooluid_item = self.ui.tools_table.item(row, 3)
-                if tooluid_item is None:
-                    continue
-                tooluid = int(tooluid_item.text())
-                if tooluid in self.iso_tools:
-                    self.iso_tools[tooluid]['tooldia'] = f_new_tool_dia
-                    self.iso_tools[tooluid]['data']['tools_iso_tooldia'] = f_new_tool_dia
-                    self.iso_tools[tooluid]['data']['tools_mill_tooldia'] = f_new_tool_dia
-                    dia_item = self.ui.tools_table.item(row, 1)
-                    if dia_item is not None:
-                        dia_item.setText(str(f_new_tool_dia))
-
-            # Also keep the calculated value as a suggestion for adding a new tool.
-            self.ui.new_tooldia_entry.set_value(f_new_tool_dia)
+            self.apply_current_vbit_tool_dia()
         except (TypeError, ValueError, ZeroDivisionError):
             pass
         finally:
@@ -1430,6 +1491,13 @@ class ToolIsolation(Gerber, AppTool):
         filename = self.app.tools_database_path()
 
         tool_dia = custom_dia if custom_dia is not None else self.ui.new_tooldia_entry.get_value()
+        vbit_params = self.current_vbit_parameters()
+        if vbit_params:
+            try:
+                tool_dia = max(float(tool_dia or 0.0), float(vbit_params["effective_dia"]))
+            except (TypeError, ValueError):
+                tool_dia = vbit_params["effective_dia"]
+            self.ui.new_tooldia_entry.set_value(self.app.dec_format(tool_dia, self.decimals))
         # construct a list of all 'tooluid' in the self.iso_tools
         tool_uid_list = [int(tooluid_key) for tooluid_key in self.iso_tools]
 
@@ -1531,6 +1599,9 @@ class ToolIsolation(Gerber, AppTool):
         #     return
 
         new_tdia = deepcopy(updated_tooldia) if updated_tooldia is not None else deepcopy(truncated_tooldia)
+        if vbit_params:
+            new_tdia = self.app.dec_format(tool_dia, self.decimals)
+            self.apply_vbit_parameters_to_data(new_tools_dict, vbit_params, new_tdia)
         self.iso_tools.update({
             tooluid: {
                 'tooldia':          new_tdia,
@@ -1555,19 +1626,15 @@ class ToolIsolation(Gerber, AppTool):
         self.ui_disconnect()
 
         tool_dia = dia if dia is not None else self.ui.new_tooldia_entry.get_value()
+        vbit_params = self.current_vbit_parameters()
 
-        # V-bit akıllı başlangıç: Diameter alanı 0 ya da boşsa ve V-bit tipi seçiliyse,
-        # Tip Dia + Tip Angle + Cut Z parametrelerinden efektif çapı otomatik hesapla.
-        if (tool_dia is None or tool_dia == 0) and self.ui.v_frame.isVisible():
+        # For V tools this is the effective cut width, not the tip diameter.
+        if vbit_params:
             try:
-                vdia = float(self.ui.tipdia_entry.get_value() or 0)
-                half_vangle = float(self.ui.tipangle_entry.get_value() or 0) / 2
-                cut_z = self.ui.cutz_entry.get_value() or 0
-                cut_z = -cut_z if cut_z < 0 else cut_z
-                if vdia > 0 and half_vangle > 0:
-                    tool_dia = vdia + (2 * cut_z * math.tan(math.radians(half_vangle)))
-            except (TypeError, ValueError, ZeroDivisionError):
-                pass
+                tool_dia = max(float(tool_dia or 0.0), float(vbit_params["effective_dia"]))
+            except (TypeError, ValueError):
+                tool_dia = vbit_params["effective_dia"]
+            self.ui.new_tooldia_entry.set_value(self.app.dec_format(tool_dia, self.decimals))
 
         if tool_dia is None or tool_dia == 0:
             self.build_ui()
@@ -1589,10 +1656,13 @@ class ToolIsolation(Gerber, AppTool):
                     tool_dias.append(self.app.dec_format(v[tool_v], self.decimals))
 
         truncated_tooldia = self.app.dec_format(tool_dia, self.decimals)
+        new_tool_data = deepcopy(self.default_data)
+        if vbit_params:
+            self.apply_vbit_parameters_to_data(new_tool_data, vbit_params, truncated_tooldia)
         self.iso_tools.update({
             int(self.tooluid): {
                 'tooldia':          truncated_tooldia,
-                'data':             deepcopy(self.default_data),
+                'data':             new_tool_data,
                 'solid_geometry':   []
             }
         })
@@ -1636,6 +1706,20 @@ class ToolIsolation(Gerber, AppTool):
 
         for v in self.iso_tools.values():
             tool_dias = [self.app.dec_format(v[tool_v], self.decimals) for tool_v in v.keys() if tool_v == 'tooldia']
+
+        if self.current_vbit_parameters():
+            synced_dia = self.apply_current_vbit_tool_dia(rows=[edited_row], measured_dia=new_tool_dia)
+            self.app.inform.emit(
+                '[WARNING_NOTCL] %s' %
+                _("V-bit diameter uses the calculated cut width as minimum; a larger measured diameter is preserved.")
+            )
+            if synced_dia is not None and float(synced_dia) > float('%.*f' % (self.decimals, new_tool_dia)):
+                self.app.inform.emit(
+                    '[WARNING_NOTCL] %s' %
+                    _("Entered diameter is smaller than the calculated V-bit cut width, so the calculated value was used.")
+                )
+            self.build_ui()
+            return
 
         # identify the tool that was edited and get it's tooluid
         if new_tool_dia not in tool_dias:
@@ -1745,7 +1829,7 @@ class ToolIsolation(Gerber, AppTool):
     def on_iso_button_click(self, copper_mode=False):
         self.copper_mode_active = bool(copper_mode)
         self.sync_selected_tool_parameters()
-        if self.ui.v_frame.isVisible():
+        if self.tool_shape_is_v(self.ui.tool_shape_combo.get_value()):
             self.on_update_tool_dia()
         
         use_validation = self.ui.valid_cb.get_value()
@@ -1853,6 +1937,152 @@ class ToolIsolation(Gerber, AppTool):
         if not isinstance(flat_geo, list):
             flat_geo = [flat_geo]
         return [geo for geo in flat_geo if geo is not None and not geo.is_empty]
+
+    @staticmethod
+    def _polygonal_geometry(geometry):
+        polygons = []
+        for geo in ToolIsolation._non_empty_flat_geometry(geometry):
+            if isinstance(geo, Polygon):
+                if geo.area > 0:
+                    polygons.append(geo)
+            elif isinstance(geo, MultiPolygon):
+                polygons.extend([poly for poly in geo.geoms if poly is not None and not poly.is_empty and poly.area > 0])
+        return polygons
+
+    def _gerber_solid_polygons_from_tools(self, gerber_obj):
+        polygons = []
+        for tool in getattr(gerber_obj, "tools", {}).values():
+            for geo_el in tool.get("geometry", []):
+                solid = geo_el.get("solid") if isinstance(geo_el, dict) else None
+                polygons.extend(self._polygonal_geometry(solid))
+        return polygons
+
+    def _source_copper_geometry(self, gerber_obj, geometry=None):
+        source_polygons = self._polygonal_geometry(geometry)
+        if source_polygons:
+            return flatten_shapely_geometry(unary_union(source_polygons))
+
+        source_polygons = self._polygonal_geometry(getattr(gerber_obj, "solid_geometry", None))
+        if source_polygons:
+            return flatten_shapely_geometry(unary_union(source_polygons))
+
+        source_polygons = self._gerber_solid_polygons_from_tools(gerber_obj)
+        if source_polygons:
+            self.app.inform.emit(
+                '[WARNING_NOTCL] %s' %
+                _("Gerber solid geometry was not polygonal; rebuilt isolation source from aperture solids.")
+            )
+            return flatten_shapely_geometry(unary_union(source_polygons))
+
+        return geometry
+
+    @staticmethod
+    def _path_geometry_for_cut_model(geometry, include_interiors=False):
+        paths = []
+        for geo in ToolIsolation._non_empty_flat_geometry(geometry):
+            if isinstance(geo, Polygon):
+                paths.append(LineString(geo.exterior.coords))
+                if include_interiors:
+                    paths.extend([LineString(interior.coords) for interior in geo.interiors])
+            elif isinstance(geo, LinearRing):
+                paths.append(LineString(geo.coords))
+            elif isinstance(geo, LineString):
+                paths.append(geo)
+            elif isinstance(geo, MultiLineString):
+                paths.extend([line for line in geo.geoms if line is not None and not line.is_empty])
+        return paths
+
+    def _isolation_cut_paths(self, geometry):
+        paths = []
+        for path in self._path_geometry_for_cut_model(geometry, include_interiors=False):
+            if path is not None and not path.is_empty and getattr(path, "length", 0.0) > 0:
+                paths.append(path)
+        return paths
+
+    def _cut_model_overlaps_copper(self, source_geometry, isolation_geometry, tool_dia):
+        source_polygons = self._polygonal_geometry(source_geometry)
+        if not source_polygons:
+            return False, 0.0, 0.0
+
+        try:
+            tool_radius = abs(float(tool_dia)) / 2.0
+        except (TypeError, ValueError):
+            return False, 0.0, 0.0
+
+        if tool_radius <= 0:
+            return False, 0.0, 0.0
+
+        paths = self._path_geometry_for_cut_model(isolation_geometry)
+        if not paths:
+            return False, 0.0, 0.0
+
+        try:
+            source = unary_union(source_polygons)
+            cut_model = unary_union([path.buffer(tool_radius, int(self.app.options["gerber_circle_steps"]))
+                                     for path in paths if path is not None and not path.is_empty])
+            overlap_area = float(cut_model.intersection(source).area or 0.0)
+            source_area = float(source.area or 0.0)
+        except Exception as err:
+            self.app.log.debug("ToolIsolation._cut_model_overlaps_copper() -> %s" % str(err))
+            return False, 0.0, 0.0
+
+        if source_area <= 0:
+            return False, overlap_area, 0.0
+
+        ratio = overlap_area / source_area
+        return ratio > 0.02, overlap_area, ratio
+
+    def _safe_isolation_geometry(self, source_geometry, offset, invert=False):
+        source_polygons = self._polygonal_geometry(source_geometry)
+        if not source_polygons:
+            return []
+
+        try:
+            repaired = unary_union(source_polygons).buffer(
+                abs(float(offset)),
+                int(self.app.options["gerber_circle_steps"]),
+                join_style="round"
+            )
+        except Exception as err:
+            self.app.log.debug("ToolIsolation._safe_isolation_geometry() -> %s" % str(err))
+            return []
+
+        if invert:
+            fixed_geo = []
+            for geo in self._non_empty_flat_geometry(repaired):
+                if isinstance(geo, Polygon):
+                    fixed_geo.append(Polygon(geo.exterior.coords[::-1], geo.interiors))
+                else:
+                    fixed_geo.append(geo)
+            repaired = fixed_geo
+
+        return self._non_empty_flat_geometry(repaired)
+
+    def _guard_isolation_geometry(self, source_geometry, isolation_geometry, tool_dia, offset, invert=False):
+        overlaps, _area, ratio = self._cut_model_overlaps_copper(source_geometry, isolation_geometry, tool_dia)
+        if not overlaps:
+            return self._non_empty_flat_geometry(isolation_geometry)
+
+        repaired = self._safe_isolation_geometry(source_geometry, offset, invert=invert)
+        repaired_overlaps, _repaired_area, repaired_ratio = self._cut_model_overlaps_copper(
+            source_geometry, repaired, tool_dia
+        )
+        if repaired and not repaired_overlaps:
+            self.app.inform.emit(
+                '[WARNING_NOTCL] %s' %
+                _("Isolation path intersected source copper and was rebuilt from the Gerber solid outline.")
+            )
+            return repaired
+
+        self.app.inform.emit(
+            '[ERROR_NOTCL] %s %.1f%%. %s' %
+            (
+                _("Isolation path would cut into the source copper by"),
+                repaired_ratio * 100.0 if repaired else ratio * 100.0,
+                _("Regenerate from the original Gerber or use a smaller/measured tool diameter.")
+            )
+        )
+        return self._non_empty_flat_geometry(isolation_geometry)
 
     @staticmethod
     def _geometry_bounds(geometry):
@@ -1999,7 +2229,8 @@ class ToolIsolation(Gerber, AppTool):
         simplification_tol = args['simplification_tol'] if 'simplification_tol' in args else \
             self.ui.sim_tol_entry.get_value()
 
-        work_geo = self._non_empty_flat_geometry(geometry if geometry is not None else isolated_obj.solid_geometry)
+        source_geometry = self._source_copper_geometry(isolated_obj, geometry)
+        work_geo = self._non_empty_flat_geometry(source_geometry)
         if not work_geo:
             self.app.inform.emit('[ERROR_NOTCL] %s' % _("No geometry to isolate."))
             return 'fail'
@@ -2025,7 +2256,7 @@ class ToolIsolation(Gerber, AppTool):
             passes = max(1, int(tool_data['tools_iso_passes']))
             overlap = float(tool_data['tools_iso_overlap']) / 100.0
             milling_type = tool_data['tools_iso_milling_type']
-            mill_dir = 0 if milling_type == 'cl' else 1
+            mill_dir = 1 if milling_type == 'cl' else 0
             tool_dia = float(tools_storage[tool]['tooldia'])
             outname = "%s_%.*f" % (isolated_obj.obj_options["name"], self.decimals, float(tool_dia))
 
@@ -2059,6 +2290,10 @@ class ToolIsolation(Gerber, AppTool):
                     ]
 
                 new_solid_geo = [geo for geo in new_solid_geo if geo is not None and not geo.is_empty]
+                new_solid_geo = self._guard_isolation_geometry(
+                    work_geo, new_solid_geo, tool_dia, iso_offset, invert=mill_dir
+                )
+                new_solid_geo = self._isolation_cut_paths(new_solid_geo)
                 if not new_solid_geo:
                     self.app.inform.emit('[ERROR_NOTCL] %s' % _("Empty Geometry."))
                     continue
@@ -2192,11 +2427,11 @@ class ToolIsolation(Gerber, AppTool):
             for tool in sel_tools:
                 tool_data = tools_storage[tool]['data']
 
-                work_geo = flatten_shapely_geometry(geometry)
-                if work_geo is None:
+                work_geo = self._source_copper_geometry(isolated_obj, geometry)
+                if not self._non_empty_flat_geometry(work_geo):
                     # we do isolation over all the geometry of the Gerber object
                     # because it is already fused together
-                    work_geo = flatten_shapely_geometry(isolated_obj.solid_geometry)
+                    work_geo = self._source_copper_geometry(isolated_obj)
 
                 iso_t = {
                     'ext':  0,
@@ -2232,7 +2467,7 @@ class ToolIsolation(Gerber, AppTool):
                             iso_name = outname + "_int_iso"
 
                     # if milling type is climb then the move is counter-clockwise around features
-                    mill_dir = 0 if milling_type == 'cl' else 1
+                    mill_dir = 1 if milling_type == 'cl' else 0
 
                     iso_geo = self.generate_envelope(isolated_obj, iso_offset, mill_dir, geometry=work_geo,
                                                      env_iso_type=iso_t, nr_passes=i, prog_plot=prog_plot)
@@ -2285,6 +2520,10 @@ class ToolIsolation(Gerber, AppTool):
                     if use_simplification:
                         new_solid_geo = [
                             g.simplify(tolerance=simplification_tol) for g in new_solid_geo if not g.is_empty]
+                    new_solid_geo = self._guard_isolation_geometry(
+                        work_geo, new_solid_geo, tool_dia, iso_offset, invert=mill_dir
+                    )
+                    new_solid_geo = self._isolation_cut_paths(new_solid_geo)
 
                     tool_data_for_obj = deepcopy(tool_data)
                     tool_data_for_obj.update({
@@ -2381,7 +2620,7 @@ class ToolIsolation(Gerber, AppTool):
         total_solid_geometry = []
 
         iso_name = iso_obj.obj_options["name"] + '_iso_rest'
-        work_geo = iso_obj.solid_geometry if iso2geo is None else iso2geo
+        work_geo = self._source_copper_geometry(iso_obj, iso2geo)
 
         # sorted_tools = []
         # for k, v in self.iso_tools.items():
@@ -2472,6 +2711,7 @@ class ToolIsolation(Gerber, AppTool):
 
                     # make sure that no empty geometry element is in the solid_geometry
                     new_solid_geo = flatten_shapely_geometry(solid_geo)
+                    new_solid_geo = self._isolation_cut_paths(new_solid_geo)
 
                     tools_storage.update({
                         tool: {
@@ -2606,7 +2846,7 @@ class ToolIsolation(Gerber, AppTool):
         total_solid_geometry = []
 
         iso_name = iso_obj.obj_options["name"] + '_iso_combined'
-        geometry = iso2geo
+        geometry = self._source_copper_geometry(iso_obj, iso2geo)
         if prog_plot is None:
             prog_plot = self.app.options["tools_iso_plotting"]
 
@@ -2618,8 +2858,8 @@ class ToolIsolation(Gerber, AppTool):
             tool_data = tools_storage[tool]['data']
 
             work_geo = geometry
-            if work_geo is None:
-                work_geo = iso_obj.solid_geometry
+            if not self._non_empty_flat_geometry(work_geo):
+                work_geo = self._source_copper_geometry(iso_obj)
 
             iso_t = {
                 'ext': 0,
@@ -2652,7 +2892,7 @@ class ToolIsolation(Gerber, AppTool):
                     iso_offset = -iso_offset
 
                 # if milling type is climb then the move is counter-clockwise around features
-                mill_dir = 0 if milling_type == 'cl' else 1
+                mill_dir = 1 if milling_type == 'cl' else 0
 
                 iso_geo = self.generate_envelope(iso_obj, iso_offset, mill_dir, geometry=work_geo, env_iso_type=iso_t,
                                                  nr_passes=nr_pass, prog_plot=prog_plot)
@@ -2701,6 +2941,10 @@ class ToolIsolation(Gerber, AppTool):
 
             # make sure that no empty geometry element is in the solid_geometry
             new_solid_geo = flatten_shapely_geometry(solid_geo)
+            new_solid_geo = self._guard_isolation_geometry(
+                work_geo, new_solid_geo, tool_dia, iso_offset, invert=mill_dir
+            )
+            new_solid_geo = self._isolation_cut_paths(new_solid_geo)
 
             tools_storage.update({
                 tool: {
@@ -3842,7 +4086,8 @@ class IsoUI:
         # ### Tool Diameter ####
         self.new_tooldia_lbl = FCLabel('%s: ' % _('Diameter'))
         self.new_tooldia_lbl.setToolTip(
-            _("Diameter for the new tool")
+            _("Diameter for the new tool. For V-shape tools this is calculated as the effective cut width "
+              "from V-Tip Dia, V-Tip Angle, and Cut Z.")
         )
         new_tool_grid.addWidget(self.new_tooldia_lbl, 4, 0)
 

@@ -5,10 +5,58 @@ import traceback
 import json
 import gettext
 import builtins
+import importlib.util
 from datetime import datetime
 
-from PyQt6 import QtWidgets, QtGui, QtCore
-from PyQt6.QtCore import QSettings, QTimer, QStandardPaths
+_PYQT6_DLL_DIR_HANDLES = []
+_PYQT6_PRELOADED_DLLS = []
+
+
+def _prepare_pyqt6_runtime():
+    if os.name != "nt":
+        return
+
+    try:
+        spec = importlib.util.find_spec("PyQt6")
+        search_locations = getattr(spec, "submodule_search_locations", None) if spec else None
+        if not search_locations:
+            return
+
+        for pyqt6_dir in search_locations:
+            qt_bin = os.path.join(pyqt6_dir, "Qt6", "bin")
+            qt_core = os.path.join(qt_bin, "Qt6Core.dll")
+            if not os.path.isfile(qt_core):
+                continue
+
+            path_entries = os.environ.get("PATH", "").split(os.pathsep)
+            if qt_bin not in path_entries:
+                os.environ["PATH"] = qt_bin + os.pathsep + os.environ.get("PATH", "")
+
+            if hasattr(os, "add_dll_directory"):
+                _PYQT6_DLL_DIR_HANDLES.append(os.add_dll_directory(qt_bin))
+
+            import ctypes
+            for dll_name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll"):
+                dll_path = os.path.join(qt_bin, dll_name)
+                if os.path.isfile(dll_path):
+                    _PYQT6_PRELOADED_DLLS.append(ctypes.WinDLL(dll_path))
+            return
+    except Exception:
+        return
+
+
+_prepare_pyqt6_runtime()
+
+try:
+    from PyQt6 import QtWidgets, QtGui, QtCore
+    from PyQt6.QtCore import QSettings, QTimer, QStandardPaths
+except ImportError as exc:
+    if os.name == "nt" and "DLL load failed" in str(exc):
+        print(
+            "PyQt6 Qt DLL'leri yuklenemedi. Lutfen sanal ortamda su komutu calistirin:\n"
+            "python -m pip install --upgrade --force-reinstall -r requirements.txt"
+        )
+    raise
 import appTranslation as fcTranslate
 from appMain import App
 from appGUI import VisPyPatches

@@ -147,6 +147,12 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
                                    parent=None)
         self.h_line = InfiniteLine(pos=0, color=axis_color, vertical=False, line_width=1.5,
                                    parent=None)
+        self.origin_orbit_items = []
+        self.origin_orbit_labels = []
+        self.origin_orbit_axis_items = []
+        self.origin_orbit_ring = None
+        self.origin_orbit_center = None
+        self._create_origin_orbit(axis_color)
 
         self.line_parent = None
         if self.fcapp.options["global_cursor_color_enabled"]:
@@ -482,7 +488,7 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
         event.handled = True
 
     def on_toggle_axis(self, signal=None, state=None, silent=None):
-        if not state:
+        if state is None:
             state = not self.axis_enabled
 
         if state:
@@ -490,6 +496,8 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
             self.fcapp.defaults['global_axis'] = True
             self.v_line.parent = self.view.scene
             self.h_line.parent = self.view.scene
+            self._set_origin_orbit_visible(True)
+            self._refresh_hud_parent()
             self.fcapp.ui.axis_status_label.setStyleSheet("""
                                                           QLabel
                                                           {
@@ -504,9 +512,105 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
             self.fcapp.defaults['global_axis'] = False
             self.v_line.parent = None
             self.h_line.parent = None
+            self._set_origin_orbit_visible(False)
+            self._refresh_hud_parent()
             self.fcapp.ui.axis_status_label.setStyleSheet("")
             if silent is None:
                 self.fcapp.inform[str, bool].emit(_("Axis disabled."), False)
+
+    def _origin_orbit_dimensions(self):
+        units = getattr(self.fcapp, 'app_units', 'MM')
+        if str(units).upper() == 'IN':
+            return 0.18, 0.34, 0.055, 0.055
+
+        return 4.5, 8.5, 1.25, 1.35
+
+    def _create_origin_orbit(self, axis_color):
+        radius, arm, arrow, label_gap = self._origin_orbit_dimensions()
+        circle_t = np.linspace(0, 2 * np.pi, 73)
+        circle = np.column_stack((np.cos(circle_t) * radius, np.sin(circle_t) * radius))
+        x_color = Color('#ff3b30dd').rgba
+        y_color = Color('#10b981dd').rgba
+
+        self.origin_orbit_ring = Line(
+            pos=circle, color=axis_color, width=1.4, connect='strip',
+            antialias=True, method='agg', parent=None
+        )
+        self.origin_orbit_center = Line(
+            pos=np.array([[-radius * 0.28, 0], [radius * 0.28, 0], [0, -radius * 0.28], [0, radius * 0.28]]),
+            color=axis_color, width=1.8, connect='segments', antialias=True, method='gl', parent=None
+        )
+        x_axis = Line(
+            pos=np.array([[-arm, 0], [arm, 0]]), color=x_color, width=2.0,
+            antialias=True, method='agg', parent=None
+        )
+        y_axis = Line(
+            pos=np.array([[0, -arm], [0, arm]]), color=y_color, width=2.0,
+            antialias=True, method='agg', parent=None
+        )
+        x_heads = Line(
+            pos=np.array([
+                [arm, 0], [arm - arrow, arrow * 0.62],
+                [arm, 0], [arm - arrow, -arrow * 0.62],
+                [-arm, 0], [-arm + arrow, arrow * 0.62],
+                [-arm, 0], [-arm + arrow, -arrow * 0.62],
+            ]),
+            color=x_color, width=2.0, connect='segments', antialias=True, method='gl', parent=None
+        )
+        y_heads = Line(
+            pos=np.array([
+                [0, arm], [arrow * 0.62, arm - arrow],
+                [0, arm], [-arrow * 0.62, arm - arrow],
+                [0, -arm], [arrow * 0.62, -arm + arrow],
+                [0, -arm], [-arrow * 0.62, -arm + arrow],
+            ]),
+            color=y_color, width=2.0, connect='segments', antialias=True, method='gl', parent=None
+        )
+
+        label_size = 9 if str(getattr(self.fcapp, 'app_units', 'MM')).upper() == 'MM' else 8
+        self.origin_orbit_labels = [
+            Text('x', color=x_color, font_size=label_size, bold=True, method='gpu',
+                 pos=(arm + label_gap, 0), anchor_x='left', anchor_y='center', depth_test=False, parent=None),
+            Text('x-', color=x_color, font_size=label_size, bold=True, method='gpu',
+                 pos=(-arm - label_gap, 0), anchor_x='right', anchor_y='center', depth_test=False, parent=None),
+            Text('y', color=y_color, font_size=label_size, bold=True, method='gpu',
+                 pos=(0, arm + label_gap), anchor_x='center', anchor_y='bottom', depth_test=False, parent=None),
+            Text('y-', color=y_color, font_size=label_size, bold=True, method='gpu',
+                 pos=(0, -arm - label_gap), anchor_x='center', anchor_y='top', depth_test=False, parent=None),
+        ]
+
+        self.origin_orbit_axis_items = [self.origin_orbit_ring, self.origin_orbit_center]
+        self.origin_orbit_items = [
+            self.origin_orbit_ring,
+            self.origin_orbit_center,
+            x_axis,
+            y_axis,
+            x_heads,
+            y_heads
+        ] + self.origin_orbit_labels
+
+        for item in self.origin_orbit_items:
+            try:
+                item.set_gl_state(depth_test=False)
+            except AttributeError:
+                pass
+
+    def _set_origin_orbit_visible(self, visible):
+        parent = self.view.scene if visible else None
+        for item in self.origin_orbit_items:
+            try:
+                item.parent = parent
+            except Exception:
+                pass
+
+    def _refresh_hud_parent(self):
+        if not self.hud_enabled:
+            return
+
+        self.rect_hud.parent = None
+        self.text_hud.parent = None
+        self.rect_hud.parent = self.view
+        self.text_hud.parent = self.view
 
     def apply_axis_color(self):
         self.fcapp.log.debug('PlotCanvas.apply_axis_color() -> axis color applied')
@@ -526,6 +630,14 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
 
             self.h_line._color = axis_color
             self.h_line._changed['color'] = True
+            for item in self.origin_orbit_axis_items:
+                try:
+                    item.set_data(color=axis_color)
+                except AttributeError:
+                    try:
+                        item.color = axis_color
+                    except Exception:
+                        pass
 
     def on_toggle_hud(self, signal=None, state=None, silent=None):
         if state is None:
@@ -533,8 +645,7 @@ class PlotCanvas(QtCore.QObject, VisPyCanvas):
 
         if state:
             self.hud_enabled = True
-            self.rect_hud.parent = self.view
-            self.text_hud.parent = self.view
+            self._refresh_hud_parent()
             self.fcapp.defaults['global_hud'] = True
             self.fcapp.ui.hud_label.setStyleSheet("""
                                                   QLabel

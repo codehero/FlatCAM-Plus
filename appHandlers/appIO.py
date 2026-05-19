@@ -847,11 +847,14 @@ class appIO(QtCore.QObject):
 
         self.on_file_new_project(use_thread=False, keep_scripts=False)
 
-        if width is not None and height is not None:
-            self.apply_project_workspace(width, height, thickness)
+        fit_workspace_after_activation = width is not None and height is not None
+        if fit_workspace_after_activation:
+            self.apply_project_workspace(width, height, thickness, fit_view=False)
 
         self.app.project_filename = project_filename
         self.app.ui.activate_project_workspace(project_name=project_name)
+        if fit_workspace_after_activation and hasattr(self.app.plotcanvas, 'fit_workspace'):
+            QtCore.QTimer.singleShot(0, self._fit_project_workspace)
         self.app.ui.set_ui_title(name=project_filename)
 
         self.save_project(project_filename, silent=True)
@@ -884,6 +887,13 @@ class appIO(QtCore.QObject):
                 self.app.plotcanvas.fit_workspace()
         except Exception as e:
             self.log.error("apply_project_workspace() --> %s" % str(e))
+
+    def _fit_project_workspace(self):
+        try:
+            if hasattr(self.app.plotcanvas, 'fit_workspace'):
+                self.app.plotcanvas.fit_workspace()
+        except Exception as e:
+            self.log.error("fit_project_workspace() --> %s" % str(e))
 
     def keep_object_inside_workspace(self, obj, margin=0.0):
         if not self.app.options.get('global_workspace', False):

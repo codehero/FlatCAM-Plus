@@ -46,6 +46,8 @@ class GCodeJobCanvas(QtWidgets.QWidget):
         self.is_rotating_object = False
         self.drag_start_pos = None
         self.rotation_handle_rect = QtCore.QRectF()
+        self.show_rulers = False
+        self.show_placement_history = False
 
     def set_preview(self, preview):
         self.preview = preview or {}
@@ -58,6 +60,14 @@ class GCodeJobCanvas(QtWidgets.QWidget):
     def sync_placement(self, dx, dy, rotation):
         self.live_offset = QtCore.QPointF(dx, dy)
         self.live_rotation = rotation
+        self.update()
+
+    def set_show_rulers(self, enabled):
+        self.show_rulers = bool(enabled)
+        self.update()
+
+    def set_show_placement_history(self, enabled):
+        self.show_placement_history = bool(enabled)
         self.update()
 
     @staticmethod
@@ -104,24 +114,35 @@ class GCodeJobCanvas(QtWidgets.QWidget):
     def world_to_canvas(self, x, y):
         canvas_rect, x_min, x_max, y_min, y_max, total_scale = self.canvas_transform()
         px = canvas_rect.center().x() + (float(x) - (x_min + x_max) / 2) * total_scale + self.offset.x()
-        py = canvas_rect.center().y() - (float(y) - (y_min + y_max) / 2) * total_scale + self.offset.y()
+        py = canvas_rect.center().y() + (float(y) - (y_min + y_max) / 2) * total_scale + self.offset.y()
         return QtCore.QPointF(px, py)
 
-    def live_object_xy(self, x, y):
+    def placed_object_xy(self, x, y, dx=0.0, dy=0.0, rotation=0.0):
         obj_x_min, obj_x_max, obj_y_min, obj_y_max = self.object_bounds_values()
         cx, cy = (obj_x_min + obj_x_max) / 2.0, (obj_y_min + obj_y_max) / 2.0
         rx, ry = float(x), float(y)
 
-        if self.live_rotation != 0:
-            rad = math.radians(self.live_rotation)
+        if rotation != 0:
+            rad = math.radians(rotation)
             tx, ty = rx - cx, ry - cy
             rx = tx * math.cos(rad) - ty * math.sin(rad) + cx
             ry = tx * math.sin(rad) + ty * math.cos(rad) + cy
 
-        return rx + self.live_offset.x(), ry + self.live_offset.y()
+        return rx + float(dx or 0.0), ry + float(dy or 0.0)
+
+    def live_object_xy(self, x, y):
+        return self.placed_object_xy(x, y, self.live_offset.x(), self.live_offset.y(), self.live_rotation)
 
     def object_to_canvas(self, x, y):
         return self.world_to_canvas(*self.live_object_xy(x, y))
+
+    def placed_object_to_canvas(self, x, y, placement):
+        return self.world_to_canvas(*self.placed_object_xy(
+            x, y,
+            placement.get("dx", 0.0),
+            placement.get("dy", 0.0),
+            placement.get("rotation", 0.0)
+        ))
 
     @staticmethod
     def points_are_close(point_a, point_b, tolerance=0.001):
@@ -132,6 +153,121 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             )
         except (TypeError, ValueError, IndexError):
             return False
+
+    @staticmethod
+    def placements_are_close(item, dx, dy, rotation, xy_tolerance=0.01, angle_tolerance=0.01):
+        try:
+            return (
+                abs(float(item.get("dx", 0.0)) - float(dx or 0.0)) <= xy_tolerance and
+                abs(float(item.get("dy", 0.0)) - float(dy or 0.0)) <= xy_tolerance and
+                abs(float(item.get("rotation", 0.0)) - float(rotation or 0.0)) <= angle_tolerance
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def placement_history_items(self):
+        items = self.preview.get("placement_history") or []
+        result = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if self.placements_are_close(item, self.live_offset.x(), self.live_offset.y(), self.live_rotation):
+                continue
+            try:
+                result.append({
+                    "dx": float(item.get("dx", 0.0)),
+                    "dy": float(item.get("dy", 0.0)),
+                    "rotation": float(item.get("rotation", 0.0)),
+                })
+            except (TypeError, ValueError):
+                continue
+            if len(result) >= 3:
+                break
+        return result
+
+    def draw_placement_history(self, painter, to_history_canvas):
+        if not self.show_placement_history:
+            return
+
+        items = self.placement_history_items()
+        if not items:
+            return
+
+        obj_x_min, obj_x_max, obj_y_min, obj_y_max = self.object_bounds_values()
+        colors = ["#00d4ff", "#78e08f", "#f6c343"]
+        for index, item in enumerate(reversed(items)):
+            color = QtGui.QColor(colors[min(len(colors) - 1, len(items) - 1 - index)])
+            color.setAlpha(150)
+            pen = QtGui.QPen(color, 1.6, Qt.PenStyle.DotLine, Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+
+            p1 = to_history_canvas(obj_x_min, obj_y_min, item)
+            p2 = to_history_canvas(obj_x_max, obj_y_min, item)
+            p3 = to_history_canvas(obj_x_max, obj_y_max, item)
+            p4 = to_history_canvas(obj_x_min, obj_y_max, item)
+            painter.drawPolygon(QtGui.QPolygonF([p1, p2, p3, p4]))
+
+            for seg in self.preview.get("segments", []):
+                if bool(seg.get("rapid")):
+                    continue
+                painter.drawLine(
+                    to_history_canvas(seg["start"][0], seg["start"][1], item),
+                    to_history_canvas(seg["end"][0], seg["end"][1], item)
+                )
+
+    def draw_rulers(self, painter, x_min, x_max, y_min, y_max, grid_step, to_canvas):
+        if not self.show_rulers:
+            return
+
+        bottom_left = to_canvas(x_min, y_min)
+        bottom_right = to_canvas(x_max, y_min)
+        top_left = to_canvas(x_min, y_max)
+        ruler_color = QtGui.QColor("#ff4d4f")
+        label_color = QtGui.QColor("#ff6f61")
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QtGui.QPen(ruler_color, 1.8))
+
+        bottom_y = bottom_left.y() + 12
+        left_x = bottom_left.x() - 12
+        painter.drawLine(QtCore.QPointF(bottom_left.x(), bottom_y), QtCore.QPointF(bottom_right.x(), bottom_y))
+        painter.drawLine(QtCore.QPointF(left_x, bottom_left.y()), QtCore.QPointF(left_x, top_left.y()))
+
+        font = QtGui.QFont("Segoe UI", 7)
+        painter.setFont(font)
+        step = max(0.1, float(grid_step or 1.0))
+
+        index = 0
+        curr_x = math.ceil(x_min / step) * step
+        while curr_x <= x_max + 1e-9:
+            point = to_canvas(curr_x, y_min)
+            tick = 8 if index % 2 == 0 else 5
+            painter.setPen(QtGui.QPen(ruler_color, 1.2))
+            painter.drawLine(QtCore.QPointF(point.x(), bottom_y), QtCore.QPointF(point.x(), bottom_y + tick))
+            if index % 2 == 0:
+                painter.setPen(label_color)
+                painter.drawText(QtCore.QPointF(point.x() + 2, bottom_y + 20), self.format_tick_value(curr_x))
+            curr_x += step
+            index += 1
+
+        index = 0
+        curr_y = math.ceil(y_min / step) * step
+        while curr_y <= y_max + 1e-9:
+            point = to_canvas(x_min, curr_y)
+            tick = 8 if index % 2 == 0 else 5
+            painter.setPen(QtGui.QPen(ruler_color, 1.2))
+            painter.drawLine(QtCore.QPointF(left_x, point.y()), QtCore.QPointF(left_x - tick, point.y()))
+            if index % 2 == 0:
+                painter.setPen(label_color)
+                painter.drawText(QtCore.QPointF(left_x - 42, point.y() + 3), self.format_tick_value(curr_y))
+            curr_y += step
+            index += 1
+
+    @staticmethod
+    def format_tick_value(value):
+        if abs(value) >= 10:
+            return "%d" % round(value)
+        return ("%.1f" % value).rstrip("0").rstrip(".")
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -195,6 +331,9 @@ class GCodeJobCanvas(QtWidgets.QWidget):
         def to_object_canvas(x, y):
             return self.object_to_canvas(x, y)
 
+        def to_history_canvas(x, y, placement):
+            return self.placed_object_to_canvas(x, y, placement)
+
         origin_xy = self.preview.get("origin") or [0.0, 0.0]
 
         def to_segment_canvas(point, rapid=False):
@@ -236,6 +375,9 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             p1, p2 = to_canvas(x_min, curr_y), to_canvas(x_max, curr_y)
             painter.drawLine(p1, p2)
             curr_y += grid_step
+
+        self.draw_rulers(painter, x_min, x_max, y_min, y_max, grid_step, to_canvas)
+        self.draw_placement_history(painter, to_history_canvas)
 
         # 4. Draw G-Code Path Bounds (If outside job)
         if self.preview.get("outside"):
@@ -289,9 +431,9 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(QtCore.QRectF(p1, p2).normalized())
 
-            # Handle is above the object
+            # Handle is above the object in the positive-down canvas.
             obj_span_y = max(0.1, obj_y_max - obj_y_min)
-            handle_center = (obj_x_min + obj_x_max) / 2, obj_y_max + max(2.0, obj_span_y * 0.1)
+            handle_center = (obj_x_min + obj_x_max) / 2, obj_y_min - max(2.0, obj_span_y * 0.1)
             handle_pt = to_object_canvas(*handle_center)
             self.rotation_handle_rect = QtCore.QRectF(handle_pt.x() - 10, handle_pt.y() - 10, 20, 20)
 
@@ -302,7 +444,7 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             painter.drawEllipse(handle_pt, 3, 3)
 
             # Line to object
-            painter.drawLine(handle_pt, to_object_canvas((obj_x_min + obj_x_max) / 2, obj_y_max))
+            painter.drawLine(handle_pt, to_object_canvas((obj_x_min + obj_x_max) / 2, obj_y_min))
 
         # Draw Info Label at Top Left
         label = self.preview.get("label", "")
@@ -374,7 +516,7 @@ class GCodeJobCanvas(QtWidgets.QWidget):
             base_scale = min(canvas_rect.width() / span_x, canvas_rect.height() / span_y) * 0.9
             total_scale = max(1e-9, base_scale * self.zoom)
             dx = delta.x() / total_scale
-            dy = -delta.y() / total_scale
+            dy = delta.y() / total_scale
             self.live_offset += QtCore.QPointF(dx, dy)
             self.last_mouse_pos = event.pos()
             self.placement_changed.emit(self.live_offset.x(), self.live_offset.y(), self.live_rotation)

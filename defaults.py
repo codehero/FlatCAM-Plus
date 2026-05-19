@@ -195,7 +195,7 @@ class AppDefaults:
         "gerber_color_list": [],
         "gerber_store_color_list": True,
 
-        "gerber_circle_steps": 16,
+        "gerber_circle_steps": 64,
         "gerber_use_buffer_for_union": True,
         "gerber_clean_apertures": True,
         "gerber_extra_buffering": False,

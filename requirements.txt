@@ -44,7 +44,9 @@ pyppeteer
 
 matplotlib>=3.5.0
 pyopengl
-pyqt6>=6.1.0
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.0
+PyQt6-sip>=13.8,<14
 freetype-py
 vispy>=0.9.0
 # pyqtdarktheme==1.1.1

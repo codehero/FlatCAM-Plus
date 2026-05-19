@@ -6,6 +6,7 @@ import builtins
 import gettext
 
 from PyQt6 import QtWidgets
+from PyQt6.QtCore import Qt
 
 from appGUI.GUIElements import FCCheckBox, FCComboBox, FCDoubleSpinner, FCLabel, FCSpinner
 
@@ -289,7 +290,7 @@ class AutoLevelSection(CNCSectionPlugin):
         ui.autolevel_slow_probe_feed = int_input(0, 0, 60000, " mm/min")
         ui.autolevel_slow_probe_feed.setToolTip(
             _("Feedrate for the second (slow) G38.2 touch after micro-retract.\n"
-              "0 = automatic from Probe Feed. Typical manual values: 12–40 mm/min.")
+              "0 = Candle-style single touch. Typical manual values: 12-40 mm/min.")
         )
 
         rows = [
@@ -369,6 +370,7 @@ class MacroSection(CNCSectionPlugin):
         ui.macro_list = QtWidgets.QListWidget()
         ui.macro_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         ui.macro_list.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        ui.macro_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         ui.macro_list.setMinimumHeight(140)
         body.addWidget(ui.macro_list, 1)
 

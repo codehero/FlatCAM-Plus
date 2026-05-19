@@ -12,7 +12,7 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 from PyQt6.QtCore import Qt
 
 from appGUI.GUIElements import (
-    FCLabel, FCComboBox, FCSpinner, FCEntry, FCTable
+    FCLabel, FCComboBox, FCSpinner, FCEntry, FCTable, FCDoubleSpinner
 )
 
 from .dialogs import FileSystemDialog
@@ -952,14 +952,14 @@ class CNCControlUI:
         z_lay.setContentsMargins(12, 10, 12, 10)
         z_lay.setSpacing(7)
 
-        self.jog_up = FluidStyleButton("Y+")
-        self.jog_down = FluidStyleButton("Y-")
+        self.jog_up = FluidStyleButton("Y-")
+        self.jog_down = FluidStyleButton("Y+")
         self.jog_left = FluidStyleButton("X-")
         self.jog_right = FluidStyleButton("X+")
         self.jog_z_up = FluidStyleButton("Z+")
         self.jog_z_down = FluidStyleButton("Z-")
-        self.setup_button(self.jog_up, "up-arrow32.png", _("Jog Y+"))
-        self.setup_button(self.jog_down, "down-arrow32.png", _("Jog Y-"))
+        self.setup_button(self.jog_up, "up-arrow32.png", _("Jog Y-"))
+        self.setup_button(self.jog_down, "down-arrow32.png", _("Jog Y+"))
         self.setup_button(self.jog_left, "left_arrow32.png", _("Jog X-"))
         self.setup_button(self.jog_right, "right_arrow32.png", _("Jog X+"))
         self.setup_button(self.jog_z_up, "up-arrow32.png", _("Jog Z+"))
@@ -1202,13 +1202,32 @@ class CNCControlUI:
         action_lay.setSpacing(8)
 
         self.preview_source_label = FCLabel(_("Select a CNCJob or queue item."), bold=True)
+        self.preview_source_label.setMinimumWidth(0)
+        self.preview_source_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        header_lay = getattr(self, "_active_panel_header_lay", None)
+        preview_label_in_header = False
+        if header_lay is not None and header_lay.count() > 0:
+            header_lay.insertWidget(max(0, header_lay.count() - 1), self.preview_source_label, 1)
+            preview_label_in_header = True
+
         self.preview_refresh_btn = FluidStyleButton(_("Preview"), "#337ab7", "#286090")
         self.preview_verify_btn = FluidStyleButton(_("Verify"), "#5cb85c", "#449d44")
+        self.preview_export_btn = FluidStyleButton(_("Export"), "#17a2b8", "#138496")
         self.setup_button(self.preview_refresh_btn, "replot16.png", _("Refresh G-code preview."))
         self.setup_button(self.preview_verify_btn, "apply32.png", _("Run G-code verification checks."))
-        action_lay.addWidget(self.preview_source_label, 1)
+        self.setup_button(
+            self.preview_export_btn,
+            "save_as.png",
+            _("Export the mapped preview G-code with Origin, Live Placement, Z Cut, and Auto Level transforms.")
+        )
+        if not preview_label_in_header:
+            action_lay.addWidget(self.preview_source_label, 1)
         action_lay.addWidget(self.preview_refresh_btn)
         action_lay.addWidget(self.preview_verify_btn)
+        action_lay.addWidget(self.preview_export_btn)
         self.live_placement_btn = FluidStyleButton(_("Live Placement"), "#ff6900", "#e65c00")
         self.setup_button(self.live_placement_btn, "edit16.png", _("Interactive mode to drag/rotate the job."))
         action_lay.addWidget(self.live_placement_btn)
@@ -1219,6 +1238,28 @@ class CNCControlUI:
             _("Run the mapped G-code path as an XY-only safe-height simulation.")
         )
         action_lay.addWidget(self.simulate_xy_btn)
+
+        self.zcut_override_cb = QtWidgets.QCheckBox(_("Z Cut"))
+        self.zcut_override_cb.setToolTip(
+            _("Override negative cutting Z values in G1/G2/G3 moves. Safe Z, probe moves, and rapid clearance are unchanged. "
+              "For V-bit PCB isolation, regenerate the CNCJob with the final Cut Z because XY offsets are not recalculated here.")
+        )
+        self.zcut_override_value = FCDoubleSpinner()
+        self.setup_input(self.zcut_override_value)
+        self.zcut_override_value.setFixedWidth(110)
+        self.zcut_override_value.set_precision(4)
+        self.zcut_override_value.set_range(-100000.0, 0.0)
+        self.zcut_override_value.setSingleStep(0.01)
+        self.zcut_override_value.setSuffix(" mm")
+        self.zcut_override_value.set_value(-0.10)
+        self.zcut_override_value.setEnabled(False)
+        self.zcut_override_value.setToolTip(
+            _("New absolute cut depth used only for negative cutting Z moves.")
+        )
+        self.zcut_override_cb.toggled.connect(self.zcut_override_value.setEnabled)
+        action_lay.addWidget(self.zcut_override_cb)
+        action_lay.addWidget(self.zcut_override_value)
+        action_lay.addStretch(1)
         body.addWidget(action_frame)
 
         stats_grid = QtWidgets.QGridLayout()
@@ -1326,6 +1367,7 @@ class CNCControlUI:
     def create_panel(self, title, help_callback=None):
         panel = QtWidgets.QGroupBox("" if help_callback else title)
         panel.setObjectName("cnc_panel")
+        self._active_panel_header_lay = None
         body_lay = QtWidgets.QVBoxLayout(panel)
         body_lay.setContentsMargins(8, 4 if help_callback else 10, 8, 8)
         body_lay.setSpacing(6)
@@ -1347,6 +1389,7 @@ class CNCControlUI:
             help_btn.clicked.connect(lambda *_args: help_callback())
             header_lay.addWidget(help_btn)
             header_lay.addStretch()
+            self._active_panel_header_lay = header_lay
             body_lay.addWidget(header)
 
         return panel, body_lay
@@ -1416,8 +1459,10 @@ class CNCControlUI:
                     (_("Controls"), [
                         (_("Preview"), _("Refreshes the mapped G-code preview for the selected CNCJob or queue item.")),
                         (_("Verify"), _("Runs safety and consistency checks such as bounds, spindle/feed usage, incremental mode, and warnings.")),
+                        (_("Export"), _("Saves the same transformed G-code shown in preview for use in external senders like Candle.")),
                         (_("Live Placement"), _("Opens the placement modal. Drag, rotate, or type X/Y/Angle values, then save the physical job position.")),
                         (_("Simulate"), _("Streams an XY-only dry run to the controller. Z is moved to Safe Z and all cut-depth, probe, and spindle-on commands are skipped.")),
+                        (_("Z Cut"), _("Overrides only negative cutting Z values in G1/G2/G3 moves. For V-bit PCB isolation this does not recalculate XY isolation offsets; regenerate the CNCJob with the final Cut Z for production cuts.")),
                     ]),
                     (_("Values"), [
                         (_("Lines"), _("Total parsed G-code lines in the transformed preview.")),
@@ -1458,7 +1503,7 @@ class CNCControlUI:
                     (_("Controls"), [
                         (_("Step buttons"), _("Choose the distance for each jog button press.")),
                         (_("Feed"), _("Sets the jog feed rate used by manual moves.")),
-                        (_("Y+ / Y- / X- / X+"), _("Moves the tool in the selected XY direction by the current step distance.")),
+                        (_("Y- / Y+ / X- / X+"), _("Moves the tool in the selected XY direction by the current step distance.")),
                         (_("Z+ / Z-"), _("Moves the Z axis by the current step distance.")),
                     ]),
                     (_("Safety"), [
@@ -1496,7 +1541,7 @@ class CNCControlUI:
                         (_("Safe Z"), _("Clearance height used between probing and simulation moves.")),
                         (_("Probe Z"), _("Maximum downward probe depth for G38.2 moves.")),
                         (_("Probe Feed"), _("Feed rate for the first probing touch.")),
-                        (_("Slow 2nd F"), _("Optional feed rate for the second slow touch. Zero uses an automatic value.")),
+                        (_("Slow 2nd F"), _("Optional feed rate for a second slow touch. Zero uses Candle-style single-touch probing.")),
                         (_("Auto Zero Z after probe"), _("Sets Z zero at the reference point after probing so the map and work zero match.")),
                     ]),
                     (_("Controls"), [
@@ -1541,7 +1586,7 @@ class CNCControlUI:
                 "intro": _("Macros are reusable controller command blocks for common setup or recovery tasks."),
                 "groups": [
                     (_("Controls"), [
-                        (_("Macro list"), _("Shows saved macros. Select one to run it from the CNC Control workflow.")),
+                        (_("Macro list"), _("Shows saved macros. Right-click a macro to run, edit, or delete it.")),
                         (_("Manage Macros"), _("Opens the macro editor to add, edit, delete, or reorder macros.")),
                     ]),
                 ],
@@ -1867,6 +1912,22 @@ class CNCPreviewModal(QtWidgets.QDialog):
         bottom_lay.addWidget(FCLabel(_("Angle"), bold=True))
         bottom_lay.addWidget(self.place_rotation_spin)
 
+        self.history_cb = QtWidgets.QCheckBox(_("History"))
+        self.history_cb.setChecked(True)
+        self.history_cb.setToolTip(_("Show recent saved placements as dotted outlines."))
+        self.history_cb.toggled.connect(self.canvas.set_show_placement_history)
+        self.canvas.set_show_placement_history(True)
+
+        self.ruler_cb = QtWidgets.QCheckBox(_("Ruler"))
+        self.ruler_cb.setChecked(True)
+        self.ruler_cb.setToolTip(_("Show workspace rulers."))
+        self.ruler_cb.toggled.connect(self.canvas.set_show_rulers)
+        self.canvas.set_show_rulers(True)
+
+        bottom_lay.addSpacing(12)
+        bottom_lay.addWidget(self.history_cb)
+        bottom_lay.addWidget(self.ruler_cb)
+
         self.save_btn = FluidStyleButton(_("SAVE PLACEMENT"), "#ff6900", "#e65c00")
         self.save_btn.clicked.connect(self.accept)
 
@@ -1879,6 +1940,11 @@ class CNCPreviewModal(QtWidgets.QDialog):
         layout.addLayout(bottom_lay)
 
     def set_preview(self, preview):
+        self.canvas.set_preview(preview)
+
+    def set_placement_history(self, history):
+        preview = dict(self.canvas.preview or {})
+        preview["placement_history"] = list(history or [])[:3]
         self.canvas.set_preview(preview)
 
     def set_placement(self, dx, dy, rotation, emit=False):

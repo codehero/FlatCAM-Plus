@@ -6,7 +6,7 @@ import builtins
 import gettext
 
 from PyQt6 import QtWidgets
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from appGUI.GUIElements import FCComboBox, FCLabel, FCTable
 
@@ -94,14 +94,17 @@ class FileSystemDialog(QtWidgets.QDialog):
 
 
 class MacroDialog(QtWidgets.QDialog):
+    macros_changed = pyqtSignal(list)
+
     def __init__(self, macros, parent=None):
         super().__init__(parent)
-        self.macros = list(macros) # Copy
+        self.macros = [dict(m) for m in macros] # Copy
         self.setWindowTitle("Macro Management")
         self.setMinimumSize(600, 400)
 
         # UI from parent theme
-        self.setStyleSheet(parent.ui.stylesheet())
+        if parent is not None and hasattr(parent, "ui"):
+            self.setStyleSheet(parent.ui.stylesheet())
 
         lay = QtWidgets.QVBoxLayout(self)
 
@@ -172,8 +175,11 @@ class MacroDialog(QtWidgets.QDialog):
             idx = self.macro_list.row(sel[0])
             self.macros[idx] = {"name": name, "content": content}
         else:
+            idx = len(self.macros)
             self.macros.append({"name": name, "content": content})
         self.refresh_list()
+        self.macro_list.setCurrentRow(idx)
+        self.macros_changed.emit([dict(m) for m in self.macros])
 
     def on_delete(self):
         sel = self.macro_list.selectedItems()
@@ -181,8 +187,13 @@ class MacroDialog(QtWidgets.QDialog):
         idx = self.macro_list.row(sel[0])
         self.macros.pop(idx)
         self.refresh_list()
-        self.macro_name_edit.clear()
-        self.macro_content_edit.clear()
+        next_row = min(idx, len(self.macros) - 1)
+        if next_row >= 0:
+            self.macro_list.setCurrentRow(next_row)
+        else:
+            self.macro_name_edit.clear()
+            self.macro_content_edit.clear()
+        self.macros_changed.emit([dict(m) for m in self.macros])
 
     def on_selection_changed(self):
         sel = self.macro_list.selectedItems()

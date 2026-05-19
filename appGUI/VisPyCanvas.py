@@ -263,6 +263,44 @@ class Camera(scene.PanZoomCamera):
         center = center if (center is not None) else self.center
         super(Camera, self).zoom(factor, center)
 
+    def _has_valid_viewbox(self):
+        viewbox = getattr(self, '_viewbox', None)
+        if viewbox is None:
+            return False
+
+        try:
+            rect = viewbox.rect
+            return rect.width > 0 and rect.height > 0
+        except Exception:
+            return False
+
+    def viewbox_resize_event(self, event):
+        if not self._has_valid_viewbox():
+            return
+
+        try:
+            super().viewbox_resize_event(event)
+        except np.linalg.LinAlgError as e:
+            if str(e) != "Singular matrix":
+                raise
+
+    def _update_transform(self):
+        if not self._has_valid_viewbox():
+            return
+
+        try:
+            rect = self.rect
+            if rect.width <= 0 or rect.height <= 0:
+                return
+        except Exception:
+            return
+
+        try:
+            super()._update_transform()
+        except np.linalg.LinAlgError as e:
+            if str(e) != "Singular matrix":
+                raise
+
     def viewbox_mouse_event(self, event):
         """
         The SubScene received a mouse event; update transform

@@ -81,6 +81,13 @@ if '_' not in builtins.__dict__:
     _ = gettext.gettext
 
 
+def is_isolation_job_type(job_type):
+    try:
+        return int(job_type) == 2
+    except (TypeError, ValueError):
+        return str(job_type or "").strip().lower() in ("isolation", str(_("Isolation")).strip().lower())
+
+
 class ParseError(Exception):
     pass
 
@@ -3780,7 +3787,17 @@ class CNCjob(Geometry):
         # ## Flatten the geometry. Only linear elements (no polygons) remain.
         # #############################################################################################################
         flat_ext_geo, flat_ints_geo = self.flatten_exterior_interiors(geometry)
-        flat_geometry = flat_ext_geo + flat_ints_geo
+
+        # For Isolation jobs the solid_geometry is a thin band (Polygon) whose exterior
+        # is the cut path and whose interior ring is just the inner edge of that band.
+        # Using both rings would cut twice (once on each side of the band), making the
+        # isolation appear twice as wide.  For isolation we therefore keep only the
+        # exterior ring; for all other job types we keep both as before.
+        job_type = tool_dict.get('tools_mill_job_type', None)
+        if is_isolation_job_type(job_type):
+            flat_geometry = flat_ext_geo
+        else:
+            flat_geometry = flat_ext_geo + flat_ints_geo
         # flat_geometry = self.flatten(geometry, reset=True, pathonly=True)
         self.app.log.debug("%d paths" % len(flat_geometry))
 
@@ -5361,7 +5378,18 @@ class CNCjob(Geometry):
 
         # flat_geometry = self.flatten(temp_solid_geometry, pathonly=True)
         flat_ext_geo, flat_ints_geo = self.flatten_exterior_interiors(geo_obj.solid_geometry)
-        flat_geometry = flat_ext_geo + flat_ints_geo
+        job_type = None
+        try:
+            for geo_tool in geo_obj.tools.values():
+                job_type = geo_tool.get('data', {}).get('tools_mill_job_type', None)
+                if job_type is not None:
+                    break
+        except Exception:
+            job_type = None
+        if is_isolation_job_type(job_type):
+            flat_geometry = flat_ext_geo
+        else:
+            flat_geometry = flat_ext_geo + flat_ints_geo
         self.app.log.debug("%d paths" % len(flat_geometry))
 
         # Create the solid geometry which will be used to generate GCode

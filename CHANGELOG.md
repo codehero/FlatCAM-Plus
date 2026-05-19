@@ -1,10 +1,39 @@
-FlatCAM Plus v1.0.6 BETA (c) 2026 - by Sadri ERCAN
+FlatCAM Plus v1.0.7 BETA (c) 2026 - by Sadri ERCAN
 
 Based on FlatCAM: 
 2D Computer-Aided PCB Manufacturing by (c) 2014-2016 Juan Pablo Caram
 =================================================
 
 CHANGELOG for FlatCAM Plus beta
+
+=================================================
+
+## 2026/05/19 - v1.0.7 Y-Axis Direction and Windows Runtime Fix
+
+### Highlights
+
+- Normalized the CNC Control Y-axis direction across Live Placement, preview, simulation, export, and stream transforms.
+- Hardened Windows startup against PyQt6 `QtWidgets` DLL load failures caused by mismatched or shadowed Qt6 runtime DLLs.
+
+### Changed
+
+- Back-Left origin now uses a positive-down application workspace with `Y=0..H`.
+- Bottom-Left origin now uses the opposite signed workspace with `Y=-H..0`.
+- Live Placement drag, saved offsets, material preview, target bounds, simulation, export, and streaming now share the same Y-axis mapping.
+- Jog controls now match the inverted application Y direction: top jog sends `Y-`, bottom jog sends `Y+`.
+- PyQt6, PyQt6-Qt6, and PyQt6-sip dependency pins now keep the Python bindings and Qt DLL package in a compatible runtime family.
+
+### Fixed
+
+- Fixed generated G-code and XY simulation moving in the opposite Y direction after Live Placement when the application Y axis is inverted.
+- Fixed Windows startup crashes where `from PyQt6 import QtWidgets` failed with `DLL load failed: The specified procedure could not be found`.
+
+### Validation
+
+- Verified PyQt6 imports with the pinned runtime.
+- Ran Python bytecode checks for the startup, CNC Control, and CNC UI modules.
+- Ran `git diff --check` for the release changes.
+- Verified synthetic G-code mapping for Back-Left, Bottom-Left, Center, and saved Live Placement offsets.
 
 =================================================
 
@@ -20,9 +49,12 @@ CHANGELOG for FlatCAM Plus beta
 
 - Added a Live Placement modal with manual X, Y, and Angle fields for exact positioning and rotation.
 - Added persistent Live Placement state so saved offsets and rotations are used during verification, probing, and engraving.
+- Added optional Live Placement rulers and recent-placement history overlays for checking previous saved job positions.
 - Added workspace-size binding for Job W and Job H from the project workspace.
 - Added controller-state-aware jog handling so jog commands are serialized and blocked while probing or streaming.
 - Added a **Simulate** button to G-Code Preview / Verification for safe-height XY-only dry runs using the same transformed path as real streaming.
+- Added a **Z Cut Override** control so an existing CNCJob can be rerun at a new cut depth without changing placement or regenerating the job.
+- Added V-bit PCB isolation safety warnings for Z Cut Override, including estimated cut-width changes when the override no longer matches the CNCJob's generated tool diameter.
 - Added per-section CNC Control help icons and focused help modals for the dashboard panels.
 - Added an **Auto Connect** toggle in the CNC connection modal to remember connection settings and retry automatically on the next CNC Control startup.
 
@@ -31,12 +63,13 @@ CHANGELOG for FlatCAM Plus beta
 - CNC Control now treats Live Placement as the single placement source.
 - Initial job placement uses the CNCJob canvas XY by default.
 - Live Placement respects the selected Origin mode:
-  - Back-Left uses a `Y=-H..0` workspace.
-  - Bottom-Left uses a `Y=0..H` workspace.
+  - Back-Left uses a `Y=0..H` workspace.
+  - Bottom-Left uses a `Y=-H..0` workspace.
   - Center uses a centered workspace.
 - Saving Live Placement refreshes the auto-level/probe area from the mapped job bounds.
 - Preview and full-screen Live Placement now use the same coordinate mapping and workspace rectangle.
 - Stream logs now report that canvas XY and saved Live Placement are being applied.
+- Auto Level maps now use Candle's reference-touch flow, serpentine grid order, first-touch normalization, and bicubic interpolation when applying Z correction.
 - CNC dashboard section headers with help icons now align consistently with the other panel headers.
 - Auto Connect performs a short bounded retry sequence and stops if the controller is offline.
 - New project creation now defaults to the user's Desktop folder, with Documents/Home fallback if Desktop is unavailable.
@@ -52,6 +85,14 @@ CHANGELOG for FlatCAM Plus beta
 - Fixed stream/probe coordinate mismatches after saving Live Placement.
 - Fixed jog latency risk by avoiding the general command queue for jog moves and waiting for controller acknowledgement/state.
 - Fixed the CNC help modal crash caused by CSS percent signs being interpreted as Python string formatting placeholders.
+- Fixed stale or undersized Auto Level height maps causing inconsistent cutting depth after Live Placement or job setup changes.
+- Fixed Auto Level probe sequencing by waiting for the controller acknowledgement after each G38.2 probe report before sending the next move.
+- Fixed incomplete or malformed Auto Level maps being accepted; maps now require finite, ordered, fully-probed grid data.
+- Fixed Auto Level stream start so jobs beginning from the current Live Placement start point do not make an unnecessary first XY detour.
+- Fixed first-cut air passes by inserting a short planner dwell after negative Z plunge moves before XY cutting starts.
+- Fixed V-bit isolation jobs being generated with the tip diameter instead of the effective cut width when Cut Z, V-Tip Dia, and V-Tip Angle are set before the first job generation.
+- Fixed isolation CNC generation for isolation geometry bands so only the intended exterior cut path is sent to the CNC job.
+- Fixed CNC Auto Connect and connection settings persistence across application restarts.
 - Fixed version updates starting with an empty Tools Database by copying valid existing tool presets forward into the current version DB.
 - Fixed Geometry Editor unselected line display so unselected red geometry is visible again. Thanks [@ecp2022](https://github.com/ecp2022).
 - Fixed Geometry Editor shape deletion iteration. Thanks [@ecp2022](https://github.com/ecp2022).
@@ -60,6 +101,7 @@ CHANGELOG for FlatCAM Plus beta
 
 - Ran Python bytecode checks for:
   - `appPlugins/ToolCNCControl.py`
+  - `appPlugins/cnc_control/dialogs.py`
   - `appPlugins/cnc_control/sections.py`
   - `appPlugins/cnc_control/ui.py`
   - `appPlugins/cnc_control/widgets.py`
