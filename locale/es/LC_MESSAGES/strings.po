@@ -20054,8 +20054,8 @@ msgid "Quit"
 msgstr "Dejar"
 
 #: assets/linux/flatcam-beta.desktop:3
-msgid "FlatCAM Plus"
-msgstr "FlatCAM Plus"
+#~ msgid "FlatCAM Plus"
+#~ msgstr "FlatCAM Plus"
 
 #: assets/linux/flatcam-beta.desktop:8
 msgid "G-Code from GERBERS"
