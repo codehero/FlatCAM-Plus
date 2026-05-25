@@ -2635,6 +2635,12 @@ class MainGUI(QtWidgets.QMainWindow):
         self.follow_btn = self.toolbar_action('/follow32.png', _("Follow"))
         self.ncc_btn = self.toolbar_action('/ncc32.png', _("NCC"))
         self.paint_btn = self.toolbar_action('/paint32.png', _("Paint"))
+        current_plotter_btn = getattr(self, "plotter_btn", None)
+        if current_plotter_btn is not None and current_plotter_btn in self.toolbarplugins.actions():
+            self.plotter_btn = current_plotter_btn
+        else:
+            self.plotter_btn = self.toolbar_action('/draw32.png', _("PCB Plotter"), _("Open PCB Plotter."))
+            self.toolbarplugins.addAction(self.plotter_btn)
 
         self.cutout_btn = self.toolbar_action('/cut32.png', _("Cutout"))
         self.panelize_btn = self.toolbar_action('/panelize32.png', _("Panel"))
@@ -4078,6 +4084,12 @@ class MainGUI(QtWidgets.QMainWindow):
         self.follow_btn = self.toolbar_action('/follow32.png', _("Follow"))
         self.ncc_btn = self.toolbar_action('/ncc32.png', _("NCC"))
         self.paint_btn = self.toolbar_action('/paint32.png', _("Paint"))
+        current_plotter_btn = getattr(self, "plotter_btn", None)
+        if current_plotter_btn is not None and current_plotter_btn in self.toolbarplugins.actions():
+            self.plotter_btn = current_plotter_btn
+        else:
+            self.plotter_btn = self.toolbar_action('/draw32.png', _("PCB Plotter"), _("Open PCB Plotter."))
+            self.toolbarplugins.addAction(self.plotter_btn)
 
         self.cutout_btn = self.toolbar_action('/cut32.png', _("Cutout"))
         self.panelize_btn = self.toolbar_action('/panelize32.png', _("Panel"))

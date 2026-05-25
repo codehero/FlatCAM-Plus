@@ -1572,21 +1572,146 @@ class App(QtCore.QObject):
         db_path = self.tools_database_path()
 
         if os.path.exists(db_path) and self.tools_database_has_records(db_path):
+            self.ensure_default_plotter_pen_tool(db_path)
             return db_path
 
         migrated_from = self.migrate_tools_database(db_path)
         if migrated_from:
             self.log.debug('Copied Tools DB from previous version: %s' % migrated_from)
+            self.ensure_default_plotter_pen_tool(db_path)
             return db_path
 
         if os.path.exists(db_path):
+            self.ensure_default_plotter_pen_tool(db_path)
             return db_path
 
         self.log.debug('Creating empty tools_db.FlatDB')
         with open(db_path, 'w', encoding='utf-8') as f:
             json.dump({}, f)
 
+        self.ensure_default_plotter_pen_tool(db_path)
         return db_path
+
+    def default_plotter_pen_tool_record(self):
+        pen_width = 0.4
+        pen_down_z = -0.3
+        pen_up_z = 3.0
+
+        return {
+            "name": "Plotter Pen",
+            "tooldia": pen_width,
+            "data": {
+                "plot": True,
+                "tool_target": 1,
+                "tol_min": 0.0,
+                "tol_max": 0.0,
+                "tools_mill_tooldia": pen_width,
+                "tools_mill_tool_shape": 0,
+                "tools_mill_job_type": 0,
+                "tools_mill_offset_type": 0,
+                "tools_mill_offset_value": 0.0,
+                "tools_mill_cutz": pen_down_z,
+                "tools_mill_multidepth": False,
+                "tools_mill_depthperpass": abs(pen_down_z),
+                "tools_mill_vtipdia": 0.1,
+                "tools_mill_vtipangle": 30,
+                "tools_mill_travelz": pen_up_z,
+                "tools_mill_feedrate": 600.0,
+                "tools_mill_feedrate_z": 200.0,
+                "tools_mill_feedrate_rapid": 1500.0,
+                "tools_mill_spindlespeed": 0,
+                "tools_mill_spindledir": "CW",
+                "tools_mill_dwell": False,
+                "tools_mill_dwelltime": 0.0,
+                "tools_mill_ppname_g": "GRBL_11_pen_plotter",
+                "tools_mill_extracut": False,
+                "tools_mill_extracut_length": 0.1,
+                "tools_mill_toolchange": False,
+                "tools_mill_toolchangexy": "0.0, 0.0",
+                "tools_mill_toolchangez": pen_up_z,
+                "tools_mill_startz": None,
+                "tools_mill_endz": pen_up_z,
+                "tools_mill_endxy": None,
+                "tools_mill_search_time": 3,
+                "tools_mill_z_p_depth": -0.02,
+                "tools_mill_f_plunge": False,
+                "tools_mill_optimization_type": "R",
+                "tools_mill_feedrate_probe": 75,
+                "tools_mill_area_exclusion": False,
+                "tools_mill_area_shape": "polygon",
+                "tools_mill_area_strategy": "over",
+                "tools_mill_area_overz": 1.0,
+                "tools_mill_polish": False,
+                "tools_mill_polish_margin": 0.0,
+                "tools_mill_polish_overlap": 5,
+                "tools_mill_polish_method": 0,
+                "tools_mill_min_power": 0.0,
+                "tools_mill_laser_on": "M3",
+                "seg_x": 0,
+                "seg_y": 0
+            }
+        }
+
+    def ensure_default_plotter_pen_tool(self, db_path):
+        try:
+            with open(db_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            self.log.error('Could not load Tools DB for Plotter Pen seed: %s' % str(e))
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        default_tool = self.default_plotter_pen_tool_record()
+        default_name = default_tool['name'].casefold()
+        default_pp = default_tool['data']['tools_mill_ppname_g']
+        found_key = None
+        changed = False
+
+        for tool_key, tool_record in data.items():
+            if not isinstance(tool_record, dict):
+                continue
+            tool_name = str(tool_record.get('name', '')).casefold()
+            tool_data = tool_record.get('data', {})
+            tool_pp = tool_data.get('tools_mill_ppname_g') if isinstance(tool_data, dict) else None
+            if tool_name == default_name or tool_pp == default_pp:
+                found_key = tool_key
+                break
+
+        if found_key is None:
+            next_key = str(max([int(k) for k in data.keys() if str(k).isdigit()] or [0]) + 1)
+            data[next_key] = default_tool
+            changed = True
+        else:
+            tool_record = data[found_key]
+            if 'name' not in tool_record:
+                tool_record['name'] = default_tool['name']
+                changed = True
+            if 'tooldia' not in tool_record:
+                tool_record['tooldia'] = default_tool['tooldia']
+                changed = True
+            tool_data = tool_record.setdefault('data', {})
+            if not isinstance(tool_data, dict):
+                tool_data = {}
+                tool_record['data'] = tool_data
+                changed = True
+            if 'tools_mill_tooldia' not in tool_data:
+                tool_data['tools_mill_tooldia'] = tool_record.get('tooldia', default_tool['tooldia'])
+                changed = True
+            for option, value in default_tool['data'].items():
+                if option not in tool_data:
+                    tool_data[option] = value
+                    changed = True
+
+        if changed is False:
+            return
+
+        try:
+            with open(db_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, default=to_dict, indent=2)
+        except Exception as e:
+            self.log.error('Could not save Plotter Pen preset in Tools DB: %s' % str(e))
 
     def migrate_tools_database(self, db_path):
         source_path = self.find_previous_tools_database(db_path)
@@ -1777,6 +1902,9 @@ class App(QtCore.QObject):
         self.milling_tool.install(icon=QtGui.QIcon(self.resource_location + '/milling_tool32.png'),
                                   pos=self.ui.menu_plugins, separator=True)
 
+        self.plotter_tool = ToolPlotter(self)
+        self.plotter_tool.install(icon=QtGui.QIcon(self.resource_location + '/draw32.png'),
+                                  pos=self.ui.menu_plugins, separator=True)
 
         self.cnc_control_tool = ToolCNCControl(self)
         self.levelling_tool = self.cnc_control_tool
@@ -1843,6 +1971,7 @@ class App(QtCore.QObject):
             self.follow_tool,
             self.drilling_tool,
             self.milling_tool,
+            self.plotter_tool,
             self.cnc_control_tool,
             self.cnc_preview_3d_tool,
             self.cnc_height_map_3d_tool,
@@ -2107,6 +2236,8 @@ class App(QtCore.QObject):
         self.ui.follow_btn.triggered.connect(lambda: self.follow_tool.run(toggle=True))
         self.ui.ncc_btn.triggered.connect(lambda: self.ncclear_tool.run(toggle=True))
         self.ui.paint_btn.triggered.connect(lambda: self.paint_tool.run(toggle=True))
+        if hasattr(self.ui, "plotter_btn"):
+            self.ui.plotter_btn.triggered.connect(lambda: self.plotter_tool.run(toggle=True))
 
         self.ui.cutout_btn.triggered.connect(lambda: self.cutout_tool.run(toggle=True))
         self.ui.panelize_btn.triggered.connect(lambda: self.panelize_tool.run(toggle=True))
@@ -5018,6 +5149,12 @@ class App(QtCore.QObject):
                 app=self,
                 parent=self.ui,
                 callback_on_tool_request=self.cutout_tool.on_cutout_tool_add_from_db_executed
+            )
+        elif source == 'plotter':
+            self.tools_db_tab = ToolsDB2(
+                app=self,
+                parent=self.ui,
+                callback_on_tool_request=self.plotter_tool.on_tool_from_db_inserted
             )
 
         # add the tab if it was closed

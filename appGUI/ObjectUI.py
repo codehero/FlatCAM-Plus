@@ -96,13 +96,13 @@ class ObjectUI(QtWidgets.QWidget):
 
             layout.addWidget(self.transform_label)
 
-            trans_frame = FCFrame()
-            layout.addWidget(trans_frame)
+            self.trans_frame = FCFrame()
+            layout.addWidget(self.trans_frame)
 
             self.common_grid = GLay(v_spacing=5, h_spacing=3)
             self.common_grid.setColumnStretch(0, 1)
             self.common_grid.setColumnStretch(1, 0)
-            trans_frame.setLayout(self.common_grid)
+            self.trans_frame.setLayout(self.common_grid)
 
             # separator_line = QtWidgets.QFrame()
             # separator_line.setFrameShape(QtWidgets.QFrame.Shape.HLine)

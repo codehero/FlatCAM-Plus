@@ -1,0 +1,26 @@
+(FlatCAM Plus pen plotter follow-style trace test)
+(Use for paper-only validation before PCB work.)
+
+M5
+G21
+G90
+G17
+G94
+
+G00 Z3.000
+G00 X0.000 Y0.000
+G01 F200.0
+G01 Z-0.300
+G01 F600.0
+G01 X10.000 Y0.000
+G01 X10.000 Y8.000
+G01 X18.000 Y8.000
+G00 Z3.000
+
+G00 X2.000 Y12.000
+G01 F200.0
+G01 Z-0.300
+G01 F600.0
+G01 X18.000 Y12.000
+G00 Z3.000
+M5

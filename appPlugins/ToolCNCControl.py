@@ -236,8 +236,8 @@ class ToolCNCControl(AppTool):
             self.ui.set_z_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("Z",)))
         if hasattr(self.ui, "set_xyz_zero_btn"):
             self.ui.set_xyz_zero_btn.clicked.connect(lambda: self.on_set_work_offset(("X", "Y", "Z")))
-        self.ui.jog_up.clicked.connect(lambda: self.send_jog("Y", -1))
-        self.ui.jog_down.clicked.connect(lambda: self.send_jog("Y", 1))
+        self.ui.jog_up.clicked.connect(lambda: self.send_jog("Y", 1))
+        self.ui.jog_down.clicked.connect(lambda: self.send_jog("Y", -1))
         self.ui.jog_left.clicked.connect(lambda: self.send_jog("X", -1))
         self.ui.jog_right.clicked.connect(lambda: self.send_jog("X", 1))
         self.ui.jog_z_up.clicked.connect(lambda: self.send_jog("Z", 1))
@@ -1135,6 +1135,16 @@ class ToolCNCControl(AppTool):
                     metadata["zcut_mm"] = value
                     metadata["zcut_line"] = index
         return metadata
+
+    @staticmethod
+    def probable_pcb_isolation_gcode(name, lines, metadata):
+        if not metadata.get("tool_dia_mm") or metadata.get("zcut_mm") is None:
+            return False
+
+        text_parts = [str(name or "")]
+        text_parts.extend(str(line or "") for line in list(lines or [])[:60])
+        text = "\n".join(text_parts).lower()
+        return bool(re.search(r"(^|[^a-z0-9])iso([^a-z0-9]|$)|isolation", text))
 
     def estimated_vbit_cut_width(self, cut_z_mm):
         try:
@@ -3926,6 +3936,30 @@ class ToolCNCControl(AppTool):
             "outside": outside,
         }
 
+    def finalize_stream_transform_context(self, context, lines, name=None, apply_live_placement=True):
+        context = self.apply_live_placement_to_context(context, apply_live_placement)
+
+        metadata = self.gcode_comment_metadata(lines)
+        context["gcode_metadata"] = metadata
+        is_isolation = self.probable_pcb_isolation_gcode(name, lines, metadata)
+        context["probable_pcb_isolation"] = is_isolation
+
+        protect_depth = bool(self.app.options.get("cnc_autolevel_protect_pcb_isolation_depth", True))
+        zcut_mm = metadata.get("zcut_mm")
+        if protect_depth and is_isolation and zcut_mm is not None:
+            try:
+                zcut_mm = float(zcut_mm)
+            except (TypeError, ValueError):
+                zcut_mm = None
+
+        if protect_depth and is_isolation and zcut_mm is not None and zcut_mm < 0.0:
+            units = self.effective_gcode_units(context.get("units"))
+            factor = 25.4 if units == "inch" else 1.0
+            context["autolevel_depth_clamp_z"] = zcut_mm / factor
+            context["autolevel_depth_clamp_z_mm"] = zcut_mm
+
+        return context
+
     def stream_transform_context(self, lines, name=None, apply_live_placement=True):
         mode = self.selected_job_origin_mode()
         bounds, units = self.gcode_bounds(lines, cutting_only=True)
@@ -3956,7 +3990,7 @@ class ToolCNCControl(AppTool):
                 "absolute": True,
                 "units": units,
             }
-            return self.apply_live_placement_to_context(context, apply_live_placement)
+            return self.finalize_stream_transform_context(context, lines, name, apply_live_placement)
 
         x_min = bounds.get("X", [0.0, 1.0])[0]
         x_max = bounds.get("X", [0.0, 1.0])[1]
@@ -4004,7 +4038,7 @@ class ToolCNCControl(AppTool):
                 "absolute": True,
                 "units": units,
             }
-            return self.apply_live_placement_to_context(context, apply_live_placement)
+            return self.finalize_stream_transform_context(context, lines, name, apply_live_placement)
 
         if mode == "absolute":
             material_bounds = self.project_workspace_bounds(units) or [x_min, x_max, y_min, y_max]
@@ -4026,7 +4060,7 @@ class ToolCNCControl(AppTool):
                 "absolute": True,
                 "units": units,
             }
-            return self.apply_live_placement_to_context(context, apply_live_placement)
+            return self.finalize_stream_transform_context(context, lines, name, apply_live_placement)
 
         job_width, job_height = self.selected_job_size(raw_width, raw_height, units)
         margin_x, margin_y = self.selected_job_margin(units)
@@ -4054,7 +4088,7 @@ class ToolCNCControl(AppTool):
             "absolute": True,
             "units": units,
         }
-        return self.apply_live_placement_to_context(context, apply_live_placement)
+        return self.finalize_stream_transform_context(context, lines, name, apply_live_placement)
 
     @staticmethod
     def format_gcode_number(value):
@@ -4401,6 +4435,24 @@ class ToolCNCControl(AppTool):
         surface_z = self.auto_level_surface_z(height_map, x_phys * factor, y_phys * factor)
         return surface_z / factor
 
+    @staticmethod
+    def auto_level_depth_clamped_z(context, program_z, adjusted_z):
+        clamp_z = context.get("autolevel_depth_clamp_z")
+        if clamp_z is None:
+            return adjusted_z
+
+        try:
+            program_z = float(program_z)
+            adjusted_z = float(adjusted_z)
+            clamp_z = float(clamp_z)
+        except (TypeError, ValueError):
+            return adjusted_z
+
+        if program_z < 0.0 and adjusted_z < clamp_z:
+            context["autolevel_depth_clamped_count"] = int(context.get("autolevel_depth_clamped_count", 0) or 0) + 1
+            return clamp_z
+        return adjusted_z
+
     def replace_axis_word(self, line, axis, value):
         replacement = "%s%s" % (axis, self.format_gcode_number(value))
         pattern = r"(?<![A-Za-z])%s\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))" % axis
@@ -4650,6 +4702,7 @@ class ToolCNCControl(AppTool):
                         # auto_level_offset_at expects UNANCHORED coordinates
                         z_offset = self.auto_level_offset_at(context, sub_x, sub_y)
                         adj_z = sub_z + z_offset
+                        adj_z = self.auto_level_depth_clamped_z(context, sub_z, adj_z)
 
                         # Machine/work coordinates for the sender after job anchoring and live placement.
                         phys_sub_x, phys_sub_y = self.mapped_job_xy(
@@ -4689,6 +4742,7 @@ class ToolCNCControl(AppTool):
 
             z_offset = self.auto_level_offset_at(context, next_x, next_y)
             adjusted_z = program_z + z_offset
+            adjusted_z = self.auto_level_depth_clamped_z(context, program_z, adjusted_z)
 
             if not absolute:
                 inc_transformed = transformed
@@ -4742,7 +4796,14 @@ class ToolCNCControl(AppTool):
         context = self.stream_transform_context(lines, name=name, apply_live_placement=apply_live_placement)
         if apply_auto_level:
             self.attach_auto_level_context(context)
-        return [self.transform_stream_command(line, context) for line in lines]
+        transformed = []
+        if context.get("autolevel_enabled") and context.get("autolevel_depth_clamp_z_mm") is not None:
+            transformed.append(
+                "(Auto Level Depth Guard: PCB isolation cutting Z clamped to %.4f mm)" %
+                float(context.get("autolevel_depth_clamp_z_mm"))
+            )
+        transformed.extend(self.transform_stream_command(line, context) for line in lines)
+        return transformed
 
     def on_toggle_laser(self):
         if self.ui.macro_laser.isChecked():
@@ -5531,6 +5592,13 @@ class ToolCNCControl(AppTool):
                     )
                 for level, _line_no, message in self.zcut_override_warnings(lines, zcut_mm):
                     self.append_console_sig.emit(message, "warn" if level == "WARN" else "info")
+            if transform_context.get("autolevel_enabled") and transform_context.get("autolevel_depth_clamp_z_mm") is not None:
+                self.append_console_sig.emit(
+                    _("PCB isolation depth guard active: Auto Level will not command cutting Z below %.4f mm. "
+                      "This prevents V-bit isolation from becoming wider than the generated tool diameter.") %
+                    float(transform_context.get("autolevel_depth_clamp_z_mm")),
+                    "warn"
+                )
             if transform_context.get("autolevel_enabled"):
                 height_map = transform_context.get("autolevel_map", {})
                 z_values = self.auto_level_map_z_values(height_map)

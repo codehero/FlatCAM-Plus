@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">FlatCAM Plus</h1>
-<h3 align="center">PCB CAM, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
+<h3 align="center">PCB CAM, pen plotting, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
 
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-1.0.7%20beta-31b0d5" />
@@ -33,6 +33,7 @@
 | Feature | Description |
 | --- | --- |
 | PCB CAM Workflow | Import Gerber and Excellon files, prepare Geometry objects, generate CNCJob output, and keep board layers aligned from CAM export to machine path. |
+| PCB Pen Plotter | Generate follow or fill pen paths from Gerber copper, use the Plotter Pen DB preset, and output GRBL-safe pen-up/pen-down G-code without spindle commands. |
 | Integrated CNC Control | Connect over Serial, TCP/Telnet, or FluidNC Web/HTTP with live DRO, jogging, work zeroing, macros, SD jobs, terminal commands, and queued streaming. |
 | Live Placement | Place the job exactly on the workspace using canvas position plus saved X/Y/Angle adjustments before preview, probing, simulation, or engraving. |
 | Safe XY Simulation | Run the transformed toolpath as XY-only motion at Safe Z, skipping Z plunges, probe moves, and spindle-on commands before the real cut. |
@@ -58,12 +59,13 @@
 
 1. Create a project and set the PCB/workspace size.
 2. Import Gerber and Excellon files, then generate Geometry and CNCJob outputs.
-3. Open **CNC Control**, connect over Serial, TCP/Telnet, or FluidNC Web/HTTP.
-4. Use **Live Placement** to put the job exactly where it should run.
-5. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
-6. Probe the board if needed, set work zero, and run the queue.
+3. For pen plotting, open **PCB Plotter**, generate a follow/fill plotter Geometry, then create a Plotter Job.
+4. Open **CNC Control**, connect over Serial, TCP/Telnet, or FluidNC Web/HTTP.
+5. Use **Live Placement** to put the job exactly where it should run.
+6. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
+7. Probe the board if needed, set work zero, and run the queue.
 
-**Current release:** `1.0.7` beta, released `2026/05/19`, updated `2026/05/19`.
+**Current release:** `1.0.7` beta, released `2026/05/19`, updated `2026/05/25`.
 
 FlatCAM Plus is forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019 and based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
@@ -104,6 +106,10 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 | CNCJob generation hardening | Missing Milling defaults in older projects or database tools are completed automatically before G-code generation. |
 | V-tool accuracy | Shape, tip diameter, and related V-bit settings persist more reliably for isolation workflows. |
 | Copper-aware isolation | The Isolation plugin now includes **Generate With Copper**, a second generation path that uses the selected isolation tool while preserving large copper pours and filtering frame-like outer paths. |
+| PCB Plotter workflow | A new **PCB Plotter** plugin creates plotter-ready follow and fill Geometry objects from Gerber copper while preserving the existing Milling and CNC workflows. |
+| Plotter Pen Tools DB preset | Tools Database now auto-seeds a non-destructive `Plotter Pen` preset with pen diameter, Z-offset, feedrate, travel Z, and `GRBL_11_pen_plotter` preprocessor values. |
+| Trace-only fill plotting | `Generate Fill Path` builds hatch lines only from trace/pad copper polygons and filters large board/background regions so filled plotter jobs do not flood the whole board surface. |
+| Plotter-specific operation panel | Plotter Geometry objects open a simplified right-sidebar workflow with `Generate`, `Plotter Operation`, `Pen Parameters`, `Z-Offset`, and `Generate Plotter Job` labels. |
 | Project-tree aware plugin object selectors | Plugin object combo boxes now target the real Gerber, Excellon, Geometry, and CNCJob groups under the project root, so tools see actual files instead of group labels. |
 | Excellon DB loading | Excellon object properties can load drilling parameters from Tools Database presets, with clearer diagnostics when matching diameters or drilling-target presets are missing. |
 | Excellon Unit Scaling Fix | Restored unit conversion logic for drill objects, ensuring tool diameters and depths scale correctly between MM and IN. |
@@ -156,6 +162,21 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 ---
 
 ## New Features
+
+### PCB Pen Plotter
+
+FlatCAM Plus now includes a dedicated PCB pen plotter workflow for drawing PCB artwork on paper or copper before transfer/etching.
+
+| Feature | Description |
+| --- | --- |
+| PCB Plotter plugin | Opens from the Plugins menu or toolbar and manages pen width, pen-down Z offset, pen-up Z, draw feed, Z feed, rapid feed, mirror, and follow/fill mode. |
+| Plotter Pen preset | A `Plotter Pen` Tools Database record is created automatically and can be loaded into the plotter panel without overwriting existing user edits. |
+| GRBL pen preprocessor | `GRBL_11_pen_plotter` emits units, absolute positioning, pen-up travel, pen-down draw moves, and avoids `M03`/`M04` spindle start commands. |
+| Generate Follow Path | Creates a plotter Geometry from Gerber follow geometry and immediately opens its right-sidebar properties panel. |
+| Generate Fill Path | Creates a trace/pad-only hatch Geometry for etch-resistant pen filling while skipping large board/background polygons. |
+| Simplified Geometry panel | Plotter Geometry shows a `Generate` action and hides Paint, NCC, Utilities, and Transformations controls that are not part of the plotter flow. |
+| Plotter Operation panel | The downstream CNCJob panel switches to plotter wording, hides Excellon, Shape, spindle/dwell, and Common Parameters, and exposes `Pen Parameters`, `Z-Offset`, and `Generate Plotter Job`. |
+| Safety examples and validator | Example pen-plotter G-code files and `scripts/validate_pen_plotter_gcode.py` check for safe units, absolute mode, pen-up travel, and no rapid XY travel while the pen is down. |
 
 ### CNC Connection and Control
 
@@ -389,14 +410,16 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 
 FlatCAM base code and MIT-licensed project components are covered by the root `LICENSE` file.
 
-The CNC Control, CNC 3D Preview, AI Assistant, and Android CNC companion app modules are licensed separately and are not covered by the root MIT license:
+The CNC Control, PCB Plotter, CNC 3D Preview, AI Assistant, and Android CNC companion app modules are licensed separately and are not covered by the root MIT license:
 
 - `appPlugins/ToolCNCControl.py`
 - `appPlugins/cnc_control/`
+- `appPlugins/ToolPlotter.py`
+- `preprocessors/GRBL_11_pen_plotter.py`
 - `appPlugins/ToolCNCPreview3D.py`
 - `appPlugins/cnc_preview_3d/`
 - `appPlugins/ToolAIAssistant.py`
 - `appPlugins/ai_assistant/`
 - `flatcam-cnc-android/`
 
-See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, `appPlugins/ai_assistant/LICENSE`, and the module notes in `flatcam-cnc-android/README.md` for the separate module license terms. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.
+See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, `appPlugins/ai_assistant/LICENSE`, and the module notes in `flatcam-cnc-android/README.md` for the separate module license terms. The PCB Plotter plugin and `GRBL_11_pen_plotter` preprocessor use the same non-commercial license terms as CNC Control. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.

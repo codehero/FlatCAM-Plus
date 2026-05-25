@@ -38,6 +38,9 @@ if '_' not in builtins.__dict__:
     _ = gettext.gettext
 
 
+PLOTTER_PP = 'GRBL_11_pen_plotter'
+
+
 class GeometryObject(FlatCAMObj, Geometry):
     """
     Geometric object not associated with a specific
@@ -402,6 +405,7 @@ class GeometryObject(FlatCAMObj, Geometry):
         self.ui.paint_tool_button.clicked.connect(lambda: self.app.paint_tool.run(toggle=True))
         self.ui.generate_ncc_button.clicked.connect(lambda: self.app.ncclear_tool.run(toggle=True))
         self.ui.milling_button.clicked.connect(self.on_milling_button_clicked)
+        self._apply_plotter_geometry_ui()
 
         self.ui.util_button.clicked.connect(lambda st: self.ui.util_frame.show() if st else self.ui.util_frame.hide())
         self.ui.vertex_points_btn.clicked.connect(self.on_calculate_vertex_points)
@@ -497,7 +501,49 @@ class GeometryObject(FlatCAMObj, Geometry):
             self.ui.treeWidget.resizeColumnToContents(col)
 
     def on_milling_button_clicked(self):
+        if self._is_plotter_geometry():
+            try:
+                self.app.collection.set_all_inactive()
+                self.app.collection.set_active(self.obj_options['name'])
+            except Exception as err:
+                self.app.log.error("GeometryObject.on_milling_button_clicked() plotter select --> %s" % str(err))
         self.app.milling_tool.run(toggle=True)
+
+    def _is_plotter_geometry(self):
+        if self.obj_options.get('plotter_geometry', False):
+            return True
+        if self.obj_options.get('tools_mill_ppname_g') == PLOTTER_PP:
+            return True
+
+        tools = getattr(self, 'tools', {})
+        if not isinstance(tools, dict):
+            return False
+
+        for tool in tools.values():
+            data = tool.get('data', {}) if isinstance(tool, dict) else {}
+            if not isinstance(data, dict):
+                continue
+            if data.get('plotter_geometry', False):
+                return True
+            if data.get('tools_mill_ppname_g') == PLOTTER_PP:
+                return True
+
+        return False
+
+    def _apply_plotter_geometry_ui(self):
+        if not self._is_plotter_geometry():
+            return
+
+        self.ui.milling_button.setText(_("Generate"))
+        self.ui.milling_button.setToolTip(_("Generate a Plotter Job from this geometry."))
+
+        for attr_name in [
+            'paint_tool_button', 'generate_ncc_button', 'util_button', 'util_frame',
+            'transform_label', 'trans_frame'
+        ]:
+            widget = getattr(self.ui, attr_name, None)
+            if widget is not None:
+                widget.hide()
 
     def on_calculate_vertex_points(self):
         self.app.log.debug("GeometryObject.on_calculate_vertex_points()")

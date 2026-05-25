@@ -414,7 +414,7 @@ class AppDefaults:
         "tools_iso_newdia": 0.1,
 
         "tools_iso_tool_shape": 0,  # "C1"
-        "tools_iso_cutz": -0.07,
+        "tools_iso_cutz": -0.05,
         "tools_iso_vtipdia": 0.1,
         "tools_iso_vtipangle": 30,
 
@@ -493,6 +493,7 @@ class AppDefaults:
 
         # CNC Control: log per-line auto-level Z transforms (very verbose).
         "cnc_debug_autolevel": False,
+        "cnc_autolevel_protect_pcb_isolation_depth": True,
         "tools_mill_travelz": 2,
 
         "tools_mill_toolchange": False,
@@ -542,6 +543,16 @@ class AppDefaults:
 
         "tools_mill_optimization_type": 'R',
         "tools_mill_search_time": 3,
+
+        # PCB Pen Plotter Plugin Options
+        "tools_plotter_mode": 'follow',
+        "tools_plotter_mirror_axis": 'none',
+        "tools_plotter_pen_width": 0.4,
+        "tools_plotter_pen_down_z": -0.3,
+        "tools_plotter_pen_up_z": 3.0,
+        "tools_plotter_draw_feedrate": 600.0,
+        "tools_plotter_z_feedrate": 200.0,
+        "tools_plotter_rapid_feedrate": 1500.0,
 
 
 

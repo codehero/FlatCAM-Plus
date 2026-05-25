@@ -24,6 +24,7 @@ from appPlugins.ToolIsolation import ToolIsolation
 from appPlugins.ToolFollow import ToolFollow
 from appPlugins.ToolDrilling import ToolDrilling
 from appPlugins.ToolMilling import ToolMilling
+from appPlugins.ToolPlotter import ToolPlotter
 from appPlugins.ToolCNCControl import ToolCNCControl
 from appPlugins.ToolCNCPreview3D import ToolCNCPreview3D
 from appPlugins.ToolCNCHeightMap3D import ToolCNCHeightMap3D

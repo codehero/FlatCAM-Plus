@@ -3796,6 +3796,11 @@ class CNCjob(Geometry):
         job_type = tool_dict.get('tools_mill_job_type', None)
         if is_isolation_job_type(job_type):
             flat_geometry = flat_ext_geo
+            # Isolation geometry is already offset-correct from ToolIsolation.
+            # Applying a second buffer offset here would over-widen the cleared area
+            # and erode (or eliminate) the copper traces between isolation passes.
+            # Force offset to zero so the pre-computed paths are used as-is.
+            tool_offset = 0.0
         else:
             flat_geometry = flat_ext_geo + flat_ints_geo
         # flat_geometry = self.flatten(geometry, reset=True, pathonly=True)
@@ -5388,6 +5393,11 @@ class CNCjob(Geometry):
             job_type = None
         if is_isolation_job_type(job_type):
             flat_geometry = flat_ext_geo
+            # Isolation geometry is already offset-correct from ToolIsolation.
+            # Applying a second buffer offset here would over-widen the cleared area
+            # and erode (or eliminate) the copper traces between isolation passes.
+            # Force offset to zero so the pre-computed paths are used as-is.
+            offset = 0.0
         else:
             flat_geometry = flat_ext_geo + flat_ints_geo
         self.app.log.debug("%d paths" % len(flat_geometry))

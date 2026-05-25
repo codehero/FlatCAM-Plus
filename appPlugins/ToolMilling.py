@@ -1,4 +1,4 @@
-﻿# ##########################################################
+# ##########################################################
 # FlatCAM PLUS: 2D Post-processing for Manufacturing       #
 # File Updated By Sadri ERCAN - 2026                        #
 # File by:  Marius Adrian Stanciu (c)                      #
@@ -28,13 +28,16 @@ import builtins
 
 from appParsers.ParseExcellon import Excellon
 from matplotlib.backend_bases import KeyEvent as mpl_key_event
-from camlib import grace
+from camlib import grace, is_isolation_job_type
 
 fcTranslate.apply_language('strings')
 if '_' not in builtins.__dict__:
     _ = gettext.gettext
 
 log = logging.getLogger('base')
+
+
+PLOTTER_PP = 'GRBL_11_pen_plotter'
 
 
 class HybridGeoExc:
@@ -114,6 +117,7 @@ class ToolMilling(Excellon, AppTool):
 
         self.obj_name = ""
         self.target_obj = None
+        self.plotter_mode = False
 
         self.first_click = False
         self.cursor_pos = None
@@ -234,7 +238,7 @@ class ToolMilling(Excellon, AppTool):
         # all the tools are selected by default
         self.ui.tools_table_mill_exc.selectAll()
 
-        self.app.ui.notebook.setTabText(2, _("Milling"))
+        self.app.ui.notebook.setTabText(2, _("Plotter Operation") if self.plotter_mode else _("Milling"))
 
     def connect_signals(self):
         # #############################################################################
@@ -449,6 +453,7 @@ class ToolMilling(Excellon, AppTool):
 
         self.obj_name = ""
         self.target_obj = None
+        self.plotter_mode = False
 
         self.first_click = False
         self.cursor_pos = None
@@ -695,6 +700,99 @@ class ToolMilling(Excellon, AppTool):
         if self.target_obj:
             self.target_obj.obj_options['plot'] = True if state else False
 
+    def _is_plotter_target(self, obj=None):
+        target = obj if obj is not None else self.target_obj
+        if target is None:
+            try:
+                target = self.app.collection.get_by_name(self.ui.object_combo.get_value())
+            except Exception:
+                target = None
+
+        if target is None or getattr(target, 'kind', None) != 'geometry':
+            return False
+
+        if target.obj_options.get('plotter_geometry', False):
+            return True
+        if target.obj_options.get('tools_mill_ppname_g') == PLOTTER_PP:
+            return True
+
+        tools = getattr(target, 'tools', {})
+        if not isinstance(tools, dict):
+            return False
+
+        for tool in tools.values():
+            data = tool.get('data', {}) if isinstance(tool, dict) else {}
+            if not isinstance(data, dict):
+                continue
+            if data.get('plotter_geometry', False):
+                return True
+            if data.get('tools_mill_ppname_g') == PLOTTER_PP:
+                return True
+
+        return False
+
+    @staticmethod
+    def _set_radio_option_visible(radio_set, option_value, visible):
+        for choice in getattr(radio_set, 'choices', []):
+            if choice.get('value') == option_value and 'radio' in choice:
+                choice['radio'].setVisible(visible)
+
+    def _set_plotter_tool_data_label(self):
+        self.ui.tool_data_label.setText("<b>%s</b>" % _("Pen Parameters"))
+
+    def _apply_plotter_ui_state(self):
+        if self.ui is None:
+            return
+
+        was_plotter = self.plotter_mode
+        is_plotter = self._is_plotter_target()
+        self.plotter_mode = is_plotter
+
+        self._set_radio_option_visible(self.ui.target_radio, 'exc', not is_plotter)
+
+        if not is_plotter:
+            self.ui.title_label.setText("%s" % self.pluginName)
+            self.ui.generate_cnc_button.setText(_('Generate CNCJob object'))
+            self.ui.cutzlabel.setText('%s:' % _('Cut Z'))
+            self.ui.cutzlabel.setToolTip(
+                _("Cutting depth (negative)\n"
+                  "below the copper surface.")
+            )
+            if was_plotter:
+                self.ui.gen_param_label.show()
+                self.ui.gp_frame.show()
+                self.ui.spindle_label.show()
+                self.ui.spindlespeed_entry.show()
+                self.ui.dwell_cb.show()
+                self.ui.dwelltime_entry.show()
+            return
+
+        if self.ui.target_radio.get_value() != 'geo':
+            self.ui.target_radio.set_value('geo')
+
+        self.ui.title_label.setText(_("Plotter Operation"))
+        self.ui.generate_cnc_button.setText(_("Generate Plotter Job"))
+        self._set_plotter_tool_data_label()
+
+        self.ui.tool_shape_label.hide()
+        self.ui.tool_shape_combo.hide()
+        self.ui.cutzlabel.setText('%s:' % _("Z-Offset"))
+        self.ui.cutzlabel.setToolTip(_("Pen down Z offset relative to the drawing surface."))
+        self.ui.spindle_label.hide()
+        self.ui.spindlespeed_entry.hide()
+        self.ui.dwell_cb.hide()
+        self.ui.dwelltime_entry.hide()
+
+        self.ui.gen_param_label.hide()
+        self.ui.gp_frame.hide()
+        self.ui.apply_param_to_all.hide()
+        self.ui.add_tool_frame.hide()
+
+        try:
+            self.ui.pp_geo_name_cb.set_value(PLOTTER_PP)
+        except Exception:
+            pass
+
     def change_level(self, level):
         """
 
@@ -842,6 +940,7 @@ class ToolMilling(Excellon, AppTool):
         # after this moment all the changes in the Posprocessor combo will be handled by the activated signal of the
         # pp combobox
         self.on_pp_changed()
+        self._apply_plotter_ui_state()
 
     def on_exc_rebuild_ui(self):
         # read the table tools uid
@@ -995,6 +1094,7 @@ class ToolMilling(Excellon, AppTool):
             self.ui.tool_data_label.setText(
                 "<b>%s: <font color='#0000FF'>%s</font></b>" % (_('Parameters for'), _("Multiple Tools"))
             )
+        self._apply_plotter_ui_state()
 
     def build_ui_mill(self):
         self.units = self.app.app_units
@@ -1370,6 +1470,7 @@ class ToolMilling(Excellon, AppTool):
             self.to_form(storage=obj.tools[last_key]['data'])
 
         self.on_level_changed(self.ui.level.isChecked())
+        self._apply_plotter_ui_state()
 
     def on_object_changed(self):
         # print(self.app.ui.notebook.currentWidget().objectName() != 'plugin_tab')
@@ -1410,6 +1511,7 @@ class ToolMilling(Excellon, AppTool):
             else:
                 self.ui.param_frame.setDisabled(True)
                 self.ui.generate_cnc_button.setDisabled(True)
+        self._apply_plotter_ui_state()
 
     def on_object_selection_changed(self, current, previous):
         found_idx = None
@@ -1461,6 +1563,7 @@ class ToolMilling(Excellon, AppTool):
                     _("Drill depth (negative)\n"
                       "below the copper surface.")
                 )
+        self._apply_plotter_ui_state()
 
     def on_offset_type_changed(self, idx):
         if idx == 3:    # 'Custom'
@@ -1700,6 +1803,7 @@ class ToolMilling(Excellon, AppTool):
             self.ui.param_frame.setDisabled(True)
             self.ui.generate_cnc_button.setDisabled(True)
 
+        self._apply_plotter_ui_state()
         self.ui_connect()
 
     def on_row_selection_change(self):
@@ -1720,6 +1824,7 @@ class ToolMilling(Excellon, AppTool):
         else:
             self.ui.param_frame.setDisabled(True)
             self.ui.generate_cnc_button.setDisabled(True)
+        self._apply_plotter_ui_state()
 
     def update_ui(self):
         self.ui_disconnect()
@@ -1804,6 +1909,7 @@ class ToolMilling(Excellon, AppTool):
                 self.ui_connect()
                 return
 
+        self._apply_plotter_ui_state()
         self.ui_connect()
 
     def to_form(self, storage=None):
@@ -2172,6 +2278,7 @@ class ToolMilling(Excellon, AppTool):
 
         # i we found only one tool then go forward and add it
         new_tdia = deepcopy(updated_tooldia) if updated_tooldia is not None else deepcopy(truncated_tooldia)
+        new_tools_dict['tools_mill_tooldia'] = deepcopy(new_tdia)
         self.target_obj.tools.update({
             tooluid: {
                 'tooldia':          new_tdia,
@@ -2245,6 +2352,7 @@ class ToolMilling(Excellon, AppTool):
             })
 
         self.target_obj.tools[self.tooluid]['data']['name'] = deepcopy(self.target_obj.obj_options['name'])
+        self.target_obj.tools[self.tooluid]['data']['tools_mill_tooldia'] = deepcopy(tooldia)
 
         # we do this HACK to make sure the tools attribute to be serialized is updated in the self.ser_attrs list
         try:
@@ -2320,6 +2428,7 @@ class ToolMilling(Excellon, AppTool):
         })
 
         self.target_obj.tools[self.tooluid]['data']['name'] = deepcopy(self.target_obj.obj_options['name'])
+        self.target_obj.tools[self.tooluid]['data']['tools_mill_tooldia'] = deepcopy(tooldia)
 
         # we do this HACK to make sure the tools attribute to be serialized is updated in the self.ser_attrs list
         try:
@@ -3028,13 +3137,12 @@ class ToolMilling(Excellon, AppTool):
                 data = {}
                 tool_data['data'] = data
 
-            has_tooldia = 'tools_mill_tooldia' in data
             for option, value in milling_defaults.items():
                 data.setdefault(option, deepcopy(value))
 
-            if not has_tooldia and 'tooldia' in tool_data:
+            if 'tooldia' in tool_data:
                 data['tools_mill_tooldia'] = deepcopy(tool_data['tooldia'])
-            if 'tooldia' not in tool_data and 'tools_mill_tooldia' in data:
+            elif 'tools_mill_tooldia' in data:
                 tool_data['tooldia'] = deepcopy(data['tools_mill_tooldia'])
 
             missing_required = [
@@ -3250,6 +3358,13 @@ class ToolMilling(Excellon, AppTool):
                     return
 
                 if disable_offset is True:
+                    tool_offset = 0.0
+
+                # Isolation geometry already encodes the correct cut path offset.
+                # Re-applying any tool offset here would over-widen the cleared area
+                # and erode or eliminate copper traces.  Force offset to zero.
+                job_type_key = dia_cnc_dict['data'].get('tools_mill_job_type', None)
+                if is_isolation_job_type(job_type_key):
                     tool_offset = 0.0
 
                 dia_cnc_dict['data']['tools_mill_offset_value'] = tool_offset
@@ -3553,6 +3668,13 @@ class ToolMilling(Excellon, AppTool):
                 if disable_offset is True:
                     tool_offset = 0.0
 
+                # Isolation geometry already encodes the correct cut path offset.
+                # Re-applying any tool offset here would over-widen the cleared area
+                # and erode or eliminate copper traces.  Force offset to zero.
+                job_type_key = dia_cnc_dict['data'].get('tools_mill_job_type', None)
+                if is_isolation_job_type(job_type_key):
+                    tool_offset = 0.0
+
                 dia_cnc_dict['data']['tools_mill_offset_value'] = tool_offset
                 tools_dict[tool_uid_key]['data']['tools_mill_offset_value'] = tool_offset
 
@@ -3767,6 +3889,9 @@ class ToolMilling(Excellon, AppTool):
             if self.ui.level.isChecked():
                 self.ui.dwell_cb.show()
                 self.ui.dwelltime_entry.show()
+
+        if self.plotter_mode or self._is_plotter_target():
+            self._apply_plotter_ui_state()
 
     def on_plot_cb_click(self):
         self.target_obj.plot()
@@ -4052,7 +4177,7 @@ class MillingUI:
         self.layout.addLayout(self.title_box)
 
         # ## Title
-        title_label = FCLabel("%s" % name, size=16, bold=True)
+        self.title_label = FCLabel("%s" % name, size=16, bold=True)
         # title_label.setStyleSheet("""
         #                         QLabel
         #                         {
@@ -4060,11 +4185,11 @@ class MillingUI:
         #                             font-weight: bold;
         #                         }
         #                         """)
-        title_label.setToolTip(
+        self.title_label.setToolTip(
             _("Create CNCJob with toolpaths for milling either Geometry or drill holes.")
         )
 
-        self.title_box.addWidget(title_label)
+        self.title_box.addWidget(self.title_label)
 
         # App Level label
         self.level = QtWidgets.QToolButton()
@@ -4923,11 +5048,11 @@ class MillingUI:
         )
         self.tool_params_box.addWidget(self.gen_param_label)
 
-        gp_frame = FCFrame()
-        self.tool_params_box.addWidget(gp_frame)
+        self.gp_frame = FCFrame()
+        self.tool_params_box.addWidget(self.gp_frame)
 
         gen_grid = GLay(v_spacing=5, h_spacing=3)
-        gp_frame.setLayout(gen_grid)
+        self.gp_frame.setLayout(gen_grid)
 
         # Tool change Z:
         self.toolchange_cb = FCCheckBox('%s:' % _("Tool change Z"))

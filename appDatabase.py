@@ -1600,8 +1600,6 @@ class ToolsDB2(QtWidgets.QWidget):
         data["tool_target"] = self.tool_target_id(data["tool_target"])
 
         prefixes = self.TOOL_TARGET_PREFIXES.get(data["tool_target"], ("tools_",))
-        had_mill_tooldia = "tools_mill_tooldia" in data
-        had_cutout_tooldia = "tools_cutout_tooldia" in data
         for option, value in self.app.options.items():
             if any(option.startswith(prefix) for prefix in prefixes):
                 data.setdefault(option, deepcopy(value))
@@ -1610,10 +1608,27 @@ class ToolsDB2(QtWidgets.QWidget):
         data.setdefault("seg_y", deepcopy(self.app.options.get("geometry_seg_y", 0)))
 
         if "tooldia" in tool_record:
-            if any(prefix in ["tools_", "tools_mill_"] for prefix in prefixes) and not had_mill_tooldia:
-                data["tools_mill_tooldia"] = deepcopy(tool_record["tooldia"])
-            if data["tool_target"] in [0, 6] and not had_cutout_tooldia:
-                data["tools_cutout_tooldia"] = deepcopy(tool_record["tooldia"])
+            canonical_tooldia = deepcopy(tool_record["tooldia"])
+            if data["tool_target"] == 0 or "tools_mill_" in prefixes:
+                data["tools_mill_tooldia"] = canonical_tooldia
+            if data["tool_target"] in [0, 3]:
+                data["tools_iso_tooldia"] = canonical_tooldia
+            if data["tool_target"] in [0, 4]:
+                data["tools_paint_tooldia"] = canonical_tooldia
+            if data["tool_target"] in [0, 6]:
+                data["tools_cutout_tooldia"] = canonical_tooldia
+
+        if data["tool_target"] in [0, 3]:
+            mill_to_iso = (
+                ("tools_mill_tool_shape", "tools_iso_tool_shape"),
+                ("tools_mill_cutz", "tools_iso_cutz"),
+                ("tools_mill_cutz", "tools_iso_tool_cutz"),
+                ("tools_mill_vtipdia", "tools_iso_vtipdia"),
+                ("tools_mill_vtipangle", "tools_iso_vtipangle"),
+            )
+            for source_key, target_key in mill_to_iso:
+                if source_key in data:
+                    data[target_key] = deepcopy(data[source_key])
 
         data.setdefault("tools_mill_min_power", deepcopy(self.app.options.get("tools_mill_min_power", 0.0)))
         data.setdefault("tools_mill_laser_on", deepcopy(self.app.options.get("tools_mill_laser_on", "M3")))
@@ -2534,6 +2549,7 @@ class ToolsDB2(QtWidgets.QWidget):
             self.db_tool_dict[tool_id]['name'] = val
         elif wdg_name == "gdb_dia":
             self.db_tool_dict[tool_id]['tooldia'] = val
+            self.normalize_tool_preset(self.db_tool_dict[tool_id])
         elif wdg_name == "gdb_job":
             self.db_tool_dict[tool_id]['data']['tools_mill_job_type'] = val
         elif wdg_name == "gdb_shape":
