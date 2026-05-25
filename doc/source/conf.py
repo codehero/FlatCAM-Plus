@@ -71,6 +71,10 @@ release = '0.5'
 # directories to ignore when looking for source files.
 exclude_patterns = []
 
+if tags.has('no_linux_desktop'):
+    exclude_patterns.append('assets/linux/flatcam-beta.desktop')
+
+
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
 #default_role = None
