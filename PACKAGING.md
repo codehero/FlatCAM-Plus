@@ -51,6 +51,8 @@ brew install gettext
 export PATH="$(brew --prefix gettext)/bin:$PATH"
 ```
 
+The platform-specific generator scripts below run the translation compilation step automatically when `msgfmt` is available.
+
 ## Windows
 
 Install Inno Setup 6 first. With `winget`:
@@ -133,7 +135,38 @@ Install Apple command line tools first:
 xcode-select --install
 ```
 
-Build the `.app` bundle:
+Run the one-step DMG generator from the repository root:
+
+```bash
+chmod +x FlatCAMPlus_macos_dmg_generator.command packaging/macos/build_macos_dmg.sh
+./FlatCAMPlus_macos_dmg_generator.command
+```
+
+The script builds the `.app` bundle, creates a local `.icns` icon from the bundled PNG assets, ad-hoc signs the app, and creates a DMG.
+
+The automated outputs are created at:
+
+```text
+dist/macos/FlatCAM-Plus.app
+dist/installer/FlatCAMPlus-<version>-macOS-<arch>.dmg
+```
+
+Useful options:
+
+```bash
+./FlatCAMPlus_macos_dmg_generator.command --no-dmg
+./FlatCAMPlus_macos_dmg_generator.command --no-sign
+./FlatCAMPlus_macos_dmg_generator.command --skip-app
+PYTHON_BIN=/path/to/python3 ./FlatCAMPlus_macos_dmg_generator.command
+```
+
+For Developer ID signing, set `APPLE_DEVELOPER_ID` before running the generator:
+
+```bash
+APPLE_DEVELOPER_ID="Developer ID Application: YOUR NAME" ./FlatCAMPlus_macos_dmg_generator.command
+```
+
+Manual build of the `.app` bundle:
 
 ```bash
 python -m PyInstaller flatcam.py \
@@ -204,7 +237,31 @@ sudo apt install -y \
   libgdal-dev
 ```
 
-Build the Linux folder distribution:
+Run the one-step portable package generator from the repository root:
+
+```bash
+chmod +x FlatCAMPlus_linux_portable_generator.sh packaging/linux/build_linux_portable.sh
+./FlatCAMPlus_linux_portable_generator.sh
+```
+
+The script builds a PyInstaller folder distribution, writes a local `.desktop` launcher inside the portable folder, and creates a compressed archive.
+
+The automated outputs are created at:
+
+```text
+dist/linux/FlatCAM-Plus/
+dist/installer/FlatCAMPlus-<version>-linux-<arch>.tar.gz
+```
+
+Useful options:
+
+```bash
+./FlatCAMPlus_linux_portable_generator.sh --no-archive
+./FlatCAMPlus_linux_portable_generator.sh --skip-build
+PYTHON_BIN=/path/to/python3 ./FlatCAMPlus_linux_portable_generator.sh
+```
+
+Manual build of the Linux folder distribution:
 
 ```bash
 python -m PyInstaller flatcam.py \

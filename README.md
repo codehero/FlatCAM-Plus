@@ -385,8 +385,8 @@ FlatCAM Plus does not currently ship with official Windows, macOS, or Linux inst
 
 Packaging should be done on the target operating system because PyQt, OpenGL/VisPy, GDAL, Rasterio, and other native dependencies are platform-specific.
 
-- macOS users can build a `.app` bundle and optional `.dmg`.
-- Linux users can build a folder distribution or archive and use the existing `assets/linux/` launcher files for source-based installs.
+- macOS users can run `FlatCAMPlus_macos_dmg_generator.command` to build a `.app` bundle and `.dmg`.
+- Linux users can run `FlatCAMPlus_linux_portable_generator.sh` to build a portable folder and `.tar.gz` archive.
 - Windows users can build x32 and x64 Inno Setup installers from the separate `FlatCAMPlus_x32_installer_generator.bat` and `FlatCAMPlus_x64_installer_generator.bat` files.
 
 See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging commands.
