@@ -164,3 +164,5 @@ recent.json
 *.deb
 .gemini/
 *.log
+PLOTTER_ROADMAP.md
+PLOTTER_TASKS.md

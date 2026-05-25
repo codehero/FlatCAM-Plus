@@ -1,10 +1,68 @@
-FlatCAM Plus v1.0.7 BETA (c) 2026 - by Sadri ERCAN
+FlatCAM Plus v1.0.8 BETA (c) 2026 - by Sadri ERCAN
 
 Based on FlatCAM: 
 2D Computer-Aided PCB Manufacturing by (c) 2014-2016 Juan Pablo Caram
 =================================================
 
 CHANGELOG for FlatCAM Plus beta
+
+=================================================
+
+## 2026/05/25 - v1.0.8 PCB Pen Plotter, Isolation Safety, and Tooling Update
+
+### Highlights
+
+- Added a complete PCB pen plotter workflow for drawing PCB artwork with a pen, marker, or etch-resistant pen.
+- Added plotter-safe GRBL output with no spindle or laser start commands.
+- Improved isolation and milling generation so already-offset isolation paths are not widened a second time.
+- Improved Tools Database normalization for Milling, Isolation, Paint, and Cutout tool records.
+- Added PCB isolation auto-level depth protection to avoid cutting deeper than the generated isolation depth.
+- Included contributor fix from PR #6 to prevent Linux `.desktop` files from creating duplicate gettext strings.
+
+### Added
+
+- Added the new **PCB Plotter** plugin.
+- Added a **PCB Plotter** toolbar and Plugins menu entry.
+- Added `Generate Follow Path` for creating pen-follow geometry from Gerber copper.
+- Added `Generate Fill Path` for creating trace/pad-only hatch geometry for filled plotter output.
+- Added automatic `Plotter Pen` Tools Database preset seeding.
+- Added the new `GRBL_11_pen_plotter` preprocessor.
+- Added plotter options for pen width, pen-down Z, pen-up Z, draw feedrate, Z feedrate, rapid feedrate, mirror axis, and follow/fill mode.
+- Added plotter-aware Geometry and Milling panels with plotter labels such as `Generate`, `Plotter Operation`, `Pen Parameters`, `Z-Offset`, and `Generate Plotter Job`.
+- Added pen plotter G-code examples for square, follow-trace, and fill-hatch testing.
+- Added `scripts/validate_pen_plotter_gcode.py` to validate plotter-safe G-code before running it on a machine.
+- Added PCB Pen Plotter workflow and physical test protocol documentation.
+
+### Changed
+
+- Updated application version metadata to `1.0.8 beta`.
+- Updated the Windows installer default version to `1.0.8`.
+- Updated README feature tables and quick-start workflow for PCB pen plotting.
+- Changed the default isolation cut depth from `-0.07` to `-0.05`.
+- Plotter Geometry objects now open a simplified workflow focused on plotter job generation.
+- Plotter CNCJob generation hides unrelated Milling controls such as spindle, dwell, Excellon target, and generic milling parameters.
+- Tools Database records now apply canonical tool diameter values more consistently across related tool targets.
+- V-bit and isolation values are copied more reliably between Milling and Isolation tool data.
+- Existing Tools Database records are preserved; the `Plotter Pen` preset is only created or completed when missing.
+- Sphinx gettext builds now exclude the Linux `.desktop` file through a `no_linux_desktop` tag to avoid duplicate localization entries.
+
+### Fixed
+
+- Fixed CNC Control Y-axis jog button direction.
+- Fixed isolation CNCJob generation so pre-offset isolation geometry is used as-is instead of receiving a second offset.
+- Fixed over-wide isolation output that could erode or remove copper traces.
+- Fixed Milling generation for isolation jobs by forcing the tool offset to zero when the geometry already encodes the isolation path.
+- Fixed tool diameter persistence in Milling and Isolation tool records.
+- Fixed V-bit isolation parameter synchronization before job generation.
+- Fixed copper-overlap detection to reduce false positives caused by edge-only contact.
+- Fixed missing Milling defaults in older or incomplete tool records before G-code generation.
+- Fixed auto-level behavior for PCB isolation jobs by clamping compensated cutting Z to the original generated isolation depth when the depth guard is active.
+- Fixed duplicate gettext `msgid` problems caused by extracting strings from the Linux `.desktop` launcher.
+
+### Validation
+
+- Added validator checks for `G20`/`G21`, `G90`, missing pen-up movement before XY travel, forbidden spindle/laser start commands, and rapid XY travel while the pen is down.
+- Added manual workflow notes for first paper tests, copper tests, pen pressure tuning, and post-etch inspection.
 
 =================================================
 

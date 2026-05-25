@@ -6,7 +6,7 @@
 <h3 align="center">PCB CAM, pen plotting, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.7%20beta-31b0d5" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.8%20beta-31b0d5" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" />
   <img alt="PyQt" src="https://img.shields.io/badge/UI-PyQt6-41cd52" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey?logo=windows" />
@@ -65,7 +65,7 @@
 6. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
 7. Probe the board if needed, set work zero, and run the queue.
 
-**Current release:** `1.0.7` beta, released `2026/05/19`, updated `2026/05/25`.
+**Current release:** `1.0.8` beta, released `2026/05/25`, updated `2026/05/25`.
 
 FlatCAM Plus is forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019 and based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
@@ -90,6 +90,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 | AI Assistant plugin | A project-aware assistant panel can connect to OpenAI-compatible, local, Gemini, and Claude providers to analyze Gerber, Excellon, Geometry, and CNCJob context from inside FlatCAM Plus. |
 | Coordinate-preserving imports | Imported Gerber and Excellon files keep their source coordinates so copper, outline, and drill layers from the same CAM export stack remain aligned exactly as generated. |
 | CNCJob compatibility hardening | Older projects that do not carry Auto Levelling option keys now receive safe fallback defaults instead of failing during CNCJob creation. |
+| Localization build fix | Contributor update from [@rickwargo](https://github.com/rickwargo) excludes the Linux `.desktop` launcher from Sphinx gettext builds to prevent duplicate `FlatCAM Plus` message IDs. |
 | Modern project startup | FlatCAM Plus now opens into a project splash workspace with **Create New Project** and **Open Project** actions instead of immediately showing an empty canvas. |
 | Saved layout migration | The modern workspace layout version resets stale Qt window/dock state when needed, preventing older saved layouts from compressing the main canvas or splash area. |
 | Gerber editor preview fix | Gerber Editor now allocates the required VisPy layers for PCB preview mode, so copper traces render over the board background without repeated shape collection index errors. |
@@ -403,6 +404,7 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 
 - **Sadri ERCAN** - FlatCAM Plus maintainer and project modernization.
 - **[@ecp2022](https://github.com/ecp2022)** - Geometry Editor fixes for unselected line display and safer shape deletion.
+- **[@rickwargo](https://github.com/rickwargo)** - PR #6 localization build fix: excluded the Linux `.desktop` launcher from gettext extraction and removed duplicate `FlatCAM Plus` translation entries.
 
 ---
 
