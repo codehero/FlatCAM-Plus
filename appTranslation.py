@@ -176,16 +176,21 @@ def apply_language(domain, lang=None):
     else:
         try:
             current_lang = gettext.translation(str(domain), localedir=languages_dir(), languages=[lang_code])
-            current_lang.install()
-        except Exception as e:
-            log.error("FlatCAMTranslation.apply_language() --> %s. Perhaps is Cx_freeze-ed?" % str(e))
+        except FileNotFoundError:
             try:
                 current_lang = gettext.translation(str(domain),
                                                    localedir=languages_dir_cx_freeze(),
                                                    languages=[lang_code])
-                current_lang.install()
+            except FileNotFoundError:
+                current_lang = gettext.NullTranslations()
             except Exception as e:
                 log.error("FlatCAMTranslation.apply_language() --> %s" % str(e))
+                current_lang = gettext.NullTranslations()
+        except Exception as e:
+            log.error("FlatCAMTranslation.apply_language() --> %s" % str(e))
+            current_lang = gettext.NullTranslations()
+
+        current_lang.install()
 
         return name
 
