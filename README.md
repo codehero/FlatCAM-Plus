@@ -23,6 +23,7 @@
   <a href="#key-improvements">Key Improvements</a> |
   <a href="#new-features">New Features</a> |
   <a href="#installation-and-setup">Installation</a> |
+  <a href="#support-the-project">Support</a> |
   <a href="#contributors">Contributors</a>
 </p>
 
@@ -356,6 +357,16 @@ Packaging should be done on the target operating system because PyQt, OpenGL/Vis
 - Windows users can build x32 and x64 Inno Setup installers from the separate `FlatCAMPlus_x32_installer_generator.bat` and `FlatCAMPlus_x64_installer_generator.bat` files.
 
 See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging commands.
+
+---
+
+## Support the Project
+
+FlatCAM Plus is developed and maintained as an open-source project. If it helps your PCB, CNC, or CAM workflow, sponsorship helps cover the time, testing, and release work needed to keep the project alive.
+
+Your support is appreciated and helps make continued development possible.
+
+[Sponsor FlatCAM Plus on GitHub](https://github.com/sponsors/thebestgoodguy)
 
 ---
 
