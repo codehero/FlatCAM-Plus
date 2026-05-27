@@ -2818,8 +2818,11 @@ class appIO(QtCore.QObject):
         self.app.restore_project_objects_sig.emit(proj_dict, filename, cli, plot)
 
     def restore_project_objects(self, proj_dict, filename, cli, plot):
+        if QtCore.QThread.currentThread() != self.app.main_thread:
+            self.app.restore_project_objects_sig.emit(proj_dict, filename, cli, plot)
+            return
 
-        def worker_task():
+        def restore_task():
             with self.app.proc_container.new('%s' % _("Loading...")):
                 # Re-create objects
                 self.log.debug(" **************** Started PROEJCT loading... **************** ")
@@ -2945,7 +2948,9 @@ class appIO(QtCore.QObject):
 
                 self.log.debug(" **************** Finished PROJECT loading... **************** ")
 
-        self.app.worker_task.emit({'fcn': worker_task, 'params': []})
+        # Project restoration builds QObject/UI-backed FlatCAM objects. Construct them on the GUI thread;
+        # moving them there after worker-thread construction leaves Qt parent/event-filter state invalid.
+        restore_task()
 
     def save_project(self, filename, quit_action=False, silent=False, from_tcl=False):
         """
