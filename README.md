@@ -6,7 +6,7 @@
 <h3 align="center">PCB CAM, pen plotting, CNC control, live placement, auto-leveling, and release-ready G-code in one Windows-focused workspace.</h3>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.8%20beta-31b0d5" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.9%20beta-31b0d5" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" />
   <img alt="PyQt" src="https://img.shields.io/badge/UI-PyQt6-41cd52" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey?logo=windows" />
@@ -65,7 +65,7 @@
 6. Click **Preview**, **Verify**, then **Simulate** to confirm the mapped XY path at Safe Z.
 7. Probe the board if needed, set work zero, and run the queue.
 
-**Current release:** `1.0.8` beta, released `2026/05/25`, updated `2026/05/25`.
+**Current release:** `1.0.9` beta, released `2026/05/27`.
 
 FlatCAM Plus is forked from the modern FlatCAM codebase maintained by Marius Stanciu (c) 2019 and based on [FlatCAM](http://flatcam.org/) (c) 2014-2018 Juan Pablo Caram.
 
@@ -95,6 +95,7 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 | Saved layout migration | The modern workspace layout version resets stale Qt window/dock state when needed, preventing older saved layouts from compressing the main canvas or splash area. |
 | Gerber editor preview fix | Gerber Editor now allocates the required VisPy layers for PCB preview mode, so copper traces render over the board background without repeated shape collection index errors. |
 | Geometry editor fixes | Contributor updates from [@ecp2022](https://github.com/ecp2022) restore unselected geometry line display and make Geometry Editor shape deletion safer while iterating selections. |
+| Contributor stability fixes | Contributor updates from [@codehero](https://github.com/codehero) add Geometry Editor tab-cut workflow support, include interior isolation cut paths, fall back safely when translation catalogs are missing, and restore project objects on the GUI thread. |
 
 ### CAM and Tool Data
 
@@ -403,6 +404,7 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 ## Contributors
 
 - **Sadri ERCAN** - FlatCAM Plus maintainer and project modernization.
+- **[@codehero](https://github.com/codehero)** - PRs #7, #8, #9, and #10: project restore GUI-thread safety, missing translation catalog fallback, interior isolation cut paths, and Geometry Editor tab-cut workflow support.
 - **[@ecp2022](https://github.com/ecp2022)** - Geometry Editor fixes for unselected line display and safer shape deletion.
 - **[@rickwargo](https://github.com/rickwargo)** - PR #6 localization build fix: excluded the Linux `.desktop` launcher from gettext extraction and removed duplicate `FlatCAM Plus` translation entries.
 

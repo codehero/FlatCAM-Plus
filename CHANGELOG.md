@@ -8,6 +8,28 @@ CHANGELOG for FlatCAM Plus beta
 
 =================================================
 
+## 2026/05/27 - v1.0.9 Contributor Stability and Geometry Workflow Fixes
+
+### Highlights
+
+- Integrated four contributor fixes from [@codehero](https://github.com/codehero).
+- Improved Geometry Editor cut-path and tab-cut workflows.
+- Hardened project loading and translation startup fallback behavior.
+
+### Fixed
+
+- Fixed project restore flow so loaded objects are restored on the GUI thread, preventing invalid Qt parent/event-filter state during project loading. Thanks [@codehero](https://github.com/codehero). PR #7.
+- Fixed missing translation catalog handling by falling back to safe null translations when language files are unavailable. Thanks [@codehero](https://github.com/codehero). PR #8.
+- Fixed isolation cut path generation so interior polygon paths are included where applicable. Thanks [@codehero](https://github.com/codehero). PR #9.
+- Fixed Geometry Editor tab-cut workflow support, including more reliable path selection, cutting, rectangle utility geometry, plugin-tab handling, and stale geometry storage cleanup. Thanks [@codehero](https://github.com/codehero). PR #10.
+
+### Validation
+
+- Verified all four pull requests merge cleanly into `main`.
+- Ran Python syntax checks for all changed Python files.
+
+=================================================
+
 ## 2026/05/25 - v1.0.8 PCB Pen Plotter, Isolation Safety, and Tooling Update
 
 ### Highlights
