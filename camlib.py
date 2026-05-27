@@ -935,7 +935,7 @@ class Geometry(object):
         w_geo = flatten_shapely_geometry(geometry)
         for geo in w_geo:
             try:
-                interiors.append(geo.interiors)
+                interiors.extend([interior for interior in geo.interiors])
             except Exception:
                 continue
 
