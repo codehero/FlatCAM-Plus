@@ -49,13 +49,19 @@ class RectangleEditorTool(AppToolEditor):
         # if the Tool Tab is hidden display it, else hide it but only if the objectName is the same
         found_idx = None
         for idx in range(self.app.ui.notebook.count()):
-            if self.app.ui.notebook.widget(idx).objectName() == "plugin_tab":
+            try:
+                widget = self.app.ui.notebook.widget(idx)
+            except RuntimeError:
+                continue
+
+            if widget is not None and widget.objectName() == "plugin_tab":
                 found_idx = idx
                 break
         # show the Tab
-        if not found_idx:
+        if found_idx is None:
             try:
                 self.app.ui.notebook.addTab(self.app.ui.plugin_tab, self.ui.pluginName)
+                found_idx = self.app.ui.notebook.indexOf(self.app.ui.plugin_tab)
             except RuntimeError:
                 self.app.ui.plugin_tab = QtWidgets.QWidget()
                 self.app.ui.plugin_tab.setObjectName("plugin_tab")
@@ -65,13 +71,15 @@ class RectangleEditorTool(AppToolEditor):
                 self.app.ui.plugin_scroll_area = VerticalScrollArea()
                 self.app.ui.plugin_tab_layout.addWidget(self.app.ui.plugin_scroll_area)
                 self.app.ui.notebook.addTab(self.app.ui.plugin_tab, _("Plugin"))
+                found_idx = self.app.ui.notebook.indexOf(self.app.ui.plugin_tab)
 
             # focus on Tool Tab
             self.app.ui.notebook.setCurrentWidget(self.app.ui.plugin_tab)
 
         # self.app.ui.notebook.callback_on_close = self.on_tab_close
 
-        self.app.ui.notebook.setTabText(2, self.ui.pluginName)
+        if found_idx is not None and found_idx >= 0:
+            self.app.ui.notebook.setTabText(found_idx, self.ui.pluginName)
 
     def set_tool_ui(self):
         # Init appGUI

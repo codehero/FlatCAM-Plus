@@ -144,6 +144,7 @@ class AppGeoEditor(QtCore.QObject):
         self.snap_x = None
         self.snap_y = None
         self.pos = None
+        self.click_pos = None
 
         # signal that there is an action active like polygon or path
         self.in_action = False
@@ -224,9 +225,6 @@ class AppGeoEditor(QtCore.QObject):
         self.app.ui.geo_cutpath_menuitem.triggered.connect(self.cutpath)
         self.app.ui.geo_copy_menuitem.triggered.connect(lambda: self.select_tool('copy'))
 
-        self.app.ui.geo_cutpath_btn.triggered.connect(self.cutpath)
-        self.app.ui.geo_delete_btn.triggered.connect(self.on_delete_btn)
-
         self.app.ui.geo_move_menuitem.triggered.connect(self.on_move)
         self.app.ui.geo_cornersnap_menuitem.triggered.connect(self.on_corner_snap)
 
@@ -285,6 +283,8 @@ class AppGeoEditor(QtCore.QObject):
             (self.app.ui.geo_intersection_btn, self.intersection),
             (self.app.ui.geo_subtract_btn, self.subtract),
             (self.app.ui.geo_alt_subtract_btn, self.subtract_2),
+            (self.app.ui.geo_cutpath_btn, self.cutpath),
+            (self.app.ui.geo_delete_btn, self.on_delete_btn),
         )
 
         for action, slot in boolean_signals:
@@ -432,7 +432,6 @@ class AppGeoEditor(QtCore.QObject):
         pass
 
     def update_ui(self, current_item: QtWidgets.QTreeWidgetItem = None):
-        self.selected = []
         last_obj_shape = None
         last_id = None
 
@@ -1184,7 +1183,9 @@ class AppGeoEditor(QtCore.QObject):
         else:
             event_pos = (event.xdata, event.ydata)
 
-        self.pos = self.canvas.translate_coords(event_pos)
+        pos_canvas = self.canvas.translate_coords(event_pos)
+        self.click_pos = (pos_canvas[0], pos_canvas[1])
+        self.pos = pos_canvas
 
         if self.app.grid_status():
             self.pos = self.app.geo_editor.snap(self.pos[0], self.pos[1])
@@ -1257,7 +1258,7 @@ class AppGeoEditor(QtCore.QObject):
                 elif isinstance(self.active_tool, FCSelect):
                     # Dispatch event to active_tool
                     # msg = self.active_tool.click(self.snap(event.xdata, event.ydata))
-                    self.active_tool.click_release((self.pos[0], self.pos[1]))
+                    self.active_tool.click_release(self.click_pos if self.click_pos else (self.pos[0], self.pos[1]))
                     # self.app.inform.emit(msg)
                     self.plot_all()
             elif event.button == right_button:  # right click
@@ -1496,6 +1497,7 @@ class AppGeoEditor(QtCore.QObject):
 
     def draw_utility_geometry(self, geo):
         # Add the new utility shape
+        draw_color = self._color_with_alpha(self.get_edit_geometry_color(), 'FF')
         try:
             # this case is for the Font Parse
             w_geo = list(geo.geo.geoms) if isinstance(geo.geo, (MultiPolygon, MultiLineString)) else list(geo.geo)
@@ -1504,7 +1506,7 @@ class AppGeoEditor(QtCore.QObject):
                     for poly in el.geoms:
                         self.tool_shape.add(
                             shape=poly,
-                            color=self.get_draw_color(),
+                            color=draw_color,
                             update=False,
                             layer=0,
                             tolerance=None
@@ -1513,7 +1515,7 @@ class AppGeoEditor(QtCore.QObject):
                     for linestring in el.geoms:
                         self.tool_shape.add(
                             shape=linestring,
-                            color=self.get_draw_color(),
+                            color=draw_color,
                             update=False,
                             layer=0,
                             tolerance=None
@@ -1521,14 +1523,14 @@ class AppGeoEditor(QtCore.QObject):
                 else:
                     self.tool_shape.add(
                         shape=el,
-                        color=(self.get_draw_color()),
+                        color=draw_color,
                         update=False,
                         layer=0,
                         tolerance=None
                     )
         except TypeError:
             self.tool_shape.add(
-                shape=geo.geo, color=self.get_draw_color(),
+                shape=geo.geo, color=draw_color,
                 update=False, layer=0, tolerance=None)
         except AttributeError:
             pass
@@ -1564,9 +1566,268 @@ class AppGeoEditor(QtCore.QObject):
         return color
 
     def get_edit_geometry_color(self):
-        return getattr(self.fcgeometry, 'outline_color', None) or self.app.options.get(
-            'geometry_plot_line', self.get_draw_color()
-        )
+        return self.app.options.get('geometry_plot_line', self.get_draw_color())
+
+    def get_selection_tolerance(self):
+        try:
+            snap_max = float(self.editor_options.get("global_snap_max", self.app.options.get("global_snap_max", 0.05)))
+        except (TypeError, ValueError):
+            snap_max = 0.05
+
+        try:
+            draw_tol = float(getattr(self.fcgeometry, 'drawing_tolerance', 0.0)) * 10
+        except (TypeError, ValueError):
+            draw_tol = 0.0
+
+        return max(snap_max, draw_tol, 1e-9)
+
+    def get_cutpath_tolerance(self):
+        try:
+            draw_tol = float(getattr(self.fcgeometry, 'drawing_tolerance', 0.0))
+        except (TypeError, ValueError):
+            draw_tol = 0.0
+
+        if draw_tol <= 0.0:
+            try:
+                draw_tol = float(self.app.options.get("global_tolerance", 0.0))
+            except (TypeError, ValueError):
+                draw_tol = 0.0
+
+        return max(draw_tol, 1e-9)
+
+    @staticmethod
+    def _point_in_bounds(point, bounds, tolerance):
+        x, y = point
+        xmin, ymin, xmax, ymax = bounds
+        return (xmin - tolerance) <= x <= (xmax + tolerance) and (ymin - tolerance) <= y <= (ymax + tolerance)
+
+    @staticmethod
+    def _closed_shape_containing_point(geo, click_point):
+        try:
+            if isinstance(geo, Polygon):
+                return (geo.contains(click_point), abs(geo.area))
+
+            if isinstance(geo, LinearRing) or (isinstance(geo, LineString) and geo.is_ring):
+                poly = Polygon(geo)
+                if poly.is_valid and not poly.is_empty:
+                    return (poly.contains(click_point), abs(poly.area))
+
+            if isinstance(geo, (MultiPolygon, MultiLineString)):
+                containing_areas = []
+                for sub_geo in geo.geoms:
+                    contains, area = AppGeoEditor._closed_shape_containing_point(sub_geo, click_point)
+                    if contains:
+                        containing_areas.append(area)
+                if containing_areas:
+                    return True, min(containing_areas)
+        except Exception:
+            pass
+
+        return False, 0.0
+
+    @staticmethod
+    def _flatten_nonempty_geometry(geometry):
+        if geometry is None:
+            return []
+
+        try:
+            if geometry.is_empty:
+                return []
+        except AttributeError:
+            pass
+
+        if hasattr(geometry, 'geoms'):
+            flat_geo = []
+            for sub_geo in geometry.geoms:
+                flat_geo.extend(AppGeoEditor._flatten_nonempty_geometry(sub_geo))
+            return flat_geo
+
+        return [geometry]
+
+    @staticmethod
+    def _normalise_cut_tool_geometry(geometry):
+        if geometry is None:
+            return None
+
+        try:
+            if geometry.is_empty:
+                return None
+        except AttributeError:
+            return None
+
+        if hasattr(geometry, 'geoms') and not isinstance(geometry, Polygon):
+            parts = []
+            for sub_geo in geometry.geoms:
+                cut_geo = AppGeoEditor._normalise_cut_tool_geometry(sub_geo)
+                if cut_geo is not None and not cut_geo.is_empty:
+                    parts.append(cut_geo)
+            return unary_union(parts) if parts else None
+
+        if isinstance(geometry, Polygon):
+            cut_geo = geometry
+        elif isinstance(geometry, LinearRing) or (isinstance(geometry, LineString) and geometry.is_ring):
+            cut_geo = Polygon(geometry)
+        else:
+            cut_geo = geometry
+
+        if isinstance(cut_geo, Polygon) and not cut_geo.is_valid:
+            cut_geo = cut_geo.buffer(0)
+
+        if cut_geo is None or cut_geo.is_empty:
+            return None
+
+        return cut_geo
+
+    @staticmethod
+    def _closed_geometry_area(geometry):
+        if geometry is None:
+            return 0.0
+
+        try:
+            if geometry.is_empty:
+                return 0.0
+        except AttributeError:
+            return 0.0
+
+        try:
+            if isinstance(geometry, Polygon):
+                return abs(geometry.area)
+
+            if isinstance(geometry, LinearRing) or (isinstance(geometry, LineString) and geometry.is_ring):
+                poly = Polygon(geometry)
+                if poly.is_valid and not poly.is_empty:
+                    return abs(poly.area)
+
+            if hasattr(geometry, 'geoms'):
+                return sum(AppGeoEditor._closed_geometry_area(sub_geo) for sub_geo in geometry.geoms)
+        except Exception:
+            return 0.0
+
+        return 0.0
+
+    @staticmethod
+    def _has_open_path_geometry(geometry):
+        if geometry is None:
+            return False
+
+        try:
+            if geometry.is_empty:
+                return False
+        except AttributeError:
+            return False
+
+        if isinstance(geometry, LinearRing):
+            return False
+
+        if isinstance(geometry, LineString):
+            return not geometry.is_ring
+
+        if isinstance(geometry, MultiLineString):
+            return any(AppGeoEditor._has_open_path_geometry(sub_geo) for sub_geo in geometry.geoms)
+
+        if hasattr(geometry, 'geoms'):
+            return any(AppGeoEditor._has_open_path_geometry(sub_geo) for sub_geo in geometry.geoms)
+
+        return False
+
+    @staticmethod
+    def _is_cuttable_path_geometry(geometry):
+        return isinstance(geometry, (Polygon, LineString, LinearRing, MultiLineString))
+
+    def _split_cutpath_selection(self, selected):
+        selected = [
+            shape for shape in selected
+            if shape is not None and getattr(shape, 'geo', None) is not None and not shape.geo.is_empty
+        ]
+
+        if len(selected) < 2:
+            return [], []
+
+        open_path_targets = [
+            shape for shape in selected
+            if self._has_open_path_geometry(shape.geo)
+        ]
+
+        if open_path_targets:
+            targets = open_path_targets
+            tools = [shape for shape in selected if shape not in targets]
+            return targets, tools
+
+        closed_path_shapes = [
+            (self._closed_geometry_area(shape.geo), idx, shape)
+            for idx, shape in enumerate(selected)
+            if self._is_cuttable_path_geometry(shape.geo)
+        ]
+
+        if len(closed_path_shapes) >= 2:
+            closed_path_shapes.sort(key=lambda item: (-item[0], item[1]))
+            target = closed_path_shapes[0][2]
+            tools = [shape for shape in selected if shape is not target]
+            return [target], tools
+
+        return [selected[0]], selected[1:]
+
+    def _add_cut_result_geometry(self, geometry):
+        added = False
+
+        for geo in self._flatten_nonempty_geometry(geometry):
+            if geo.geom_type == 'Point':
+                continue
+
+            if isinstance(geo, Polygon):
+                for ring in poly2rings(geo):
+                    self.add_shape(DrawToolShape(ring), build_ui=False)
+                    added = True
+            else:
+                self.add_shape(DrawToolShape(geo), build_ui=False)
+                added = True
+
+        return added
+
+    def remove_plugin_tab(self):
+        notebook = getattr(self.app.ui, 'notebook', None)
+        if notebook is None:
+            return
+
+        for idx in range(notebook.count()):
+            try:
+                widget = notebook.widget(idx)
+            except RuntimeError:
+                continue
+
+            if widget is not None and widget.objectName() == "plugin_tab":
+                notebook.removeTab(idx)
+                return
+
+    def get_shapes_under_point(self, point, tolerance=None):
+        tolerance = self.get_selection_tolerance() if tolerance is None else tolerance
+        click_point = Point(point)
+        candidate_shapes = []
+
+        for obj_shape in self.storage.get_objects():
+            geo = obj_shape.geo
+            if not geo or geo.is_empty:
+                continue
+
+            try:
+                if not self._point_in_bounds(point, geo.bounds, tolerance):
+                    continue
+                geo_distance = geo.distance(click_point)
+            except Exception as err:
+                self.app.log.error("AppGeoEditor.get_shapes_under_point() --> %s" % str(err))
+                continue
+
+            if geo_distance <= tolerance:
+                contains, area = self._closed_shape_containing_point(geo, click_point)
+                candidate_shapes.append((0, geo_distance, area, obj_shape))
+                continue
+
+            contains, area = self._closed_shape_containing_point(geo, click_point)
+            if contains:
+                candidate_shapes.append((1, 0.0, area, obj_shape))
+
+        candidate_shapes.sort(key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
+        return [obj_shape for __, ___, ____, obj_shape in candidate_shapes]
 
     def on_delete_btn(self):
         self.delete_selected()
@@ -1587,6 +1848,7 @@ class AppGeoEditor(QtCore.QObject):
         Deletes shape(shapes) from the storage, selection and utility
         """
         w_shapes = list(shapes) if isinstance(shapes, list) else [shapes]
+        w_shapes = list(dict.fromkeys(shape for shape in w_shapes if shape is not None))
 
         for shape in w_shapes:
             # remove from Utility
@@ -2212,16 +2474,18 @@ class AppGeoEditor(QtCore.QObject):
                     # toolgeo = unary_union([deepcopy(shp.geo) for shp in tools]).buffer(0.0000001)
                     # result = DrawToolShape(target.difference(toolgeo))
                     for tool in tools:
-                        if tool.geo.is_ring:
-                            sub_geo = Polygon(tool.geo)
+                        sub_geo = editor_self._normalise_cut_tool_geometry(tool.geo)
+                        if sub_geo is None:
+                            continue
                         target = target.difference(sub_geo)
                     result = DrawToolShape(target)
                     editor_self.add_shape(deepcopy(result))
 
                     for_deletion = [s for s in editor_self.get_selected()]
                     for shape in for_deletion:
-                        self.delete_shape(shape)
+                        editor_self.delete_shape(shape)
 
+                    editor_self.selected = []
                     editor_self.plot_all()
                     editor_self.build_ui_sig.emit()
                     editor_self.app.inform.emit('[success] %s' % _("Done."))
@@ -2245,8 +2509,9 @@ class AppGeoEditor(QtCore.QObject):
                     tools = selected[1:]
                     # toolgeo = unary_union([shp.geo for shp in tools]).buffer(0.0000001)
                     for tool in tools:
-                        if tool.geo.is_ring:
-                            sub_geo = Polygon(tool.geo)
+                        sub_geo = editor_self._normalise_cut_tool_geometry(tool.geo)
+                        if sub_geo is None:
+                            continue
                         target = target.difference(sub_geo)
                     result = DrawToolShape(target)
                     editor_self.add_shape(deepcopy(result))
@@ -2264,38 +2529,108 @@ class AppGeoEditor(QtCore.QObject):
     def cutpath(self):
         def work_task(editor_self):
             with editor_self.app.proc_container.new(_("Working...")):
-                selected = editor_self.get_selected()
+                selected = list(editor_self.get_selected())
                 if len(selected) < 2:
                     editor_self.app.inform.emit('[WARNING_NOTCL] %s' %
                                                 _("A selection of minimum two items is required."))
                     editor_self.select_tool('select')
                     return
 
-                tools = selected[1:]
-                toolgeo = unary_union([shp.geo for shp in tools])
-
-                target = selected[0]
-                if type(target.geo) == Polygon:
-                    for ring in poly2rings(target.geo):
-                        editor_self.add_shape(DrawToolShape(ring.difference(toolgeo)))
-                elif type(target.geo) == LineString or type(target.geo) == LinearRing:
-                    editor_self.add_shape(DrawToolShape(target.geo.difference(toolgeo)))
-                elif type(target.geo) == MultiLineString:
-                    try:
-                        for linestring in target.geo:
-                            editor_self.add_shape(DrawToolShape(linestring.difference(toolgeo)))
-                    except Exception as e:
-                        editor_self.app.log.error("Current LinearString does not intersect the target. %s" % str(e))
-                else:
-                    editor_self.app.log.warning("Not implemented. Object type: %s" % str(type(target.geo)))
+                targets, tools = editor_self._split_cutpath_selection(selected)
+                if not targets or not tools:
+                    editor_self.app.inform.emit('[WARNING_NOTCL] %s' %
+                                                _("A selection of minimum two items is required."))
+                    editor_self.select_tool('select')
                     return
 
-                editor_self.delete_shape(target)
-                editor_self.plot_all()
+                tool_geometry = []
+                tool_geometry_by_shape = []
+                for shp in tools:
+                    cut_geo = editor_self._normalise_cut_tool_geometry(shp.geo)
+                    if cut_geo is not None and not cut_geo.is_empty:
+                        tool_geometry.append(cut_geo)
+                        tool_geometry_by_shape.append((shp, cut_geo))
+
+                if not tool_geometry:
+                    editor_self.app.inform.emit('[WARNING_NOTCL] %s' % _("No valid tool geometry selected."))
+                    editor_self.select_tool('select')
+                    return
+
+                toolgeo = unary_union(tool_geometry)
+                cut_tolerance = editor_self.get_cutpath_tolerance()
+                if cut_tolerance > 0.0:
+                    toolgeo = toolgeo.buffer(cut_tolerance)
+                    tool_geometry_by_shape = [
+                        (shp, cut_geo.buffer(cut_tolerance))
+                        for shp, cut_geo in tool_geometry_by_shape
+                    ]
+
+                editor_self.app.log.debug(
+                    "AppGeoEditor.cutpath() --> selected=%d targets=%d tools=%d tool_bounds=%s tolerance=%s" %
+                    (len(selected), len(targets), len(tools), str(toolgeo.bounds), str(cut_tolerance))
+                )
+
+                changed_targets = []
+                used_tools = []
+                for target in targets:
+                    try:
+                        if not target.geo.intersects(toolgeo):
+                            continue
+                    except Exception as e:
+                        editor_self.app.log.error("Cut path intersection check failed. %s" % str(e))
+                        continue
+
+                    source_geometries = []
+                    if isinstance(target.geo, Polygon):
+                        source_geometries.extend(poly2rings(target.geo))
+                    elif isinstance(target.geo, (LineString, LinearRing)):
+                        source_geometries.append(target.geo)
+                    elif isinstance(target.geo, MultiLineString):
+                        source_geometries.extend(target.geo.geoms)
+                    else:
+                        editor_self.app.log.warning("Not implemented. Object type: %s" % str(type(target.geo)))
+                        continue
+
+                    changed = False
+                    target_additions = []
+                    for source_geo in source_geometries:
+                        result = source_geo.difference(toolgeo)
+                        if not result.equals(source_geo):
+                            changed = True
+                            target_additions.append(result)
+                        else:
+                            target_additions.append(source_geo)
+
+                    if changed:
+                        added = False
+                        for result in target_additions:
+                            added = editor_self._add_cut_result_geometry(result) or added
+
+                        if added:
+                            changed_targets.append(target)
+                            for tool_shape, cut_geo in tool_geometry_by_shape:
+                                try:
+                                    if target.geo.intersects(cut_geo):
+                                        used_tools.append(tool_shape)
+                                except Exception as e:
+                                    editor_self.app.log.error(
+                                        "Cut path tool intersection check failed. %s" % str(e))
+
+                if not changed_targets:
+                    editor_self.app.inform.emit('[WARNING_NOTCL] %s' %
+                                                _("Cut geometry does not overlap any selected path."))
+                    editor_self.select_tool('select')
+                    return
+
+                for target in changed_targets:
+                    editor_self.delete_shape(target)
+
+                editor_self.selected = list(dict.fromkeys(used_tools))
                 editor_self.build_ui_sig.emit()
+                editor_self.plot_all()
                 editor_self.app.inform.emit('[success] %s' % _("Done."))
 
-        self.app.worker_task.emit({'fcn': work_task, 'params': [self]})
+        work_task(self)
 
     def flatten(self, geometry, orient_val=1, reset=True, pathonly=False):
         """
@@ -2656,37 +2991,36 @@ class DrawToolShape(object):
         """
         pts = []
 
+        if o is None:
+            return pts
+
+        # DrawToolShape: descend into .geo.
+        if isinstance(o, DrawToolShape):
+            return DrawToolShape.get_pts(o.geo)
+
+        # Descend into .exterior and .interiors.
+        if isinstance(o, Polygon):
+            pts += DrawToolShape.get_pts(o.exterior)
+            for i in o.interiors:
+                pts += DrawToolShape.get_pts(i)
+            return pts
+
+        if hasattr(o, 'geoms'):
+            for subo in o.geoms:
+                pts += DrawToolShape.get_pts(subo)
+            return pts
+
         # Iterable: descend into each item.
         try:
-            if isinstance(o, (MultiPolygon, MultiLineString)):
-                for subo in o.geoms:
-                    pts += DrawToolShape.get_pts(subo)
-            else:
-                for subo in o:
-                    pts += DrawToolShape.get_pts(subo)
+            for subo in o:
+                pts += DrawToolShape.get_pts(subo)
         # Non-iterable
         except TypeError:
-            if o is None:
-                return
-
-            # DrawToolShape: descend into .geo.
-            if isinstance(o, DrawToolShape):
-                pts += DrawToolShape.get_pts(o.geo)
-
-            # Descend into .exterior and .interiors
-            elif isinstance(o, Polygon):
-                pts += DrawToolShape.get_pts(o.exterior)
-                for i in o.interiors:
-                    pts += DrawToolShape.get_pts(i)
-            elif isinstance(o, (MultiLineString, MultiPolygon)):
-                for geo_pol_line in o.geoms:
-                    pts += DrawToolShape.get_pts(geo_pol_line)
             # Has .coords: list them.
+            if DrawToolShape.tolerance is not None:
+                pts += list(o.simplify(DrawToolShape.tolerance).coords)
             else:
-                if DrawToolShape.tolerance is not None:
-                    pts += list(o.simplify(DrawToolShape.tolerance).coords)
-                else:
-                    pts += list(o.coords)
+                pts += list(o.coords)
         return pts
 
     def __init__(self, geo: (BaseGeometry, list)):
@@ -3648,45 +3982,47 @@ class FCRectangle(FCShapeTool):
 
         return ""
 
+    def _rectangle_geometry(self, p1, p2):
+        if p1 is None or p2 is None:
+            return None
+
+        length = abs(p1[0] - p2[0])
+        width = abs(p1[1] - p2[1])
+        if length == 0.0 or width == 0.0:
+            return None
+
+        corner_type = self.rect_tool.ui.corner_radio.get_value()
+        corner_radius = self.rect_tool.ui.radius_entry.get_value()
+        base_util_geo = Polygon([p1, (p2[0], p1[1]), p2, (p1[0], p2[1])])
+
+        if corner_radius == 0.0:
+            corner_type = 's'
+        if corner_type in ['r', 'b'] and (length <= 2 * corner_radius or width <= 2 * corner_radius):
+            corner_type = 's'
+
+        if corner_type not in ['r', 'b']:
+            return base_util_geo.exterior
+
+        length -= 2 * corner_radius
+        width -= 2 * corner_radius
+        center_pt = base_util_geo.centroid
+        cx = center_pt.x
+        cy = center_pt.y
+        minx = cx - (length / 2)
+        miny = cy - (width / 2)
+        maxx = cx + (length / 2)
+        maxy = cy + (width / 2)
+
+        join_style = base.JOIN_STYLE.round if corner_type == 'r' else base.JOIN_STYLE.bevel
+        return box(minx, miny, maxx, maxy).buffer(
+            corner_radius, join_style=join_style,
+            resolution=self.draw_app.app.options["geometry_circle_steps"]).exterior
+
     def utility_geometry(self, data=None):
         if len(self.points) == 1:
-            p1 = self.points[0]
-            p2 = data
-
-            corner_type = self.rect_tool.ui.corner_radio.get_value()
-            corner_radius = self.rect_tool.ui.radius_entry.get_value()
-            length = abs(p1[0] - p2[0])
-            width = abs(p1[1] - p2[1])
-
-            if corner_radius == 0.0:
-                corner_type = 's'
-            if corner_type in ['r', 'b']:
-                length -= 2 * corner_radius
-                width -= 2 * corner_radius
-
-            base_util_geo = Polygon([p1, (p2[0], p1[1]), p2, (p1[0], p2[1])])
-            center_pt = base_util_geo.centroid
-            cx = center_pt.x
-            cy = center_pt.y
-            minx = cx - (length / 2)
-            miny = cy - (width / 2)
-            maxx = cx + (length / 2)
-            maxy = cy + (width / 2)
-
-            if length < 0 or width < 0:
-                corner_type = 's'
-
-            if corner_type == 'r':
-                util_geo = box(minx, miny, maxx, maxy).buffer(
-                    corner_radius, join_style=base.JOIN_STYLE.round,
-                    resolution=self.draw_app.app.options["geometry_circle_steps"]).exterior
-            elif corner_type == 'b':
-                util_geo = box(minx, miny, maxx, maxy).buffer(
-                    corner_radius, join_style=base.JOIN_STYLE.bevel,
-                    resolution=self.draw_app.app.options["geometry_circle_steps"]).exterior
-            else:  # 's' - square
-                util_geo = base_util_geo.exterior
-
+            util_geo = self._rectangle_geometry(self.points[0], data)
+            if util_geo is None:
+                return None
             self.util_geo = util_geo
             return DrawToolUtilityShape(util_geo)
 
@@ -3702,6 +4038,14 @@ class FCRectangle(FCShapeTool):
         # p2 = self.points[1]
         # # self.geometry = LinearRing([p1, (p2[0], p1[1]), p2, (p1[0], p2[1])])
         # geo = LinearRing([p1, (p2[0], p1[1]), p2, (p1[0], p2[1])])
+
+        if self.util_geo is None and len(self.points) >= 2:
+            self.util_geo = self._rectangle_geometry(self.points[0], self.points[1])
+
+        if self.util_geo is None:
+            self.complete = False
+            self.draw_app.app.inform.emit('[WARNING_NOTCL] %s' % _("Failed."))
+            return
 
         self.geometry = DrawToolShape(self.util_geo)
         self.geometry.data['type'] = _('Rectangle')
@@ -4390,10 +4734,7 @@ class FCSelect(DrawTool):
             self.draw_app.app.plotcanvas.view.camera.zoom_callback = lambda *args: None
 
         # make sure that the Tools tab is removed
-        try:
-            self.draw_app.app.ui.notebook.removeTab(2)
-        except Exception:
-            pass
+        self.draw_app.remove_plugin_tab()
 
     def click_release(self, point):
         """
@@ -4402,38 +4743,19 @@ class FCSelect(DrawTool):
         :return:
         """
 
-        # list where we store the overlapped shapes under our mouse left click position
-        over_shape_list = []
-
         if self.draw_app.interdict_selection is True:
             self.draw_app.app.inform.emit('[WARNING_NOTCL] %s' % _("Selection not allowed. Wait ..."))
             return
 
-        # pos[0] and pos[1] are the mouse click coordinates (x, y)
-        for ____ in self.storage.get_objects():
-            # first method of click selection -> inconvenient
-            # minx, miny, maxx, maxy = obj_shape.geo.bounds
-            # if (minx <= pos[0] <= maxx) and (miny <= pos[1] <= maxy):
-            #     over_shape_list.append(obj_shape)
-
-            # second method of click selection -> slow
-            # outside = obj_shape.geo.buffer(0.1)
-            # inside = obj_shape.geo.buffer(-0.1)
-            # shape_band = outside.difference(inside)
-            # if Point(pos).within(shape_band):
-            #     over_shape_list.append(obj_shape)
-
-            # 3rd method of click selection -> inconvenient
-            try:
-                __, closest_shape = self.storage.nearest(point)
-            except StopIteration:
-                return ""
-
-            over_shape_list.append(closest_shape)
+        # list where we store the overlapped shapes under our mouse left click position
+        over_shape_list = self.draw_app.get_shapes_under_point(point)
+        if not over_shape_list and self.draw_app.pos:
+            snapped_point = (self.draw_app.pos[0], self.draw_app.pos[1])
+            if snapped_point != point:
+                over_shape_list = self.draw_app.get_shapes_under_point(snapped_point)
 
         try:
             # if there is no shape under our click then deselect all shapes
-            # it will not work for 3rd method of click selection
             if not over_shape_list:
                 self.draw_app.selected = []
                 AppGeoEditor.draw_shape_idx = -1
