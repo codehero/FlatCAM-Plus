@@ -43,7 +43,6 @@
 | Project Workspace | Start from a project splash, organize files in a tree, inspect properties in a right sidebar, and work inside a CNC-style manufacturing UI. |
 | 3D CNC Preview | Render CNCJob output in a dedicated 3D preview plugin with PCB-style board visualization and engraved Z-depth channels. |
 | AI Assistant | Use a project-aware assistant with OpenAI-compatible, local, Gemini, and Claude providers for CAM and CNC workflow analysis. |
-| Android CNC Companion | Test the beta Android CNC controller app for mobile FluidNC, TCP/Telnet, and USB Serial sessions. |
 | Modular Architecture | CNC Control is split into focused modules for profiles, transports, widgets, dialogs, machine profiles, and dashboard sections. |
 
 ## Why This Fork
@@ -141,7 +140,6 @@ FlatCAM Plus modernizes the FlatCAM workflow with a stronger Windows runtime, cl
 | CNC Bed Compensation | Preprocessors now support unit-aware **Bed Offset** and **Bed Skew** compensation for non-square machine beds, ensuring milling accuracy across the entire workspace. |
 | Modular CNC architecture | CNC controller features are split into focused modules under `appPlugins/cnc_control/` for easier maintenance and future plugin-style extensions. |
 | Centralized manufacturing preferences | Core machine setup starts from a dedicated Manufacturing Settings group before deeper plugin-specific defaults. |
-| FlatCAM CNC Android app (beta) | A native Android CNC control app is included under `flatcam-cnc-android/` as a beta companion for mobile controller sessions. |
 
 ### Workspace and Project UI
 
@@ -194,22 +192,6 @@ FlatCAM Plus includes a built-in CNC control workflow for managing machine sessi
 | Live machine status | Controller reports update the toolbar, DRO, machine state, position, and controller details. |
 | Limit input indicators | Active GRBL `Pn:` limit inputs are shown beside X/Y/Z DRO rows and logged only when they change. |
 | Safe disconnect | Active transports, receiver threads, streaming state, and UI indicators are reset cleanly. |
-
-### FlatCAM CNC Android App (Beta)
-
-The repository includes `flatcam-cnc-android/`, a native Android companion app for mobile CNC control. This app is currently **beta** and intended for testing alongside the desktop CNC workflow.
-
-| Feature | Description |
-| --- | --- |
-| Native Android interface | Built with Kotlin, Jetpack Compose, and Material 3. |
-| Controller transports | Supports FluidNC HTTP, TCP/Telnet GRBL-style connections, and Android USB Serial. |
-| Controller profiles | Reuses the same controller families as the desktop CNC workflow: GRBL, FluidNC, Marlin, Smoothieware, and generic G-code. |
-| Live machine status | Displays WPos/MPos DRO, feed, spindle, overrides, controller state, and TX/RX terminal messages. |
-| Machine controls | Includes home, unlock, reset, hold, resume, zero, jog, feed/spindle overrides, spindle RPM, spindle stop, and laser toggle controls. |
-| G-code sender | Opens local G-code files, loads sample programs, streams line by line, and supports pause/stop. |
-| FluidNC/SD helpers | Includes SD listing and selected SD file start support where the controller transport supports it. |
-| USB permission flow | Requests Android USB host permission on first serial connection. |
-| Beta build output | Debug builds produce `flatcam-cnc-android/app/build/outputs/apk/debug/app-debug.apk`. |
 
 ### CNC Dashboard
 
@@ -363,24 +345,7 @@ pip install -r requirements.txt
 python flatcam.py
 ```
 
-### 3. Building the Android CNC App (Beta)
-
-The Android companion app lives in `flatcam-cnc-android/` and is currently beta.
-
-```powershell
-cd flatcam-cnc-android
-.\gradlew.bat assembleDebug
-```
-
-The debug APK is generated at:
-
-```text
-flatcam-cnc-android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-Android USB Serial requires a device with USB host support and user approval in the Android USB permission dialog.
-
-### 4. Desktop Packaging
+### 3. Desktop Packaging
 
 FlatCAM Plus does not currently ship with official Windows, macOS, or Linux installer artifacts in this repository. Users who clone the repository can still create local desktop packages from source.
 
@@ -414,7 +379,7 @@ See [`PACKAGING.md`](PACKAGING.md) for Windows, macOS, and Linux packaging comma
 
 FlatCAM base code and MIT-licensed project components are covered by the root `LICENSE` file.
 
-The CNC Control, PCB Plotter, CNC 3D Preview, AI Assistant, and Android CNC companion app modules are licensed separately and are not covered by the root MIT license:
+The CNC Control, PCB Plotter, CNC 3D Preview, and AI Assistant modules are licensed separately and are not covered by the root MIT license:
 
 - `appPlugins/ToolCNCControl.py`
 - `appPlugins/cnc_control/`
@@ -424,6 +389,5 @@ The CNC Control, PCB Plotter, CNC 3D Preview, AI Assistant, and Android CNC comp
 - `appPlugins/cnc_preview_3d/`
 - `appPlugins/ToolAIAssistant.py`
 - `appPlugins/ai_assistant/`
-- `flatcam-cnc-android/`
 
-See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, `appPlugins/ai_assistant/LICENSE`, and the module notes in `flatcam-cnc-android/README.md` for the separate module license terms. The PCB Plotter plugin and `GRBL_11_pen_plotter` preprocessor use the same non-commercial license terms as CNC Control. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.
+See `appPlugins/cnc_control/LICENSE`, `appPlugins/cnc_preview_3d/LICENSE`, and `appPlugins/ai_assistant/LICENSE` for the separate module license terms. The PCB Plotter plugin and `GRBL_11_pen_plotter` preprocessor use the same non-commercial license terms as CNC Control. These modules may be used, studied, modified, and shared for non-commercial purposes, but they may not be sold, sublicensed, monetized, or included in a commercial product or service without separate written permission from Sadri ERCAN.

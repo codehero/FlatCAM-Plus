@@ -307,5 +307,5 @@ The repository also includes a basic Linux install helper in `Makefile` and desk
 - Always test import, project open/save, Gerber/Excellon rendering, CNCJob generation, and plugin startup from the packaged app.
 - If a package starts but a plugin is missing, add the missing module with another `--collect-submodules` or `--hidden-import` entry and rebuild.
 - If VisPy/OpenGL rendering fails on Linux, test on a machine with working OpenGL drivers and confirm the Qt/XCB libraries are installed.
-- Do not include `doc/`, `flatcam-cnc-android/`, or development caches in desktop runtime packages unless you intentionally want to ship them.
+- Do not include `doc/` or development caches in desktop runtime packages unless you intentionally want to ship them.
 - Review third-party licenses before distributing commercial packages. PyQt6, Qt, GDAL/Rasterio, and other native dependencies may have license or redistribution requirements.
