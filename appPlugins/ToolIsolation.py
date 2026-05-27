@@ -2009,7 +2009,7 @@ class ToolIsolation(Gerber, AppTool):
 
     def _isolation_cut_paths(self, geometry):
         paths = []
-        for path in self._path_geometry_for_cut_model(geometry, include_interiors=False):
+        for path in self._path_geometry_for_cut_model(geometry, include_interiors=True):
             if path is not None and not path.is_empty and getattr(path, "length", 0.0) > 0:
                 paths.append(path)
         return paths
@@ -4691,5 +4691,4 @@ class IsoUI:
                                             (_("Edited value is out of range"), minval, maxval), False)
         else:
             self.app.inform[str, bool].emit('[success] %s' % _("Edited value is within limits."), False)
-
 
