@@ -2715,10 +2715,14 @@ class App(QtCore.QObject):
                 # clean the Tools Tab
                 found_idx = None
                 for idx in range(self.ui.notebook.count()):
-                    if self.ui.notebook.widget(idx).objectName() == "plugin_tab":
+                    try:
+                        widget = self.ui.notebook.widget(idx)
+                    except RuntimeError:
+                        continue
+                    if widget is not None and widget.objectName() == "plugin_tab":
                         found_idx = idx
                         break
-                if found_idx:
+                if found_idx is not None:
                     self.ui.ensure_properties_tab_visible()
                     self.ui.notebook.removeTab(found_idx)
 
@@ -2833,12 +2837,16 @@ class App(QtCore.QObject):
                 # clean the Tools Tab
                 found_idx = None
                 for idx in range(self.ui.notebook.count()):
-                    if self.ui.notebook.widget(idx).objectName() == "plugin_tab":
+                    try:
+                        widget = self.ui.notebook.widget(idx)
+                    except RuntimeError:
+                        continue
+                    if widget is not None and widget.objectName() == "plugin_tab":
                         found_idx = idx
                         break
-                if found_idx:
+                if found_idx is not None:
                     self.ui.ensure_properties_tab_visible()
-                    self.ui.notebook.removeTab(2)
+                    self.ui.notebook.removeTab(found_idx)
 
                 self.inform.emit('[WARNING_NOTCL] %s' % _("Editor exited. Editor content was not saved."))
 

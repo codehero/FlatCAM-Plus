@@ -7922,7 +7922,7 @@ def flatten_shapely_geometry(geometry, simplify_tolerance: float = 0.0) -> list:
     """
     flat_list = []
     try:
-        work_geo = geometry.geoms if isinstance(geometry, (MultiLineString, MultiPolygon, MultiPoint)) else geometry
+        work_geo = geometry.geoms if hasattr(geometry, 'geoms') else geometry
         for geo in work_geo:
             flat_list += flatten_shapely_geometry(geo)
     except TypeError:
@@ -8561,13 +8561,21 @@ class AppRTreeStorage(AppRTree):
     def remove(self, obj):
         # See note about self.indexes in insert().
         # objidx = self.indexes[obj]
-        objidx = self.indexes[id(obj)]
+        objidx = self.indexes.pop(id(obj), None)
+        if objidx is None:
+            return
+
+        if objidx >= len(self.objects) or self.objects[objidx] is None:
+            return
 
         # Remove from list
         self.objects[objidx] = None
 
         # Remove from index
-        self.remove_obj(objidx, obj)
+        try:
+            self.remove_obj(objidx, obj)
+        except Exception as err:
+            log.debug("AppRTreeStorage.remove() --> stale spatial index entry ignored: %s" % str(err))
 
     def get_objects(self):
         return (o for o in self.objects if o is not None)
