@@ -3300,18 +3300,19 @@ class SelectEditorGrb(QtCore.QObject, DrawTool):
                 for p in self.results:
                     output.append(p.get())
 
-                for ret_val in output:
-                    if ret_val:
-                        k = ret_val[0]
-                        part = ret_val[1]
-                        idx = ret_val[2] + (part * n_chunks)
-                        shape_stored = editor_obj.storage_dict[k]['geometry'][idx]
+                hits = [ret_val for ret_val in output if ret_val]
+                if hits:
+                    best_hit = min(hits, key=lambda v: (v[3], v[4], v[0], v[1], v[2]))
+                    k = best_hit[0]
+                    part = best_hit[1]
+                    idx = best_hit[2] + (part * n_chunks)
+                    shape_stored = editor_obj.storage_dict[k]['geometry'][idx]
 
-                        if shape_stored in editor_obj.selected:
-                            editor_obj.selected.remove(shape_stored)
-                        else:
-                            # add the object to the selected shapes
-                            editor_obj.selected.append(shape_stored)
+                    if shape_stored in editor_obj.selected:
+                        editor_obj.selected.remove(shape_stored)
+                    else:
+                        # add the object to the selected shapes
+                        editor_obj.selected.append(shape_stored)
 
                 self.draw_app.update_ui_sig.emit()
 
@@ -3321,46 +3322,77 @@ class SelectEditorGrb(QtCore.QObject, DrawTool):
 
     @staticmethod
     def check_intersection(ap_key, chunk, geo_storage, point):
+        click_pt = Point(point)
+        best_hit = None
+
         for idx, shape_stored in enumerate(geo_storage):
             if 'solid' in shape_stored.geo:
                 geometric_data = shape_stored.geo['solid']
-                if Point(point).intersects(geometric_data):
-                    return ap_key, chunk, idx
+                if geometric_data is None or geometric_data.is_empty:
+                    continue
+
+                if not click_pt.intersects(geometric_data):
+                    continue
+
+                follow_geo = shape_stored.geo.get('follow')
+                if follow_geo is not None and not follow_geo.is_empty:
+                    hit_distance = click_pt.distance(follow_geo)
+                else:
+                    hit_distance = click_pt.distance(geometric_data)
+
+                hit_area = getattr(geometric_data, 'area', 0.0)
+                candidate = (ap_key, chunk, idx, hit_distance, hit_area)
+                if best_hit is None or (candidate[3], candidate[4], candidate[0], candidate[1], candidate[2]) < \
+                        (best_hit[3], best_hit[4], best_hit[0], best_hit[1], best_hit[2]):
+                    best_hit = candidate
+
+        return best_hit
 
     def after_selection(self):
         # ######################################################################################################
         # select the aperture in the Apertures Table that is associated with the selected shape
         # ######################################################################################################
         self.sel_aperture.clear()
-        self.draw_app.ui.apertures_table.clearSelection()
 
         for shape_s in self.draw_app.selected:
             for storage in self.draw_app.storage_dict:
                 if shape_s in self.draw_app.storage_dict[storage]['geometry']:
                     self.sel_aperture.add(storage)
 
+        aperture_table = self.draw_app.ui.apertures_table
+        table_selection_model = aperture_table.selectionModel()
+
+        def disconnect_all(signal, slot):
+            while True:
+                try:
+                    signal.disconnect(slot)
+                except (TypeError, RuntimeError):
+                    break
+
         # disconnect signal when clicking in the table
-        try:
-            self.draw_app.ui.apertures_table.cellPressed.disconnect(self.draw_app.on_row_selected)
-        except Exception as e:
-            log.error("AppGerberEditor.SelectEditorGrb.click_release() --> %s" % str(e))
-        try:
-            self.draw_app.ui.apertures_table.selectionModel().selectionChanged.disconnect(
-                self.draw_app.on_table_selection)
-        except Exception as e:
-            log.error("AppGerberEditor.SelectEditorGrb.click_release() selectionChanged.disconnect() --> %s" % str(e))
+        disconnect_all(aperture_table.cellPressed, self.draw_app.on_row_selected)
+        disconnect_all(table_selection_model.selectionChanged, self.draw_app.on_table_selection)
+
+        table_blocker = QtCore.QSignalBlocker(aperture_table)
+        selection_blocker = QtCore.QSignalBlocker(table_selection_model) if table_selection_model is not None else None
+
         # actual row selection is done here
         # self.draw_app.ui.apertures_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        aperture_table.clearSelection()
         for aper in self.sel_aperture:
-            for row in range(self.draw_app.ui.apertures_table.rowCount()):
-                if str(aper) == self.draw_app.ui.apertures_table.item(row, 1).text():
-                    if row not in set(idx.row() for idx in self.draw_app.ui.apertures_table.selectedIndexes()):
-                        self.draw_app.ui.apertures_table.selectRow(row)
+            for row in range(aperture_table.rowCount()):
+                if str(aper) == aperture_table.item(row, 1).text():
+                    if row not in set(idx.row() for idx in aperture_table.selectedIndexes()):
+                        aperture_table.selectRow(row)
                         self.draw_app.last_aperture_selected = aper
+
+        del selection_blocker
+        del table_blocker
+
         # self.draw_app.ui.apertures_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         # reconnect signal when clicking in the table
-        self.draw_app.ui.apertures_table.cellPressed.connect(self.draw_app.on_row_selected)
-        self.draw_app.ui.apertures_table.selectionModel().selectionChanged.connect(self.draw_app.on_table_selection)
+        aperture_table.cellPressed.connect(self.draw_app.on_row_selected)
+        table_selection_model.selectionChanged.connect(self.draw_app.on_table_selection)
 
         # and plot all
         self.draw_app.plot_all()
