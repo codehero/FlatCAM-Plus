@@ -244,11 +244,19 @@ class appIO(QtCore.QObject):
         self.log.debug("on_file_open_project()")
 
         _filter_ = "FlatCAM Project (*.FlatPrj);;All Files (*.*)"
+        self.app.file_dialog_active = True
         try:
-            filename, _f = QtWidgets.QFileDialog.getOpenFileName(caption=_("Open Project"),
-                                                                 directory=self.app.get_last_folder(), filter=_filter_)
-        except TypeError:
-            filename, _f = QtWidgets.QFileDialog.getOpenFileName(caption=_("Open Project"), filter=_filter_)
+            try:
+                filename, _f = QtWidgets.QFileDialog.getOpenFileName(
+                    caption=_("Open Project"), directory=self.app.get_last_folder(), filter=_filter_
+                )
+            except TypeError:
+                filename, _f = QtWidgets.QFileDialog.getOpenFileName(caption=_("Open Project"), filter=_filter_)
+        finally:
+            self.app.file_dialog_active = False
+            auto_updater = getattr(self.app, "auto_updater", None)
+            if auto_updater is not None:
+                QtCore.QTimer.singleShot(0, auto_updater.flush_pending_update_dialog)
 
         filename = str(filename)
 

@@ -91,6 +91,9 @@ class AutoUpdater(QtCore.QObject):
         super().__init__()
         self.app = app
         self.progress_dialog = None
+        self.pending_update_info = None
+        self.update_dialog = None
+        self.update_retry_pending = False
 
         self.update_available.connect(self.show_update_dialog)
         self.no_update_available.connect(self.on_no_update_available)
@@ -98,6 +101,7 @@ class AutoUpdater(QtCore.QObject):
         self.download_progress.connect(self.on_download_progress)
         self.download_finished.connect(self.on_download_finished)
         self.download_failed.connect(self.on_download_failed)
+        self.app.file_opened.connect(self.on_file_opened)
 
     @staticmethod
     def normalized_version(version):
@@ -157,6 +161,7 @@ class AutoUpdater(QtCore.QObject):
                 "html_url": release.get("html_url") or "",
                 "asset_name": asset.get("name") if asset else "",
                 "asset_url": asset.get("browser_download_url") if asset else "",
+                "silent": silent,
             }
             self.update_available.emit(update_info)
         except Exception as err:
@@ -227,9 +232,88 @@ class AutoUpdater(QtCore.QObject):
         if self.app.cmd_line_headless == 1:
             return
 
+        if self.is_ui_busy_for_update_dialog():
+            self.queue_update_dialog(update_info)
+            return
+
+        if self.update_dialog is not None:
+            try:
+                if self.update_dialog.isVisible():
+                    self.update_dialog.raise_()
+                    self.update_dialog.activateWindow()
+                    return
+            except RuntimeError:
+                self.update_dialog = None
+
         dialog = UpdateDialog(update_info, parent=self.app.ui)
-        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted and dialog.download_requested:
+        self.update_dialog = dialog
+        dialog.finished.connect(
+            lambda result, dlg=dialog, info=dict(update_info): self.on_update_dialog_finished(dlg, result, info)
+        )
+        dialog.open()
+
+    def queue_update_dialog(self, update_info):
+        self.pending_update_info = dict(update_info)
+        if self.update_retry_pending:
+            return
+
+        self.update_retry_pending = True
+        QtCore.QTimer.singleShot(1000, self.flush_pending_update_dialog)
+
+    def flush_pending_update_dialog(self):
+        self.update_retry_pending = False
+        if not self.pending_update_info:
+            return
+
+        if self.is_ui_busy_for_update_dialog():
+            self.queue_update_dialog(self.pending_update_info)
+            return
+
+        update_info = self.pending_update_info
+        self.pending_update_info = None
+        self.show_update_dialog(update_info)
+
+    def on_update_dialog_finished(self, dialog, result, update_info):
+        if self.update_dialog is dialog:
+            self.update_dialog = None
+
+        accepted_results = (
+            QtWidgets.QDialog.DialogCode.Accepted,
+            QtWidgets.QDialog.DialogCode.Accepted.value,
+        )
+        if result in accepted_results and dialog.download_requested:
             self.start_download(update_info)
+        dialog.deleteLater()
+
+    def is_ui_busy_for_update_dialog(self):
+        if getattr(self.app, "file_dialog_active", False):
+            return True
+
+        if getattr(self.app, "block_autosave", False):
+            return True
+
+        ui = getattr(self.app, "ui", None)
+        if ui is not None:
+            try:
+                title = ui.windowTitle()
+            except Exception:
+                title = ""
+            if _("Loading Project") in str(title):
+                return True
+
+        active_modal = QtWidgets.QApplication.activeModalWidget()
+        if active_modal is not None and active_modal is not self.update_dialog:
+            return True
+
+        return False
+
+    def on_file_opened(self, kind, filename):
+        if str(kind).lower() != "project":
+            return
+        if not self.pending_update_info:
+            return
+
+        QtCore.QTimer.singleShot(0, self.flush_pending_update_dialog)
 
     def start_download(self, update_info):
         asset_url = update_info.get("asset_url")
